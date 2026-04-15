@@ -264,12 +264,18 @@ function drawWalls(selectedItems) {
     const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
 
+    // Для диагональных стыков joint rect не создаётся — используем trim на halfT
+    // Для ортогональных стыков joint rect есть — trim не нужен (он покрывается clip)
+    const hasSjRect = myJoints.some(jr => jr.wallIds.includes(w.id));
+    const trimS = sj && !hasSjRect;
+    const trimE = ej && !hasSjRect;
+
     _ctx.save();
     _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
     _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
     _ctx.beginPath();
-    drawClippedFace(g.a, g.b, w, myJoints, 'ab');
-    drawClippedFace(g.d, g.c, w, myJoints, 'dc');
+    drawClippedFace(g.a, g.b, w, myJoints, 'ab', trimS, trimE);
+    drawClippedFace(g.d, g.c, w, myJoints, 'dc', trimS, trimE);
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
@@ -285,17 +291,29 @@ function drawWalls(selectedItems) {
   }
 }
 
-// Рисует грань стены от sa до ea, пропуская отрезки которые попадают в joint rects
-function drawClippedFace(sa, ea, wall, joints, _tag) {
-  if (!joints.length) {
-    _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
-    return;
-  }
-
+// Рисует грань стены от sa до ea, пропуская отрезки которые попадают в joint rects.
+// trimStart/trimEnd — если true, обрезает halfT пикселей с соответствующего конца (для диагональных стыков).
+function drawClippedFace(sa, ea, wall, joints, _tag, trimStart = false, trimEnd = false) {
   // Параметры грани в экранных координатах
   const dx = ea.x - sa.x, dy = ea.y - sa.y;
   const len = Math.hypot(dx, dy);
   if (len < 0.5) return;
+
+  // Вычисляем начало и конец с учётом trim для диагональных стыков
+  const scale = _getScale();
+  const halfT_screen = wall.thickness / 2 * scale;
+  const tStart = trimStart ? Math.min(halfT_screen / len, 0.5) : 0;
+  const tEnd   = trimEnd   ? Math.max(1 - halfT_screen / len, 0.5) : 1;
+
+  if (!joints.length) {
+    if (tStart > 0 || tEnd < 1) {
+      _ctx.moveTo(sa.x + dx * tStart, sa.y + dy * tStart);
+      _ctx.lineTo(sa.x + dx * tEnd,   sa.y + dy * tEnd);
+    } else {
+      _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
+    }
+    return;
+  }
 
   // Собираем интервалы [t1,t2] которые нужно ПРОПУСТИТЬ (внутри joint)
   const skip = [];
@@ -320,26 +338,29 @@ function drawClippedFace(sa, ea, wall, joints, _tag) {
   }
 
   if (!skip.length) {
-    _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
+    _ctx.moveTo(sa.x + dx * tStart, sa.y + dy * tStart);
+    _ctx.lineTo(sa.x + dx * tEnd,   sa.y + dy * tEnd);
     return;
   }
 
   // Сортируем пропуски
   skip.sort((a, b) => a[0] - b[0]);
 
-  // Рисуем отрезки между пропусками
-  let cur = 0;
+  // Рисуем отрезки между пропусками, с учётом tStart/tEnd
+  let cur = tStart;
   for (const [t1, t2] of skip) {
-    if (cur < t1 - 0.01) {
-      const sx = sa.x + dx * cur, sy = sa.y + dy * cur;
-      const ex = sa.x + dx * t1,  ey = sa.y + dy * t1;
-      _ctx.moveTo(sx, sy); _ctx.lineTo(ex, ey);
+    const segStart = Math.max(cur, tStart);
+    const segEnd   = Math.min(t1,  tEnd);
+    if (segStart < segEnd - 0.01) {
+      _ctx.moveTo(sa.x + dx * segStart, sa.y + dy * segStart);
+      _ctx.lineTo(sa.x + dx * segEnd,   sa.y + dy * segEnd);
     }
     cur = Math.max(cur, t2);
   }
-  if (cur < 1 - 0.01) {
-    const sx = sa.x + dx * cur, sy = sa.y + dy * cur;
-    _ctx.moveTo(sx, sy); _ctx.lineTo(ea.x, ea.y);
+  const finalStart = Math.max(cur, tStart);
+  if (finalStart < tEnd - 0.01) {
+    _ctx.moveTo(sa.x + dx * finalStart, sa.y + dy * finalStart);
+    _ctx.lineTo(sa.x + dx * tEnd,       sa.y + dy * tEnd);
   }
 }
 
