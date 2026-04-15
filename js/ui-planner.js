@@ -356,9 +356,9 @@ function updateEditPanel() {
       <div class="edit-row"><label>Высота</label><b>${op.height} мм</b></div>`;
     if (op.type === 'door') {
       html += `<div class="param-group" style="margin-top:6px"><div class="param-label">Петля</div>
-        <div class="choice-grid"><button class="choice-btn compact" type="button" data-edit-door-hinge="start">У начала</button><button class="choice-btn compact" type="button" data-edit-door-hinge="end">У конца</button></div></div>
-        <div class="param-group"><div class="param-label">Сторона дуги</div>
-        <div class="choice-grid"><button class="choice-btn compact" type="button" data-edit-door-swing="1">Слева</button><button class="choice-btn compact" type="button" data-edit-door-swing="-1">Справа</button></div></div>`;
+        <div class="choice-grid"><button class="choice-btn compact" type="button" data-edit-door-hinge="start">Слева</button><button class="choice-btn compact" type="button" data-edit-door-hinge="end">Справа</button></div></div>
+        <div class="param-group"><div class="param-label">Открывание</div>
+        <div class="choice-grid"><button class="choice-btn compact" type="button" data-edit-door-swing="1">На себя</button><button class="choice-btn compact" type="button" data-edit-door-swing="-1">От себя</button></div></div>`;
     }
     dom.editContent.innerHTML = html;
   }
