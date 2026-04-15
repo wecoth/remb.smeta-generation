@@ -266,13 +266,27 @@ function drawOpening(op, wall, isHover, isSel, dh, ds) {
       _ctx.beginPath(); _ctx.moveTo(mx + sdx, my + sdy); _ctx.lineTo(mx - sdx, my - sdy); _ctx.stroke();
     }
   } else {
+    const scale = _getScale();
     const hp = doorHinge === 'start' ? p1 : p2;
-    const radius = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const ep = doorHinge === 'start' ? p2 : p1;
+    // Радиус = ширина проёма на экране, но не больше толщины стены
+    const openingRadius = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const wallThickScreen = wall.thickness * scale;
+    const radius = Math.min(openingRadius, wallThickScreen);
     const baseAngle = doorHinge === 'start' ? angle : angle + Math.PI;
     const openAngle = baseAngle + doorSwing * Math.PI / 2;
+    // Линия двери (полотно) — от петли вдоль проёма
+    const doorEndX = hp.x + Math.cos(baseAngle) * openingRadius;
+    const doorEndY = hp.y + Math.sin(baseAngle) * openingRadius;
+    // Открытое положение — внутрь стены (ограничено толщиной)
     const le = { x: hp.x + Math.cos(openAngle) * radius, y: hp.y + Math.sin(openAngle) * radius };
-    _ctx.beginPath(); _ctx.moveTo(hp.x + sdx, hp.y + sdy); _ctx.lineTo(hp.x - sdx, hp.y - sdy);
-    _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(le.x, le.y); _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
+    _ctx.beginPath();
+    // Вертикальная линия петли через всю толщину
+    _ctx.moveTo(hp.x + sdx, hp.y + sdy); _ctx.lineTo(hp.x - sdx, hp.y - sdy);
+    // Полотно двери
+    _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(doorEndX, doorEndY);
+    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
+    // Дуга траектории открывания
     _ctx.beginPath(); _ctx.arc(hp.x, hp.y, radius, baseAngle, openAngle, doorSwing < 0);
     _ctx.lineWidth = 1; _ctx.setLineDash([3, 3]); _ctx.stroke(); _ctx.setLineDash([]);
   }
@@ -365,14 +379,15 @@ function drawTempWall(ps) {
 
 function drawGuideLine(guide) {
   const anchor = toScreen(guide.anchor.x, guide.anchor.y); _ctx.save();
-  for (const axis of getGuideAxes(guide)) {
+  const axisColors = ['rgba(80,100,180,0.28)', 'rgba(120,140,180,0.18)'];
+  getGuideAxes(guide).forEach((axis, i) => {
     const { start, end } = getGuideLineScreenEndpoints({ anchor: guide.anchor, dir: axis.dir });
-    _ctx.strokeStyle = axis.color; _ctx.lineWidth = 2; _ctx.setLineDash([5, 8]);
+    _ctx.strokeStyle = axisColors[i]; _ctx.lineWidth = 0.8; _ctx.setLineDash([4, 6]);
     _ctx.beginPath(); _ctx.moveTo(start.x, start.y); _ctx.lineTo(end.x, end.y); _ctx.stroke();
-  }
-  _ctx.setLineDash([]); _ctx.fillStyle = DRAW_COLORS.guidePrimary;
-  _ctx.beginPath(); _ctx.arc(anchor.x, anchor.y, 4.5, 0, Math.PI * 2); _ctx.fill();
-  _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke(); _ctx.restore();
+  });
+  _ctx.setLineDash([]); _ctx.fillStyle = 'rgba(80,100,180,0.55)';
+  _ctx.beginPath(); _ctx.arc(anchor.x, anchor.y, 3, 0, Math.PI * 2); _ctx.fill();
+  _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1; _ctx.stroke(); _ctx.restore();
 }
 
 function drawCornerHotspots(snap) {
