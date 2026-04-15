@@ -358,25 +358,8 @@ function drawWallJoints(selectedItems) {
     const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
     const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
     const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    // Заливка стыка
+    // Only fill — wall outlines are already drawn by drawWalls/drawClippedFace
     fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
-    // Контур — только boundary edges (внешние грани стыка)
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke;
-    _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
-    _ctx.beginPath();
-    for (const path of getJointBoundaryPaths(jr)) {
-      if (!path.length) continue;
-      const s = toScreen(path[0].x, path[0].y);
-      _ctx.moveTo(s.x, s.y);
-      for (let i = 1; i < path.length; i++) {
-        const p = toScreen(path[i].x, path[i].y);
-        _ctx.lineTo(p.x, p.y);
-      }
-    }
-    _ctx.stroke();
-    _ctx.restore();
   }
 }
 
