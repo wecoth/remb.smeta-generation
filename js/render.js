@@ -291,53 +291,52 @@ function drawWalls(selectedItems) {
   }
 }
 
-// Вычисляет точки обрезки граней (ab и dc) для диагонального стыка.
-// Возвращает { ab: screenPoint|null, dc: screenPoint|null } — точки до которых рисовать грань.
-// endpoint='start' → обрезаем начало грани (sa→ clip), endpoint='end' → конец (clip→ea).
-function getDiagFaceClip(wall, g, neighborItems, endpoint) {
-  const result = { ab: null, dc: null };
-  for (const item of neighborItems) {
-    const ng = sg(item.wall);
-    // Грани соседней стены: na→nb (сторона ab) и nd→nc (сторона dc)
-    // Ищем пересечение нашей грани ab с обеими гранями соседа, берём ближайшую к нашему концу
-    const myAB = endpoint === 'start' ? { s: g.a, e: g.b } : { s: g.b, e: g.a };
-    const myDC = endpoint === 'start' ? { s: g.d, e: g.c } : { s: g.c, e: g.d };
-    const neighborFaces = [
-      { s: ng.a, e: ng.b }, { s: ng.d, e: ng.c },
-      { s: ng.a, e: ng.d }, { s: ng.b, e: ng.c }, // торцы соседа
-    ];
-    for (const nf of neighborFaces) {
-      const pAB = lineIntersect(myAB.s, myAB.e, nf.s, nf.e);
-      if (pAB && isNearerToStart(pAB, myAB.s, myAB.e)) {
-        if (!result.ab || dist2(pAB, myAB.s) > dist2(result.ab, myAB.s)) result.ab = pAB;
-      }
-      const pDC = lineIntersect(myDC.s, myDC.e, nf.s, nf.e);
-      if (pDC && isNearerToStart(pDC, myDC.s, myDC.e)) {
-        if (!result.dc || dist2(pDC, myDC.s) > dist2(result.dc, myDC.s)) result.dc = pDC;
-      }
-    }
-  }
-  return result;
-}
-
-function dist2(a, b) { return (a.x-b.x)**2 + (a.y-b.y)**2; }
-
-// Возвращает true если точка p лежит в первой половине отрезка s→e
-function isNearerToStart(p, s, e) {
-  const len2 = dist2(s, e);
-  if (len2 < 0.001) return false;
-  const t = ((p.x-s.x)*(e.x-s.x) + (p.y-s.y)*(e.y-s.y)) / len2;
-  return t >= -0.1 && t <= 0.6;
-}
-
-// Пересечение двух бесконечных линий (через отрезки), возвращает точку или null
+// Пересечение двух бесконечных линий, возвращает { point, t } или null
+// t — параметр вдоль первого отрезка (a→b)
 function lineIntersect(a, b, c, d) {
   const r = { x: b.x-a.x, y: b.y-a.y };
   const s = { x: d.x-c.x, y: d.y-c.y };
   const denom = r.x*s.y - r.y*s.x;
   if (Math.abs(denom) < 0.001) return null;
   const t = ((c.x-a.x)*s.y - (c.y-a.y)*s.x) / denom;
-  return { x: a.x + r.x*t, y: a.y + r.y*t };
+  return { point: { x: a.x + r.x*t, y: a.y + r.y*t }, t };
+}
+
+// Вычисляет точки обрезки граней (ab и dc) для диагонального стыка.
+// endpoint='start' → обрезаем начало грани; endpoint='end' → конец.
+// Алгоритм: пересекаем нашу грань (бесконечную линию) с двумя длинными гранями соседа.
+// Берём пересечение с наименьшим |t| от нашего конца (t=0 для start, t=1 для end).
+function getDiagFaceClip(wall, g, neighborItems, endpoint) {
+  const result = { ab: null, dc: null };
+  for (const item of neighborItems) {
+    const ng = sg(item.wall);
+    // Для start: грань идёт a→b, нас интересует t близкий к 0 (начало)
+    // Для end:   грань идёт a→b, нас интересует t близкий к 1 (конец)
+    // Пересекаем только с длинными гранями соседа (не торцами)
+    const neighborLongFaces = [
+      { s: ng.a, e: ng.b },
+      { s: ng.d, e: ng.c },
+    ];
+    for (const nf of neighborLongFaces) {
+      const rAB = lineIntersect(g.a, g.b, nf.s, nf.e);
+      if (rAB !== null) {
+        const tRef = endpoint === 'start' ? 0 : 1;
+        const better = !result.ab || Math.abs(rAB.t - tRef) < Math.abs(result._tAB - tRef);
+        if (better && rAB.t >= -0.5 && rAB.t <= 1.5) {
+          result.ab = rAB.point; result._tAB = rAB.t;
+        }
+      }
+      const rDC = lineIntersect(g.d, g.c, nf.s, nf.e);
+      if (rDC !== null) {
+        const tRef = endpoint === 'start' ? 0 : 1;
+        const better = !result.dc || Math.abs(rDC.t - tRef) < Math.abs(result._tDC - tRef);
+        if (better && rDC.t >= -0.5 && rDC.t <= 1.5) {
+          result.dc = rDC.point; result._tDC = rDC.t;
+        }
+      }
+    }
+  }
+  return result;
 }
 
 // Рисует грань стены от sa до ea, пропуская joint rects.
