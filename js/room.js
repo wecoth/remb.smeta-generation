@@ -39,6 +39,9 @@ export function renameRoom(roomKey, nextName) {
 export function computeRooms(wallHeightFallback = 2700) {
   appState.rooms = [];
   const eps = 2;
+
+  // Включаем как оси стен, так и их внешние кромки
+  // Это позволяет привязываться к внешней стороне соседней стены
   const axisWalls = appState.walls.filter(w =>
     Math.abs((w.cy1 ?? w.y1) - (w.cy2 ?? w.y2)) < eps ||
     Math.abs((w.cx1 ?? w.x1) - (w.cx2 ?? w.x2)) < eps
@@ -46,10 +49,14 @@ export function computeRooms(wallHeightFallback = 2700) {
   if (axisWalls.length < 3) return;
 
   // Bug #11 fix: cluster floating-point coordinates before building grid
+  // Добавляем и оси (cx/cy) и внешние кромки (x/y) для корректной привязки
   const rawXs = [], rawYs = [];
   for (const w of axisWalls) {
     rawXs.push(w.cx1 ?? w.x1, w.cx2 ?? w.x2);
     rawYs.push(w.cy1 ?? w.y1, w.cy2 ?? w.y2);
+    // Добавляем внешние кромки
+    rawXs.push(w.x1, w.x2);
+    rawYs.push(w.y1, w.y2);
   }
   const xList = clusterValues(rawXs, 5);
   const yList = clusterValues(rawYs, 5);
@@ -58,6 +65,7 @@ export function computeRooms(wallHeightFallback = 2700) {
   const horizEdges = new Set();
   const vertEdges  = new Set();
 
+  // Строим edges по осям стен — основной способ
   for (const w of axisWalls) {
     const x1 = w.cx1 ?? w.x1, y1 = w.cy1 ?? w.y1;
     const x2 = w.cx2 ?? w.x2, y2 = w.cy2 ?? w.y2;
@@ -76,6 +84,27 @@ export function computeRooms(wallHeightFallback = 2700) {
       for (let j = 0; j < yList.length - 1; j++) {
         if (yList[j] >= ymin - eps && yList[j + 1] <= ymax + eps)
           vertEdges.add(`${xIdx},${j}`);
+      }
+    }
+    // Добавляем edges по внешним кромкам стены как дополнительные границы
+    const ex1 = w.x1, ey1 = w.y1, ex2 = w.x2, ey2 = w.y2;
+    if (Math.abs(ey1 - ey2) < eps) {
+      const yIdx = yList.findIndex(v => Math.abs(v - ey1) < eps);
+      if (yIdx >= 0) {
+        const xmin = Math.min(ex1, ex2), xmax = Math.max(ex1, ex2);
+        for (let i = 0; i < xList.length - 1; i++) {
+          if (xList[i] >= xmin - eps && xList[i + 1] <= xmax + eps)
+            horizEdges.add(`${yIdx},${i}`);
+        }
+      }
+    } else if (Math.abs(ex1 - ex2) < eps) {
+      const xIdx = xList.findIndex(v => Math.abs(v - ex1) < eps);
+      if (xIdx >= 0) {
+        const ymin = Math.min(ey1, ey2), ymax = Math.max(ey1, ey2);
+        for (let j = 0; j < yList.length - 1; j++) {
+          if (yList[j] >= ymin - eps && yList[j + 1] <= ymax + eps)
+            vertEdges.add(`${xIdx},${j}`);
+        }
       }
     }
   }
