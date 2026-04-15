@@ -260,22 +260,22 @@ function drawWalls(selectedItems) {
   // Pass 3: stroke wall outlines
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-    const sj = getWallJointItemsForEndpoint(jmap, w, 'start').length > 1 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
+    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
+    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
+    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
+    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
 
-    // Для диагональных стыков joint rect не создаётся — используем trim на halfT
-    // Для ортогональных стыков joint rect есть — trim не нужен (он покрывается clip)
-    const hasSjRect = myJoints.some(jr => jr.wallIds.includes(w.id));
-    const trimS = sj && !hasSjRect;
-    const trimE = ej && !hasSjRect;
+    // Для диагональных стыков (нет joint rect) — обрезаем грань до точки пересечения с соседней стеной
+    const diagClipS = (sj && myJoints.length === 0) ? getDiagFaceClip(w, g, sjItems, 'start') : null;
+    const diagClipE = (ej && myJoints.length === 0) ? getDiagFaceClip(w, g, ejItems, 'end')   : null;
 
     _ctx.save();
     _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
     _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
     _ctx.beginPath();
-    drawClippedFace(g.a, g.b, w, myJoints, 'ab', trimS, trimE);
-    drawClippedFace(g.d, g.c, w, myJoints, 'dc', trimS, trimE);
+    drawClippedFace(g.a, g.b, w, myJoints, diagClipS?.ab, diagClipE?.ab);
+    drawClippedFace(g.d, g.c, w, myJoints, diagClipS?.dc, diagClipE?.dc);
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
@@ -291,46 +291,89 @@ function drawWalls(selectedItems) {
   }
 }
 
-// Рисует грань стены от sa до ea, пропуская отрезки которые попадают в joint rects.
-// trimStart/trimEnd — если true, обрезает halfT пикселей с соответствующего конца (для диагональных стыков).
-function drawClippedFace(sa, ea, wall, joints, _tag, trimStart = false, trimEnd = false) {
-  // Параметры грани в экранных координатах
+// Вычисляет точки обрезки граней (ab и dc) для диагонального стыка.
+// Возвращает { ab: screenPoint|null, dc: screenPoint|null } — точки до которых рисовать грань.
+// endpoint='start' → обрезаем начало грани (sa→ clip), endpoint='end' → конец (clip→ea).
+function getDiagFaceClip(wall, g, neighborItems, endpoint) {
+  const result = { ab: null, dc: null };
+  for (const item of neighborItems) {
+    const ng = sg(item.wall);
+    // Грани соседней стены: na→nb (сторона ab) и nd→nc (сторона dc)
+    // Ищем пересечение нашей грани ab с обеими гранями соседа, берём ближайшую к нашему концу
+    const myAB = endpoint === 'start' ? { s: g.a, e: g.b } : { s: g.b, e: g.a };
+    const myDC = endpoint === 'start' ? { s: g.d, e: g.c } : { s: g.c, e: g.d };
+    const neighborFaces = [
+      { s: ng.a, e: ng.b }, { s: ng.d, e: ng.c },
+      { s: ng.a, e: ng.d }, { s: ng.b, e: ng.c }, // торцы соседа
+    ];
+    for (const nf of neighborFaces) {
+      const pAB = lineIntersect(myAB.s, myAB.e, nf.s, nf.e);
+      if (pAB && isNearerToStart(pAB, myAB.s, myAB.e)) {
+        if (!result.ab || dist2(pAB, myAB.s) > dist2(result.ab, myAB.s)) result.ab = pAB;
+      }
+      const pDC = lineIntersect(myDC.s, myDC.e, nf.s, nf.e);
+      if (pDC && isNearerToStart(pDC, myDC.s, myDC.e)) {
+        if (!result.dc || dist2(pDC, myDC.s) > dist2(result.dc, myDC.s)) result.dc = pDC;
+      }
+    }
+  }
+  return result;
+}
+
+function dist2(a, b) { return (a.x-b.x)**2 + (a.y-b.y)**2; }
+
+// Возвращает true если точка p лежит в первой половине отрезка s→e
+function isNearerToStart(p, s, e) {
+  const len2 = dist2(s, e);
+  if (len2 < 0.001) return false;
+  const t = ((p.x-s.x)*(e.x-s.x) + (p.y-s.y)*(e.y-s.y)) / len2;
+  return t >= -0.1 && t <= 0.6;
+}
+
+// Пересечение двух бесконечных линий (через отрезки), возвращает точку или null
+function lineIntersect(a, b, c, d) {
+  const r = { x: b.x-a.x, y: b.y-a.y };
+  const s = { x: d.x-c.x, y: d.y-c.y };
+  const denom = r.x*s.y - r.y*s.x;
+  if (Math.abs(denom) < 0.001) return null;
+  const t = ((c.x-a.x)*s.y - (c.y-a.y)*s.x) / denom;
+  return { x: a.x + r.x*t, y: a.y + r.y*t };
+}
+
+// Рисует грань стены от sa до ea, пропуская joint rects.
+// clipStart/clipEnd — экранные точки обрезки для диагональных стыков (или null).
+function drawClippedFace(sa, ea, wall, joints, clipStart = null, clipEnd = null) {
   const dx = ea.x - sa.x, dy = ea.y - sa.y;
   const len = Math.hypot(dx, dy);
   if (len < 0.5) return;
 
-  // Вычисляем начало и конец с учётом trim для диагональных стыков
-  const scale = _getScale();
-  const halfT_screen = wall.thickness / 2 * scale;
-  const tStart = trimStart ? Math.min(halfT_screen / len, 0.5) : 0;
-  const tEnd   = trimEnd   ? Math.max(1 - halfT_screen / len, 0.5) : 1;
+  // Применяем диагональные clip-точки → заменяем sa/ea
+  let effSa = sa, effEa = ea;
+  if (clipStart) effSa = clipStart;
+  if (clipEnd)   effEa = clipEnd;
 
   if (!joints.length) {
-    if (tStart > 0 || tEnd < 1) {
-      _ctx.moveTo(sa.x + dx * tStart, sa.y + dy * tStart);
-      _ctx.lineTo(sa.x + dx * tEnd,   sa.y + dy * tEnd);
-    } else {
-      _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
-    }
+    _ctx.moveTo(effSa.x, effSa.y); _ctx.lineTo(effEa.x, effEa.y);
     return;
   }
+
+  // Пересчитываем параметры для обрезанного отрезка
+  const edx = effEa.x - effSa.x, edy = effEa.y - effSa.y;
+  const elen = Math.hypot(edx, edy);
+  if (elen < 0.5) return;
 
   // Собираем интервалы [t1,t2] которые нужно ПРОПУСТИТЬ (внутри joint)
   const skip = [];
   for (const jr of joints) {
-    // joint rect в экранных координатах
     const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
     const rl = Math.min(tl.x, br.x) - 1, rt = Math.min(tl.y, br.y) - 1;
     const rr = Math.max(tl.x, br.x) + 1, rb = Math.max(tl.y, br.y) + 1;
-
-    // Пересечение отрезка [sa→ea] с прямоугольником joint
-    // Используем параметрическое пересечение
     let tEnter = 0, tExit = 1;
     const params = [
-      dx !== 0 ? (rl - sa.x) / dx : (sa.x >= rl ? 0 : 1),
-      dx !== 0 ? (rr - sa.x) / dx : (sa.x <= rr ? 1 : 0),
-      dy !== 0 ? (rt - sa.y) / dy : (sa.y >= rt ? 0 : 1),
-      dy !== 0 ? (rb - sa.y) / dy : (sa.y <= rb ? 1 : 0),
+      edx !== 0 ? (rl - effSa.x) / edx : (effSa.x >= rl ? 0 : 1),
+      edx !== 0 ? (rr - effSa.x) / edx : (effSa.x <= rr ? 1 : 0),
+      edy !== 0 ? (rt - effSa.y) / edy : (effSa.y >= rt ? 0 : 1),
+      edy !== 0 ? (rb - effSa.y) / edy : (effSa.y <= rb ? 1 : 0),
     ];
     tEnter = Math.max(tEnter, Math.min(params[0], params[1]), Math.min(params[2], params[3]));
     tExit  = Math.min(tExit,  Math.max(params[0], params[1]), Math.max(params[2], params[3]));
@@ -338,29 +381,22 @@ function drawClippedFace(sa, ea, wall, joints, _tag, trimStart = false, trimEnd 
   }
 
   if (!skip.length) {
-    _ctx.moveTo(sa.x + dx * tStart, sa.y + dy * tStart);
-    _ctx.lineTo(sa.x + dx * tEnd,   sa.y + dy * tEnd);
+    _ctx.moveTo(effSa.x, effSa.y); _ctx.lineTo(effEa.x, effEa.y);
     return;
   }
 
-  // Сортируем пропуски
   skip.sort((a, b) => a[0] - b[0]);
-
-  // Рисуем отрезки между пропусками, с учётом tStart/tEnd
-  let cur = tStart;
+  let cur = 0;
   for (const [t1, t2] of skip) {
-    const segStart = Math.max(cur, tStart);
-    const segEnd   = Math.min(t1,  tEnd);
-    if (segStart < segEnd - 0.01) {
-      _ctx.moveTo(sa.x + dx * segStart, sa.y + dy * segStart);
-      _ctx.lineTo(sa.x + dx * segEnd,   sa.y + dy * segEnd);
+    if (cur < t1 - 0.01) {
+      _ctx.moveTo(effSa.x + edx*cur, effSa.y + edy*cur);
+      _ctx.lineTo(effSa.x + edx*t1,  effSa.y + edy*t1);
     }
     cur = Math.max(cur, t2);
   }
-  const finalStart = Math.max(cur, tStart);
-  if (finalStart < tEnd - 0.01) {
-    _ctx.moveTo(sa.x + dx * finalStart, sa.y + dy * finalStart);
-    _ctx.lineTo(sa.x + dx * tEnd,       sa.y + dy * tEnd);
+  if (cur < 1 - 0.01) {
+    _ctx.moveTo(effSa.x + edx*cur, effSa.y + edy*cur);
+    _ctx.lineTo(effEa.x, effEa.y);
   }
 }
 
