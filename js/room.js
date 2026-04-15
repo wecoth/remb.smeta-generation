@@ -1,20 +1,14 @@
 // ─── ROOM.JS ──────────────────────────────────────────────────────
 import { appState, ROOM_STROKES } from './state.js';
-import { clusterValues, rangesOverlap } from './geometry.js';
 import { openingTouchesSegments } from './opening.js';
 
-// ── Room key — Bug #5 fix: use centroid rounded to 50 mm ──────────
-export function getRoomKey(cells) {
-  let ax = 0, ay = 0, area = 0;
-  for (const c of cells) {
-    const ca = (c.x2 - c.x1) * (c.y2 - c.y1);
-    ax += ((c.x1 + c.x2) / 2) * ca;
-    ay += ((c.y1 + c.y2) / 2) * ca;
-    area += ca;
-  }
-  if (!area) return cells.map(c => `${Math.round(c.x1)},${Math.round(c.y1)}`).join('|');
-  const cx = Math.round((ax / area) / 50) * 50;
-  const cy = Math.round((ay / area) / 50) * 50;
+// ── Room key — centroid rounded to 50 mm ──────────────────────────
+export function getRoomKey(pixels, cellMm) {
+  if (!pixels.length) return '0,0';
+  let sx = 0, sy = 0;
+  for (const [px, py] of pixels) { sx += px; sy += py; }
+  const cx = Math.round((sx / pixels.length * cellMm) / 50) * 50;
+  const cy = Math.round((sy / pixels.length * cellMm) / 50) * 50;
   return `${cx},${cy}`;
 }
 
@@ -34,210 +28,253 @@ export function renameRoom(roomKey, nextName) {
   }
 }
 
-// ── Main room computation ─────────────────────────────────────────
+// ── Flood-fill room computation ───────────────────────────────────
+//
+// Алгоритм:
+// 1. Определяем bbox всех стен + отступ
+// 2. Растеризуем стены в bitmap (каждый пиксель = CELL_MM мм)
+// 3. BFS flood fill от каждого свободного пикселя
+// 4. Области касающиеся краёв bitmap = внешнее пространство, отбрасываем
+// 5. Для каждой внутренней области считаем метрики
+//
+// Работает с любой геометрией: прямые, диагональные, кривые стены
+
+const CELL_MM = 50; // разрешение сетки в мм
 
 export function computeRooms(wallHeightFallback = 2700) {
   appState.rooms = [];
-  const eps = 2;
+  if (appState.walls.length < 3) return;
 
-  // Включаем ВСЕ стены, не только строго осевые —
-  // потому что привязка может идти к внешней кромке соседней стены
-  const allWalls = appState.walls;
-  if (allWalls.length < 3) return;
-
-  // Собираем координаты: и оси (cx/cy) и физические грани (x/y)
-  // Это позволяет замыкать контур при привязке к любой грани стены
-  const rawXs = [], rawYs = [];
-  for (const w of allWalls) {
-    rawXs.push(w.cx1 ?? w.x1, w.cx2 ?? w.x2, w.x1, w.x2);
-    rawYs.push(w.cy1 ?? w.y1, w.cy2 ?? w.y2, w.y1, w.y2);
+  // ── 1. Bbox всех стен ──────────────────────────────────────────
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const w of appState.walls) {
+    const half = w.thickness / 2 + 5;
+    minX = Math.min(minX, w.x1 - half, w.x2 - half);
+    minY = Math.min(minY, w.y1 - half, w.y2 - half);
+    maxX = Math.max(maxX, w.x1 + half, w.x2 + half);
+    maxY = Math.max(maxY, w.y1 + half, w.y2 + half);
   }
-  const xList = clusterValues(rawXs, 5);
-  const yList = clusterValues(rawYs, 5);
-  if (xList.length < 2 || yList.length < 2) return;
+  // Добавляем отступ в 2 клетки вокруг — чтобы внешнее пространство всегда связано
+  const PAD = CELL_MM * 2;
+  minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
 
-  const horizEdges = new Set();
-  const vertEdges  = new Set();
+  const cols = Math.ceil((maxX - minX) / CELL_MM) + 1;
+  const rows = Math.ceil((maxY - minY) / CELL_MM) + 1;
 
-  // Вспомогательная функция — добавляем горизонтальный edge по y-координате
-  function addHorizEdge(y, xFrom, xTo) {
-    const yIdx = yList.findIndex(v => Math.abs(v - y) < eps);
-    if (yIdx < 0) return;
-    const xmin = Math.min(xFrom, xTo), xmax = Math.max(xFrom, xTo);
-    for (let i = 0; i < xList.length - 1; i++) {
-      if (xList[i] >= xmin - eps && xList[i + 1] <= xmax + eps)
-        horizEdges.add(`${yIdx},${i}`);
-    }
+  if (cols > 2000 || rows > 2000) return; // защита от слишком большого bitmap
+
+  // ── 2. Растеризуем стены ───────────────────────────────────────
+  // bitmap: 0 = свободно, 1 = стена
+  const bitmap = new Uint8Array(cols * rows);
+
+  for (const w of appState.walls) {
+    rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
-  // Вспомогательная функция — добавляем вертикальный edge по x-координате
-  function addVertEdge(x, yFrom, yTo) {
-    const xIdx = xList.findIndex(v => Math.abs(v - x) < eps);
-    if (xIdx < 0) return;
-    const ymin = Math.min(yFrom, yTo), ymax = Math.max(yFrom, yTo);
-    for (let j = 0; j < yList.length - 1; j++) {
-      if (yList[j] >= ymin - eps && yList[j + 1] <= ymax + eps)
-        vertEdges.add(`${xIdx},${j}`);
-    }
-  }
+  // ── 3. BFS flood fill ──────────────────────────────────────────
+  const regionId = new Int32Array(cols * rows); // 0 = не посещён
+  let nextId = 1;
+  const regionPixels = new Map(); // id → [[gx,gy], ...]
+  const regionTouchesEdge = new Set();
 
-  // Фильтруем только горизонтальные и вертикальные стены
-  const axisWalls = allWalls.filter(w =>
-    Math.abs((w.cy1 ?? w.y1) - (w.cy2 ?? w.y2)) < eps ||
-    Math.abs((w.cx1 ?? w.x1) - (w.cx2 ?? w.x2)) < eps
-  );
-  if (axisWalls.length < 3) return;
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const idx = gy * cols + gx;
+      if (bitmap[idx] !== 0 || regionId[idx] !== 0) continue;
 
-  for (const w of axisWalls) {
-    const cx1 = w.cx1 ?? w.x1, cy1 = w.cy1 ?? w.y1;
-    const cx2 = w.cx2 ?? w.x2, cy2 = w.cy2 ?? w.y2;
-
-    // Edges по контурной оси (cx/cy)
-    if (Math.abs(cy1 - cy2) < eps) {
-      addHorizEdge(cy1, cx1, cx2);
-    } else if (Math.abs(cx1 - cx2) < eps) {
-      addVertEdge(cx1, cy1, cy2);
-    }
-
-    // Edges по физическим граням стены (x/y со смещением offset)
-    // Это ключевое: позволяет строить соседние помещения от внешних кромок
-    if (Math.abs(w.y1 - w.y2) < eps) {
-      addHorizEdge(w.y1, w.x1, w.x2);
-    } else if (Math.abs(w.x1 - w.x2) < eps) {
-      addVertEdge(w.x1, w.y1, w.y2);
-    }
-  }
-
-  const rows = yList.length - 1, cols = xList.length - 1;
-  const visited = Array.from({ length: rows }, () => new Array(cols).fill(false));
-
-  function cellKey(cy, cx) { return `${cy},${cx}`; }
-
-  function boundaryEdgeForCell(cy, cx, dir) {
-    if (dir === 'top')
-      return { orientation: 'h', x1: xList[cx], y1: yList[cy], x2: xList[cx+1], y2: yList[cy], edgeKey: `${cy},${cx}` };
-    if (dir === 'bottom')
-      return { orientation: 'h', x1: xList[cx], y1: yList[cy+1], x2: xList[cx+1], y2: yList[cy+1], edgeKey: `${cy+1},${cx}` };
-    if (dir === 'left')
-      return { orientation: 'v', x1: xList[cx], y1: yList[cy], x2: xList[cx], y2: yList[cy+1], edgeKey: `${cx},${cy}` };
-    return { orientation: 'v', x1: xList[cx+1], y1: yList[cy], x2: xList[cx+1], y2: yList[cy+1], edgeKey: `${cx+1},${cy}` };
-  }
-
-  function findWallForSegment(seg) {
-    return axisWalls.find(w => {
-      const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
-      const wx2 = w.cx2 ?? w.x2, wy2 = w.cy2 ?? w.y2;
-      // Проверяем совпадение по контурной оси (cx/cy)
-      if (seg.orientation === 'h') {
-        if (Math.abs(wy1 - wy2) < eps && Math.abs(wy1 - seg.y1) < eps &&
-            rangesOverlap(seg.x1, seg.x2, wx1, wx2)) return true;
-      } else {
-        if (Math.abs(wx1 - wx2) < eps && Math.abs(wx1 - seg.x1) < eps &&
-            rangesOverlap(seg.y1, seg.y2, wy1, wy2)) return true;
-      }
-      // Проверяем совпадение по физическим граням (x/y со смещением)
-      if (seg.orientation === 'h') {
-        return Math.abs(w.y1 - w.y2) < eps && Math.abs(w.y1 - seg.y1) < eps &&
-               rangesOverlap(seg.x1, seg.x2, w.x1, w.x2);
-      }
-      return Math.abs(w.x1 - w.x2) < eps && Math.abs(w.x1 - seg.x1) < eps &&
-             rangesOverlap(seg.y1, seg.y2, w.y1, w.y2);
-    }) || null;
-  }
-
-  for (let i = 0; i < rows; i++) {
-    for (let j = 0; j < cols; j++) {
-      if (visited[i][j]) continue;
-      const queue = [[i, j]], region = [], regionSet = new Set();
-      visited[i][j] = true;
+      const id = nextId++;
+      const pixels = [];
+      const queue = [idx];
+      regionId[idx] = id;
+      let touchesEdge = false;
 
       while (queue.length) {
-        const [cy, cx] = queue.shift();
-        region.push([cy, cx]);
-        regionSet.add(cellKey(cy, cx));
-        if (cy > 0        && !visited[cy-1][cx] && !horizEdges.has(`${cy},${cx}`))   { visited[cy-1][cx] = true; queue.push([cy-1, cx]); }
-        if (cy < rows-1   && !visited[cy+1][cx] && !horizEdges.has(`${cy+1},${cx}`)) { visited[cy+1][cx] = true; queue.push([cy+1, cx]); }
-        if (cx > 0        && !visited[cy][cx-1] && !vertEdges.has(`${cx},${cy}`))    { visited[cy][cx-1] = true; queue.push([cy, cx-1]); }
-        if (cx < cols-1   && !visited[cy][cx+1] && !vertEdges.has(`${cx+1},${cy}`))  { visited[cy][cx+1] = true; queue.push([cy, cx+1]); }
-      }
+        const ci = queue.pop();
+        const cx = ci % cols, cy = (ci / cols) | 0;
+        pixels.push([cx, cy]);
 
-      if (!region.length) continue;
-
-      const boundarySegments = [];
-      let enclosed = true, areaMm2 = 0, weightedX = 0, weightedY = 0;
-      const cells = [];
-
-      for (const [cy, cx] of region) {
-        const cellArea = (xList[cx+1] - xList[cx]) * (yList[cy+1] - yList[cy]);
-        areaMm2 += cellArea;
-        const midX = (xList[cx] + xList[cx+1]) / 2;
-        const midY = (yList[cy] + yList[cy+1]) / 2;
-        weightedX += midX * cellArea;
-        weightedY += midY * cellArea;
-        cells.push({ x1: xList[cx], y1: yList[cy], x2: xList[cx+1], y2: yList[cy+1] });
-
-        const neighbors = [
-          { dir: 'top',    exists: regionSet.has(cellKey(cy-1, cx)), edgeSet: horizEdges },
-          { dir: 'bottom', exists: regionSet.has(cellKey(cy+1, cx)), edgeSet: horizEdges },
-          { dir: 'left',   exists: regionSet.has(cellKey(cy, cx-1)), edgeSet: vertEdges  },
-          { dir: 'right',  exists: regionSet.has(cellKey(cy, cx+1)), edgeSet: vertEdges  },
-        ];
-        for (const nb of neighbors) {
-          if (nb.exists) continue;
-          const seg = boundaryEdgeForCell(cy, cx, nb.dir);
-          if (!nb.edgeSet.has(seg.edgeKey)) { enclosed = false; break; }
-          seg.length = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
-          seg.wall = findWallForSegment(seg);
-          boundarySegments.push(seg);
+        if (cx === 0 || cy === 0 || cx === cols - 1 || cy === rows - 1) {
+          touchesEdge = true;
         }
-        if (!enclosed) break;
-      }
 
-      if (!enclosed || areaMm2 < 50000) continue;
-
-      const centroid = { x: weightedX / areaMm2, y: weightedY / areaMm2 };
-      const center = cells.reduce((best, cell) => {
-        const cc = { x: (cell.x1 + cell.x2) / 2, y: (cell.y1 + cell.y2) / 2 };
-        const dist = Math.hypot(cc.x - centroid.x, cc.y - centroid.y);
-        return !best || dist < best.dist ? { ...cc, dist } : best;
-      }, null);
-
-      const defaultRoomHeight = wallHeightFallback;
-      const roomHeightMm = boundarySegments.reduce((minH, seg) => {
-        const wh = seg.wall ? (seg.wall.height || defaultRoomHeight) : defaultRoomHeight;
-        return Math.min(minH, wh);
-      }, defaultRoomHeight);
-
-      let grossWallArea = 0, perimeter = 0;
-      for (const seg of boundarySegments) {
-        perimeter += seg.length;
-        const wh = seg.wall ? seg.wall.height : defaultRoomHeight;
-        grossWallArea += seg.length * wh / 1e6;
-      }
-
-      let openingsArea = 0;
-      for (const op of appState.openings) {
-        if (openingTouchesSegments(op, boundarySegments, appState.walls)) {
-          openingsArea += (op.width * op.height) / 1e6;
+        for (const [nx, ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]) {
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const ni = ny * cols + nx;
+          if (bitmap[ni] !== 0 || regionId[ni] !== 0) continue;
+          regionId[ni] = id;
+          queue.push(ni);
         }
       }
 
-      const key = getRoomKey(cells);
-      const defaultName = roomDefaultName(appState.rooms.length);
-      appState.rooms.push({
-        key, cells, boundarySegments,
-        area:        areaMm2 / 1e6,
-        volume:      areaMm2 * roomHeightMm / 1e9,
-        height:      roomHeightMm / 1000,
-        wallArea:    Math.max(0, grossWallArea - openingsArea),
-        perimeter:   perimeter / 1000,
-        openingsArea,
-        center: { x: center.x, y: center.y },
-        defaultName,
-        name: appState.roomNameOverrides[key] || defaultName,
-      });
+      regionPixels.set(id, pixels);
+      if (touchesEdge) regionTouchesEdge.add(id);
     }
   }
+
+  // ── 4. Фильтруем и считаем метрики ────────────────────────────
+  const cellArea = CELL_MM * CELL_MM; // мм²
+  const minRoomArea = 100000; // 0.1 м² минимум
+
+  for (const [id, pixels] of regionPixels) {
+    if (regionTouchesEdge.has(id)) continue;
+
+    const areaMm2 = pixels.length * cellArea;
+    if (areaMm2 < minRoomArea) continue;
+
+    // Центроид
+    let sumX = 0, sumY = 0;
+    for (const [gx, gy] of pixels) { sumX += gx; sumY += gy; }
+    const centerWorld = {
+      x: minX + (sumX / pixels.length + 0.5) * CELL_MM,
+      y: minY + (sumY / pixels.length + 0.5) * CELL_MM,
+    };
+
+    // Периметр и граничные стены
+    let perimeterMm = 0;
+    const boundaryWalls = new Map(); // wallId → wall
+
+    for (const [gx, gy] of pixels) {
+      for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) {
+          perimeterMm += CELL_MM;
+          continue;
+        }
+        const ni = ny * cols + nx;
+        if (bitmap[ni] === 1) {
+          perimeterMm += CELL_MM;
+          const wx = minX + (nx + 0.5) * CELL_MM;
+          const wy = minY + (ny + 0.5) * CELL_MM;
+          const wall = findWallAtPoint(wx, wy);
+          if (wall && !boundaryWalls.has(wall.id)) {
+            boundaryWalls.set(wall.id, wall);
+          }
+        }
+      }
+    }
+
+    // Высота помещения
+    let roomHeightMm = wallHeightFallback;
+    for (const wall of boundaryWalls.values()) {
+      if (wall.height && wall.height < roomHeightMm) {
+        roomHeightMm = wall.height;
+      }
+    }
+
+    // Площадь стен
+    const grossWallAreaM2 = (perimeterMm * roomHeightMm) / 1e6;
+
+    // Площадь проёмов
+    let openingsAreaM2 = 0;
+    for (const op of appState.openings) {
+      if (boundaryWalls.has(op.wallId)) {
+        openingsAreaM2 += (op.width * op.height) / 1e6;
+      }
+    }
+
+    // Room key
+    const key = getRoomKey(pixels, CELL_MM);
+
+    // cells для render.js (drawRoomFills использует cells для заливки)
+    const cells = pixels.map(([gx, gy]) => ({
+      x1: minX + gx * CELL_MM,
+      y1: minY + gy * CELL_MM,
+      x2: minX + (gx + 1) * CELL_MM,
+      y2: minY + (gy + 1) * CELL_MM,
+    }));
+
+    // boundarySegments для обратной совместимости
+    const boundarySegments = [];
+    for (const wall of boundaryWalls.values()) {
+      const seg = {
+        orientation: Math.abs(wall.y2 - wall.y1) < Math.abs(wall.x2 - wall.x1) ? 'h' : 'v',
+        x1: Math.min(wall.x1, wall.x2), y1: Math.min(wall.y1, wall.y2),
+        x2: Math.max(wall.x1, wall.x2), y2: Math.max(wall.y1, wall.y2),
+        length: Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1),
+        wall,
+      };
+      boundarySegments.push(seg);
+    }
+
+    const defaultName = roomDefaultName(appState.rooms.length);
+    appState.rooms.push({
+      key, cells, boundarySegments,
+      area:        areaMm2 / 1e6,
+      volume:      areaMm2 * roomHeightMm / 1e9,
+      height:      roomHeightMm / 1000,
+      wallArea:    Math.max(0, grossWallAreaM2 - openingsAreaM2),
+      perimeter:   perimeterMm / 1000,
+      openingsArea: openingsAreaM2,
+      center:      centerWorld,
+      defaultName,
+      name: appState.roomNameOverrides[key] || defaultName,
+    });
+  }
+}
+
+// ── Растеризация стены в bitmap ───────────────────────────────────
+function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
+  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+  const half = wall.thickness / 2;
+  const sinA = Math.sin(angle), cosA = Math.cos(angle);
+  const dx = -sinA * half, dy = cosA * half;
+
+  const corners = [
+    { x: wall.x1 + dx, y: wall.y1 + dy },
+    { x: wall.x2 + dx, y: wall.y2 + dy },
+    { x: wall.x2 - dx, y: wall.y2 - dy },
+    { x: wall.x1 - dx, y: wall.y1 - dy },
+  ];
+
+  let gxMin = Infinity, gyMin = Infinity, gxMax = -Infinity, gyMax = -Infinity;
+  for (const c of corners) {
+    const gx = (c.x - minX) / CELL_MM;
+    const gy = (c.y - minY) / CELL_MM;
+    gxMin = Math.min(gxMin, gx); gyMin = Math.min(gyMin, gy);
+    gxMax = Math.max(gxMax, gx); gyMax = Math.max(gyMax, gy);
+  }
+  gxMin = Math.max(0, Math.floor(gxMin) - 1);
+  gyMin = Math.max(0, Math.floor(gyMin) - 1);
+  gxMax = Math.min(cols - 1, Math.ceil(gxMax) + 1);
+  gyMax = Math.min(rows - 1, Math.ceil(gyMax) + 1);
+
+  // Edge normals для convex polygon test
+  const edges = [];
+  for (let i = 0; i < 4; i++) {
+    const a = corners[i], b = corners[(i + 1) % 4];
+    edges.push({ ax: a.x, ay: a.y, nx: -(b.y - a.y), ny: b.x - a.x });
+  }
+
+  for (let gy = gyMin; gy <= gyMax; gy++) {
+    for (let gx = gxMin; gx <= gxMax; gx++) {
+      const wx = minX + (gx + 0.5) * CELL_MM;
+      const wy = minY + (gy + 0.5) * CELL_MM;
+      let inside = true;
+      for (const e of edges) {
+        if ((wx - e.ax) * e.nx + (wy - e.ay) * e.ny > 1) {
+          inside = false; break;
+        }
+      }
+      if (inside) bitmap[gy * cols + gx] = 1;
+    }
+  }
+}
+
+// ── Найти стену в мировой точке ───────────────────────────────────
+function findWallAtPoint(wx, wy) {
+  for (const w of appState.walls) {
+    const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    if (len < 0.001) continue;
+    const ux = (w.x2 - w.x1) / len, uy = (w.y2 - w.y1) / len;
+    const nx = -uy, ny = ux;
+    const rx = wx - w.x1, ry = wy - w.y1;
+    const along  = rx * ux + ry * uy;
+    const normal = rx * nx + ry * ny;
+    if (along >= -CELL_MM && along <= len + CELL_MM &&
+        Math.abs(normal) <= w.thickness / 2 + CELL_MM) {
+      return w;
+    }
+  }
+  return null;
 }
 
 // ── DOM update ────────────────────────────────────────────────────
@@ -272,7 +309,6 @@ function escHtml(s) {
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
-/** Returns computed rooms in smeta-compatible format for room sync */
 export function getComputedRooms() {
   return appState.rooms.map(r => ({
     name:      r.name,
