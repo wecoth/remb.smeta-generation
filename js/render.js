@@ -92,14 +92,16 @@ export function getOpeningScreenBounds(op) {
   const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1); if (wlen < 1) return null;
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const halfT = wall.thickness / 2;
+  const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
   const t1 = Math.max(0, Math.min(1, op.t - op.width / 2 / wlen));
   const t2 = Math.max(0, Math.min(1, op.t + op.width / 2 / wlen));
-  const p1 = toScreen(wall.x1 + (wall.x2 - wall.x1) * t1, wall.y1 + (wall.y2 - wall.y1) * t1);
-  const p2 = toScreen(wall.x1 + (wall.x2 - wall.x1) * t2, wall.y1 + (wall.y2 - wall.y1) * t2);
-  const sdx = -Math.sin(angle) * halfT, sdy = Math.cos(angle) * halfT;
-  const corners = [{ x: p1.x + sdx, y: p1.y + sdy }, { x: p2.x + sdx, y: p2.y + sdy },
-                   { x: p2.x - sdx, y: p2.y - sdy }, { x: p1.x - sdx, y: p1.y - sdy }];
-  return { left: Math.min(...corners.map(p => p.x)), top:  Math.min(...corners.map(p => p.y)),
+  const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
+  const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
+  const corners = [
+    toScreen(ax1 + sdxW, ay1 + sdyW), toScreen(ax2 + sdxW, ay2 + sdyW),
+    toScreen(ax2 - sdxW, ay2 - sdyW), toScreen(ax1 - sdxW, ay1 - sdyW),
+  ];
+  return { left: Math.min(...corners.map(p => p.x)), top: Math.min(...corners.map(p => p.y)),
            right: Math.max(...corners.map(p => p.x)), bottom: Math.max(...corners.map(p => p.y)) };
 }
 
@@ -329,48 +331,79 @@ function drawOpening(op, wall, isHover, isSel, dh, ds) {
   const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
   const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
   const p1 = toScreen(ax1, ay1), p2 = toScreen(ax2, ay2);
-  const sdx = -Math.sin(angle) * wall.thickness / 2, sdy = Math.cos(angle) * wall.thickness / 2;
+  // sdx/sdy — перпендикуляр ровно на половину толщины стены
+  const scale = _getScale();
+  const halfT = wall.thickness / 2;
+  const sdx = -Math.sin(angle) * halfT * scale, sdy = Math.cos(angle) * halfT * scale;
+  // Правильные экранные smещения от оси
+  const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
+  // Экранные координаты 4 углов проёма (строго в пределах толщины стены)
+  const c1 = toScreen(ax1 + sdxW, ay1 + sdyW);
+  const c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
+  const c3 = toScreen(ax2 - sdxW, ay2 - sdyW);
+  const c4 = toScreen(ax1 - sdxW, ay1 - sdyW);
+
   const color = op.type === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke;
   const fillColor = op.type === 'window' ? (isHover ? DRAW_COLORS.windowHover : DRAW_COLORS.windowFill)
     : (isHover ? DRAW_COLORS.doorHover : DRAW_COLORS.doorFill);
   const doorHinge = op.hinge || dh, doorSwing = op.swing ?? ds;
   _ctx.save();
-  _ctx.beginPath(); _ctx.moveTo(p1.x + sdx, p1.y + sdy); _ctx.lineTo(p2.x + sdx, p2.y + sdy);
-  _ctx.lineTo(p2.x - sdx, p2.y - sdy); _ctx.lineTo(p1.x - sdx, p1.y - sdy); _ctx.closePath();
-  _ctx.fillStyle = '#fcfcfd'; _ctx.fill(); _ctx.fillStyle = fillColor; _ctx.fill();
-  _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
+
   if (op.type === 'window') {
+    // Заливка проёма
     _ctx.beginPath();
-    _ctx.moveTo(p1.x + sdx, p1.y + sdy); _ctx.lineTo(p1.x - sdx, p1.y - sdy);
-    _ctx.moveTo(p2.x + sdx, p2.y + sdy); _ctx.lineTo(p2.x - sdx, p2.y - sdy); _ctx.stroke();
-    for (let t = 0.25; t <= 0.75; t += 0.25) {
-      const mx = p1.x + (p2.x - p1.x) * t, my = p1.y + (p2.y - p1.y) * t;
-      _ctx.beginPath(); _ctx.moveTo(mx + sdx, my + sdy); _ctx.lineTo(mx - sdx, my - sdy); _ctx.stroke();
-    }
+    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
+    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
+    _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
+    _ctx.fillStyle = fillColor; _ctx.fill();
+
+    // Только две длинные стороны (вдоль стены) — рама окна
+    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5;
+    _ctx.beginPath();
+    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y); // внешняя грань
+    _ctx.moveTo(c4.x, c4.y); _ctx.lineTo(c3.x, c3.y); // внутренняя грань
+    // Торцы рамы
+    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c4.x, c4.y);
+    _ctx.moveTo(c2.x, c2.y); _ctx.lineTo(c3.x, c3.y);
+    _ctx.stroke();
+
+    // Одна средняя линия — стеклопакет (одна линия посередине вдоль стены)
+    const mx1 = (c1.x + c4.x) / 2, my1 = (c1.y + c4.y) / 2;
+    const mx2 = (c2.x + c3.x) / 2, my2 = (c2.y + c3.y) / 2;
+    _ctx.beginPath(); _ctx.moveTo(mx1, my1); _ctx.lineTo(mx2, my2);
+    _ctx.lineWidth = 1; _ctx.stroke();
+
   } else {
-    const scale = _getScale();
+    // Дверь: только белая заливка проёма (без обводки прямоугольника)
+    _ctx.beginPath();
+    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
+    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
+    _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
+
     const hp = doorHinge === 'start' ? p1 : p2;
-    // Полотно двери — от петли до противоположного края проёма (вдоль стены)
     const leafEnd = doorHinge === 'start' ? p2 : p1;
     const leafLen = Math.hypot(leafEnd.x - hp.x, leafEnd.y - hp.y);
     const baseAngle = doorHinge === 'start' ? angle : angle + Math.PI;
     const openAngle = baseAngle + doorSwing * Math.PI / 2;
-    // Дуга открывания: радиус = ширина полотна, но визуально ограничена
-    const arcRadius = leafLen;
-    const arcEnd = { x: hp.x + Math.cos(openAngle) * arcRadius, y: hp.y + Math.sin(openAngle) * arcRadius };
+    const arcEnd = { x: hp.x + Math.cos(openAngle) * leafLen, y: hp.y + Math.sin(openAngle) * leafLen };
+
     // Линия петли через толщину стены
+    const hc1 = doorHinge === 'start' ? c1 : c2;
+    const hc2 = doorHinge === 'start' ? c4 : c3;
+    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.setLineDash([]);
     _ctx.beginPath();
-    _ctx.moveTo(hp.x + sdx, hp.y + sdy); _ctx.lineTo(hp.x - sdx, hp.y - sdy);
-    // Полотно двери (в закрытом положении — вдоль стены)
+    _ctx.moveTo(hc1.x, hc1.y); _ctx.lineTo(hc2.x, hc2.y);
+    // Полотно двери в закрытом положении
     _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(leafEnd.x, leafEnd.y);
-    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
-    // Дуга траектории открывания (пунктир)
-    _ctx.beginPath(); _ctx.arc(hp.x, hp.y, arcRadius, baseAngle, openAngle, doorSwing < 0);
-    _ctx.lineWidth = 1; _ctx.setLineDash([3, 3]); _ctx.stroke(); _ctx.setLineDash([]);
-    // Полотно в открытом положении (линия от петли до конца дуги)
+    _ctx.stroke();
+    // Дуга траектории
+    _ctx.beginPath(); _ctx.arc(hp.x, hp.y, leafLen, baseAngle, openAngle, doorSwing < 0);
+    _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]); _ctx.stroke(); _ctx.setLineDash([]);
+    // Полотно в открытом положении
     _ctx.beginPath(); _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(arcEnd.x, arcEnd.y);
-    _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.setLineDash([]); _ctx.stroke();
+    _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
   }
+
   if (isHover) drawOpeningDimensions(op, wall, angle, { x1: ax1, y1: ay1, x2: ax2, y2: ay2 });
   _ctx.restore();
 }
