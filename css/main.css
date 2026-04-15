@@ -230,7 +230,7 @@ html, body {
 }
 .tool-btn svg { display: none; }
 .tool-btn:hover { background: #ECECEA; color: #111111; }
-.tool-btn.active { background: #EBEBEB; border-color: #AAAAAA; color: #000000; font-weight: 600; }
+.tool-btn.active { background: #EEF3FF; border-color: #4A6FE3; color: #2952CC; font-weight: 600; }
 
 /* Params */
 .param-group { margin-bottom: 7px; }
