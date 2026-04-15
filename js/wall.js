@@ -135,9 +135,10 @@ export function distanceToWallSurface(point, wall) {
 }
 
 export function isWallEndpointCoveredByAnotherWall(wall, endpoint) {
+  // Use contour point (where user clicked) — this matches how joints are detected
   const point = endpoint === 'start'
-    ? { x: wall.x1, y: wall.y1 }
-    : { x: wall.x2, y: wall.y2 };
+    ? { x: wall.cx1 ?? wall.x1, y: wall.cy1 ?? wall.y1 }
+    : { x: wall.cx2 ?? wall.x2, y: wall.cy2 ?? wall.y2 };
   return appState.walls.some(other => other.id !== wall.id && isPointInsideWallSurface(point, other));
 }
 
