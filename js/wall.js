@@ -406,3 +406,39 @@ export function getWallGuideCorners(wall) {
     id: `${wall.id}:${index}`, wall, point, dir,
   }));
 }
+
+// ── Proximity helpers (for hover/click hit-testing) ──────────────
+
+export function distanceToWallSurface(point, wall) {
+  const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.0001) return Math.hypot(point.x - wall.x1, point.y - wall.y1);
+  const ux = dx / len, uy = dy / len;
+  const relX = point.x - wall.x1, relY = point.y - wall.y1;
+  const along = Math.max(0, Math.min(len, relX * ux + relY * uy));
+  const cx = wall.x1 + ux * along, cy = wall.y1 + uy * along;
+  return Math.max(0, Math.hypot(point.x - cx, point.y - cy) - wall.thickness / 2);
+}
+
+export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
+  let best = null, bestDist = thresholdWorld;
+  for (const op of appState.openings) {
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall) continue;
+    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const halfT = wall.thickness / 2;
+    const cx = wall.x1 + (wall.x2 - wall.x1) * op.t;
+    const cy = wall.y1 + (wall.y2 - wall.y1) * op.t;
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const nx = -uy, ny = ux;
+    const relX = wx - cx, relY = wy - cy;
+    const along = Math.abs(relX * ux + relY * uy);
+    const normal = Math.abs(relX * nx + relY * ny);
+    const dAlong = Math.max(0, along - op.width / 2);
+    const dNormal = Math.max(0, normal - halfT);
+    const dist = Math.hypot(dAlong, dNormal);
+    if (dist < bestDist) { best = op; bestDist = dist; }
+  }
+  return best;
+}
