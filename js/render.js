@@ -240,23 +240,36 @@ function drawWalls(selectedItems) {
   const scale = _getScale(); const jmap = buildWallJointMap();
   const jrects = getWallJointRects();
 
+  // Pass 1: fill all walls (solid + hatch)
+  for (const w of appState.walls) {
+    const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
+    const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
+    fillWall(trace, style.fill);
+  }
+
+  // Pass 2: fill joint rects (orthogonal corners only — covers interior lines)
+  for (const jr of jrects) {
+    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
+    const style = wallStyle(isSel);
+    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
+    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
+    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
+  }
+
+  // Pass 3: stroke wall outlines
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
     const sj = getWallJointItemsForEndpoint(jmap, w, 'start').length > 1 || isWallEndpointCoveredByAnotherWall(w, 'start');
     const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
-    const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
-    _ctx.save(); fillWall(trace, style.fill);
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1; _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
-
-    // Находим joint rects этой стены
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
 
-    // Рисуем длинные грани (вдоль стены) с обрезкой по joint rects
+    _ctx.save();
+    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
+    _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
     _ctx.beginPath();
-    drawClippedFace(g.a, g.b, w, myJoints, 'ab');  // грань a→b (одна сторона)
-    drawClippedFace(g.d, g.c, w, myJoints, 'dc');  // грань d→c (другая сторона)
-
-    // Торцы — только если нет стыка
+    drawClippedFace(g.a, g.b, w, myJoints, 'ab');
+    drawClippedFace(g.d, g.c, w, myJoints, 'dc');
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
