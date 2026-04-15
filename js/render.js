@@ -258,26 +258,41 @@ function drawRoomFills(selectedItems) {
 }
 
 function drawWalls(selectedItems) {
-  const scale = _getScale(); const jmap = buildWallJointMap();
-  const jrects = getWallJointRects();
+  const scale = _getScale();
+  const jmap = buildWallJointMap();
 
+  // Pass 1: fill all walls
+  for (const w of appState.walls) {
+    const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
+    const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
+    fillWall(trace, style.fill);
+  }
+
+  // Pass 2: fill joint rects (covers interior crossing lines)
+  for (const jr of getWallJointRects()) {
+    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
+    const style = wallStyle(isSel);
+    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
+    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
+    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
+  }
+
+  // Pass 3: stroke all wall outlines on top — no clipping needed
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
     const sj = getWallJointItemsForEndpoint(jmap, w, 'start').length > 1 || isWallEndpointCoveredByAnotherWall(w, 'start');
     const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
-    const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
-    _ctx.save(); fillWall(trace, style.fill);
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1; _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
 
-    // Находим joint rects этой стены
-    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
-
-    // Рисуем длинные грани (вдоль стены) с обрезкой по joint rects
+    _ctx.save();
+    _ctx.strokeStyle = style.stroke;
+    _ctx.lineWidth = isSel ? 1.5 : 1;
+    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
     _ctx.beginPath();
-    drawClippedFace(g.a, g.b, w, myJoints, 'ab');  // грань a→b (одна сторона)
-    drawClippedFace(g.d, g.c, w, myJoints, 'dc');  // грань d→c (другая сторона)
-
-    // Торцы — только если нет стыка
+    // Long faces (always draw full length)
+    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
+    _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.c.x, g.c.y);
+    // End caps — only when no joint
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
@@ -352,15 +367,7 @@ function drawClippedFace(sa, ea, wall, joints, _tag) {
 }
 
 function drawWallJoints(selectedItems) {
-  for (const jr of getWallJointRects()) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    // Only fill — wall outlines are already drawn by drawWalls/drawClippedFace
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
-  }
+  // Joint filling is now handled in drawWalls (pass 2) to ensure correct z-order.
 }
 
 function drawOpenings(selectedItems, dh, ds) {
