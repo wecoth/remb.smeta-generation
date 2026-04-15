@@ -308,50 +308,19 @@ function lineLineIntersect(a, b, c, d) {
   return { x: a.x + r.x * t, y: a.y + r.y * t };
 }
 
-// Вычисляет точки обрезки граней стены для диагонального стыка в WORLD-координатах.
-// Ключевой принцип: грань 'ab' нашей стены должна встречаться с той гранью соседа,
-// которая лежит на той же стороне от оси соседа.
-// Определяем сторону через знак dot-product угловой точки нашей грани с нормалью соседа.
+// Вычисляет clip-точки для диагональных стыков в world-координатах.
+// Принцип: ab грань нашей стены всегда встречается с ab гранью соседа,
+// dc — с dc. Это следует из геометрии (левая встречает левую, правая — правую).
 function getWorldFaceClips(wall, neighbors, endpoint) {
   const wg = getWallWorldGeometry(wall);
   const result = { ab: null, dc: null };
-
   for (const n of neighbors) {
     const ng = getWallWorldGeometry(n);
-
-    // Нормаль соседа (un-normalized, только знак важен)
-    const nLen = Math.hypot(ng.p2.x - ng.p1.x, ng.p2.y - ng.p1.y);
-    if (nLen < 0.001) continue;
-    const nNx = -(ng.p2.y - ng.p1.y) / nLen;
-    const nNy =  (ng.p2.x - ng.p1.x) / nLen;
-
-    // Угловые точки наших граней на нужном конце
-    const abCorner = endpoint === 'end' ? wg.b : wg.a; // конец грани ab
-    const dcCorner = endpoint === 'end' ? wg.c : wg.d; // конец грани dc
-
-    // Знак: на какой стороне оси соседа лежат наши угловые точки
-    const sideAB = (abCorner.x - ng.p1.x) * nNx + (abCorner.y - ng.p1.y) * nNy;
-    const sideDC = (dcCorner.x - ng.p1.x) * nNx + (dcCorner.y - ng.p1.y) * nNy;
-
-    // Грань соседа для ab: та грань соседа, которая на той же стороне что и abCorner
-    const nFaceForAB = sideAB >= 0
-      ? { p1: ng.a, p2: ng.b }   // +normal сторона соседа
-      : { p1: ng.d, p2: ng.c };  // -normal сторона соседа
-
-    // Грань соседа для dc: противоположная
-    const nFaceForDC = sideDC >= 0
-      ? { p1: ng.a, p2: ng.b }
-      : { p1: ng.d, p2: ng.c };
-
-    // Пересекаем нашу грань ab (как бесконечную линию) с правильной гранью соседа
-    const ptAB = lineLineIntersect(wg.a, wg.b, nFaceForAB.p1, nFaceForAB.p2);
+    const ptAB = lineLineIntersect(wg.a, wg.b, ng.a, ng.b);
     if (ptAB) result.ab = ptAB;
-
-    // Пересекаем нашу грань dc с правильной гранью соседа
-    const ptDC = lineLineIntersect(wg.d, wg.c, nFaceForDC.p1, nFaceForDC.p2);
+    const ptDC = lineLineIntersect(wg.d, wg.c, ng.d, ng.c);
     if (ptDC) result.dc = ptDC;
   }
-
   return result;
 }
 
