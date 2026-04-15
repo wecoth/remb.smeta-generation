@@ -184,14 +184,11 @@ export function invalidateJointCache() {
 }
 
 /**
- * Compute all wall overlap rectangles — covers all cases:
- *   • endpoint-to-endpoint (corner)
- *   • endpoint-to-middle (T-junction)
- *   • overlapping parallel ends
- *
- * Strategy: for every pair of walls whose bounding boxes overlap,
- * intersect the two rectangles and if the intersection area is non-trivial
- * treat it as a joint rect that must be filled.
+ * Compute all wall overlap rectangles.
+ * Covers corner, T-junction, and overlapping cases.
+ * For each pair of walls whose bounding boxes overlap we take the intersection
+ * rect. Each of its 4 edges is a boundary edge when its midpoint is NOT inside
+ * BOTH walls simultaneously (i.e. it is an exposed outer face).
  */
 export function getWallJointRects(jointMap = null) {
   const cacheKey = JSON.stringify(appState.walls.map(w =>
@@ -207,11 +204,6 @@ export function getWallJointRects(jointMap = null) {
       const a = walls[i], b = walls[j];
       const ba = getWallWorldBounds(a), bb = getWallWorldBounds(b);
 
-      // Quick AABB rejection
-      if (ba.maxX < bb.minX - 1 || bb.maxX < ba.minX - 1) continue;
-      if (ba.maxY < bb.minY - 1 || bb.maxY < ba.minY - 1) continue;
-
-      // Intersection rectangle of the two wall bodies
       const left   = Math.max(ba.minX, bb.minX);
       const right  = Math.min(ba.maxX, bb.maxX);
       const top    = Math.max(ba.minY, bb.minY);
@@ -223,78 +215,28 @@ export function getWallJointRects(jointMap = null) {
       if (seenKeys.has(key)) continue;
       seenKeys.add(key);
 
-      // Determine which outer edges of the joint rect are boundary edges
-      // (i.e. not covered by either wall body, so they form the visible corner).
-      const boundaryEdges = _computeJointBoundaryEdges(left, top, right, bottom, a, b);
+      const cx = (left + right) / 2, cy = (top + bottom) / 2;
+      const eps = 1.5;
+      const edgeDefs = [
+        { side: 'top',    mid: { x: cx, y: top },    x1: left,  y1: top,    x2: right, y2: top    },
+        { side: 'bottom', mid: { x: cx, y: bottom },  x1: left,  y1: bottom, x2: right, y2: bottom },
+        { side: 'left',   mid: { x: left,  y: cy },   x1: left,  y1: top,    x2: left,  y2: bottom },
+        { side: 'right',  mid: { x: right, y: cy },   x1: right, y1: top,    x2: right, y2: bottom },
+      ];
 
-      rects.push({
-        key, left, top, right, bottom,
-        wallIds: [a.id, b.id],
-        boundaryEdges,
+      const boundaryEdges = edgeDefs.filter(e => {
+        const inA = isPointInsideWallSurface(e.mid, a, eps);
+        const inB = isPointInsideWallSurface(e.mid, b, eps);
+        return !(inA && inB); // skip seams buried inside both walls
       });
+
+      rects.push({ key, left, top, right, bottom, wallIds: [a.id, b.id], boundaryEdges });
     }
   }
 
   _jointRectsCache = rects;
   _jointRectsCacheKey = cacheKey;
   return rects;
-}
-
-/**
- * For the intersection rect of two walls, figure out which of its four edges
- * are "outer boundary" edges (should be drawn as wall outline).
- * An edge is a boundary edge if it lies on the outer face of one of the walls
- * but is NOT inside the body of the other wall.
- */
-function _computeJointBoundaryEdges(left, top, right, bottom, wallA, wallB) {
-  const eps = 2;
-  const edges = [];
-
-  // Helper: is a horizontal segment (y=y0, x in [x1,x2]) a face of wall w?
-  function isHFace(y, x1, x2, w) {
-    const b = getWallWorldBounds(w);
-    return (Math.abs(y - b.minY) < eps || Math.abs(y - b.maxY) < eps) &&
-           x1 >= b.minX - eps && x2 <= b.maxX + eps;
-  }
-  function isVFace(x, y1, y2, w) {
-    const b = getWallWorldBounds(w);
-    return (Math.abs(x - b.minX) < eps || Math.abs(x - b.maxX) < eps) &&
-           y1 >= b.minY - eps && y2 <= b.maxY + eps;
-  }
-  // Is the midpoint of an edge inside the OTHER wall's body?
-  function midInsideWall(mx, my, w) {
-    return isPointInsideWallSurface({ x: mx, y: my }, w, eps);
-  }
-
-  const midTop    = { x: (left + right) / 2, y: top };
-  const midBottom = { x: (left + right) / 2, y: bottom };
-  const midLeft   = { x: left,  y: (top + bottom) / 2 };
-  const midRight  = { x: right, y: (top + bottom) / 2 };
-
-  // Top edge: boundary if it's a face of one wall and NOT inside the other
-  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
-    if (isHFace(top, left, right, own) && !midInsideWall(midTop.x, midTop.y, other))
-      edges.push({ side: 'top', x1: left, y1: top, x2: right, y2: top });
-  }
-  // Bottom edge
-  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
-    if (isHFace(bottom, left, right, own) && !midInsideWall(midBottom.x, midBottom.y, other))
-      edges.push({ side: 'bottom', x1: left, y1: bottom, x2: right, y2: bottom });
-  }
-  // Left edge
-  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
-    if (isVFace(left, top, bottom, own) && !midInsideWall(midLeft.x, midLeft.y, other))
-      edges.push({ side: 'left', x1: left, y1: top, x2: left, y2: bottom });
-  }
-  // Right edge
-  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
-    if (isVFace(right, top, bottom, own) && !midInsideWall(midRight.x, midRight.y, other))
-      edges.push({ side: 'right', x1: right, y1: top, x2: right, y2: bottom });
-  }
-
-  // Deduplicate by side
-  const seen = new Set();
-  return edges.filter(e => seen.has(e.side) ? false : (seen.add(e.side), true));
 }
 
 export function getJointBoundaryEdges(left, top, right, bottom, hDir, vDir) {
