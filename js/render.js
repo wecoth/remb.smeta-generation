@@ -17,6 +17,8 @@ export function initRenderer(canvas, ctx, getScaleFn) {
   _hatchPat = null;
 }
 
+// ── Utilities ─────────────────────────────────────────────────────
+
 function sel(type, id, list) { return list.some(i => i.type === type && i.id === id); }
 
 function wallStyle(isSelected) {
@@ -26,7 +28,7 @@ function wallStyle(isSelected) {
   };
 }
 
-function sg(wall) {
+function sg(wall) { // screen geometry
   const w = getWallWorldGeometry(wall);
   const sc = p => toScreen(p.x, p.y);
   return { p1: sc(w.p1), p2: sc(w.p2), angle: w.angle, halfT: w.halfT,
@@ -60,82 +62,6 @@ function wallInteriorSide(wall, fallback = 1) {
     if (best === null || Math.abs(dot) > Math.abs(best)) best = dot;
   }
   return best === null ? fallback : best >= 0 ? 1 : -1;
-}
-
-// ── Пересечение двух бесконечных линий ────────────────────────────
-// Возвращает { x, y } или null если параллельны
-function lineLineIntersect(p1, p2, p3, p4) {
-  const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
-  const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
-  const denom = d1x * d2y - d1y * d2x;
-  if (Math.abs(denom) < 0.0001) return null;
-  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
-  return { x: p1.x + d1x * t, y: p1.y + d1y * t };
-}
-
-// ── Вычисляет точки обрезки граней стены на диагональных стыках ───
-// Возвращает { abStart, abEnd, dcStart, dcEnd } в world-координатах (или null = не обрезать)
-// Алгоритм: пересекаем длинные грани нашей стены с длинными гранями соседей в world-пространстве,
-// выбираем точку пересечения ближайшую к нужному концу.
-function getWallFaceClips(wall, startNeighbors, endNeighbors) {
-  const wg = getWallWorldGeometry(wall);
-
-  // Грани стены в world-координатах: ab (верхняя) и dc (нижняя)
-  // ab: a→b, dc: d→c
-  const faces = [
-    { key: 'ab', p1: wg.a, p2: wg.b },
-    { key: 'dc', p1: wg.d, p2: wg.c },
-  ];
-
-  const clips = { abStart: null, abEnd: null, dcStart: null, dcEnd: null };
-
-  for (const face of faces) {
-    // START: ищем пересечение нашей грани с длинными гранями соседей начала
-    if (startNeighbors.length > 0) {
-      let bestPt = null, bestDist = Infinity;
-      for (const n of startNeighbors) {
-        const ng = getWallWorldGeometry(n);
-        // Пересекаем с каждой длинной гранью соседа
-        for (const nFace of [{ p1: ng.a, p2: ng.b }, { p1: ng.d, p2: ng.c }]) {
-          const pt = lineLineIntersect(face.p1, face.p2, nFace.p1, nFace.p2);
-          if (!pt) continue;
-          // Параметр вдоль нашей грани — должен быть в [−0.3, 0.7] (вблизи начала)
-          const faceLen = Math.hypot(face.p2.x - face.p1.x, face.p2.y - face.p1.y);
-          if (faceLen < 0.001) continue;
-          const ux = (face.p2.x - face.p1.x) / faceLen, uy = (face.p2.y - face.p1.y) / faceLen;
-          const t = (pt.x - face.p1.x) * ux + (pt.y - face.p1.y) * uy;
-          if (t < -faceLen * 0.3 || t > faceLen * 0.7) continue;
-          const dist = Math.hypot(pt.x - face.p1.x, pt.y - face.p1.y);
-          if (dist < bestDist) { bestDist = dist; bestPt = pt; }
-        }
-      }
-      if (face.key === 'ab') clips.abStart = bestPt;
-      else                   clips.dcStart = bestPt;
-    }
-
-    // END: ищем пересечение нашей грани с длинными гранями соседей конца
-    if (endNeighbors.length > 0) {
-      let bestPt = null, bestDist = Infinity;
-      for (const n of endNeighbors) {
-        const ng = getWallWorldGeometry(n);
-        for (const nFace of [{ p1: ng.a, p2: ng.b }, { p1: ng.d, p2: ng.c }]) {
-          const pt = lineLineIntersect(face.p1, face.p2, nFace.p1, nFace.p2);
-          if (!pt) continue;
-          const faceLen = Math.hypot(face.p2.x - face.p1.x, face.p2.y - face.p1.y);
-          if (faceLen < 0.001) continue;
-          const ux = (face.p2.x - face.p1.x) / faceLen, uy = (face.p2.y - face.p1.y) / faceLen;
-          const t = (pt.x - face.p1.x) * ux + (pt.y - face.p1.y) * uy;
-          if (t < faceLen * 0.3 || t > faceLen * 1.3) continue;
-          const dist = Math.hypot(pt.x - face.p2.x, pt.y - face.p2.y);
-          if (dist < bestDist) { bestDist = dist; bestPt = pt; }
-        }
-      }
-      if (face.key === 'ab') clips.abEnd = bestPt;
-      else                   clips.dcEnd = bestPt;
-    }
-  }
-
-  return clips;
 }
 
 // ── Exported helpers ──────────────────────────────────────────────
@@ -298,7 +224,7 @@ function drawRoomFills(selectedItems) {
       _ctx.beginPath(); _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y); _ctx.stroke();
     }
     _ctx.setLineDash([]);
-    if (scale > 0.08) {
+    if (scale > 0.08) { // Bug #6 fix
       const sc = toScreen(r.center.x, r.center.y);
       _ctx.fillStyle = DRAW_COLORS.roomLabel;
       _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200))}px Onest, Inter, sans-serif`;
@@ -311,18 +237,17 @@ function drawRoomFills(selectedItems) {
 }
 
 function drawWalls(selectedItems) {
-  const scale = _getScale();
-  const jmap = buildWallJointMap();
+  const scale = _getScale(); const jmap = buildWallJointMap();
   const jrects = getWallJointRects();
 
-  // Pass 1: fill всех стен
+  // Pass 1: fill all walls (solid + hatch)
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
     const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
     fillWall(trace, style.fill);
   }
 
-  // Pass 2: fill joint rects (ортогональные углы)
+  // Pass 2: fill joint rects (orthogonal corners only — covers interior lines)
   for (const jr of jrects) {
     const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
     const style = wallStyle(isSel);
@@ -335,52 +260,30 @@ function drawWalls(selectedItems) {
   // Pass 3: stroke wall outlines
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-
-    const startNeighbors = getWallJointItemsForEndpoint(jmap, w, 'start')
-      .map(it => it.wall).filter(n => n.id !== w.id);
-    const endNeighbors = getWallJointItemsForEndpoint(jmap, w, 'end')
-      .map(it => it.wall).filter(n => n.id !== w.id);
-
-    const sj = startNeighbors.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = endNeighbors.length   > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
+    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
+    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
+    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
+    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
 
-    // Для ортогональных стыков — используем старый drawClippedFace с joint rects
-    // Для диагональных — вычисляем пересечения в world-координатах
-    const isDiagS = sj && !myJoints.some(jr => {
-      // joint rect покрывает начало стены
-      const sp = getWallContourPoint(w, 'start');
-      return sp.x >= jr.left - 2 && sp.x <= jr.right + 2 && sp.y >= jr.top - 2 && sp.y <= jr.bottom + 2;
-    });
-    const isDiagE = ej && !myJoints.some(jr => {
-      const ep = getWallContourPoint(w, 'end');
-      return ep.x >= jr.left - 2 && ep.x <= jr.right + 2 && ep.y >= jr.top - 2 && ep.y <= jr.bottom + 2;
-    });
+    // Clip в world-координатах для диагональных стыков
+    const wclipS = (sj && myJoints.length === 0) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
+    const wclipE = (ej && myJoints.length === 0) ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
 
-    // Получаем clip-точки в world для диагональных стыков
-    const clips = (isDiagS || isDiagE)
-      ? getWallFaceClips(w, isDiagS ? startNeighbors : [], isDiagE ? endNeighbors : [])
-      : { abStart: null, abEnd: null, dcStart: null, dcEnd: null };
+    // Переводим world clip-точки в screen
+    const clipSab = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : null;
+    const clipEab = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : null;
+    const clipSdc = wclipS?.dc ? toScreen(wclipS.dc.x, wclipS.dc.y) : null;
+    const clipEdc = wclipE?.dc ? toScreen(wclipE.dc.x, wclipE.dc.y) : null;
 
     _ctx.save();
     _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
     _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
     _ctx.beginPath();
-
-    // Грань ab (a→b)
-    const abS = clips.abStart ? toScreen(clips.abStart.x, clips.abStart.y) : g.a;
-    const abE = clips.abEnd   ? toScreen(clips.abEnd.x,   clips.abEnd.y)   : g.b;
-    drawClippedFace(abS, abE, myJoints);
-
-    // Грань dc (d→c)
-    const dcS = clips.dcStart ? toScreen(clips.dcStart.x, clips.dcStart.y) : g.d;
-    const dcE = clips.dcEnd   ? toScreen(clips.dcEnd.x,   clips.dcEnd.y)   : g.c;
-    drawClippedFace(dcS, dcE, myJoints);
-
-    // Торцы
+    drawClippedFace(clipSab || g.a, clipEab || g.b, myJoints);
+    drawClippedFace(clipSdc || g.d, clipEdc || g.c, myJoints);
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
-
     _ctx.stroke();
 
     if (scale > 0.08) {
@@ -394,7 +297,65 @@ function drawWalls(selectedItems) {
   }
 }
 
-// Рисует грань от sa до ea, пропуская участки внутри joint rects
+// Пересечение двух бесконечных линий в 2D.
+// Возвращает точку {x,y} или null если параллельны.
+function lineLineIntersect(a, b, c, d) {
+  const r = { x: b.x - a.x, y: b.y - a.y };
+  const s = { x: d.x - c.x, y: d.y - c.y };
+  const denom = r.x * s.y - r.y * s.x;
+  if (Math.abs(denom) < 0.0001) return null;
+  const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / denom;
+  return { x: a.x + r.x * t, y: a.y + r.y * t };
+}
+
+// Вычисляет точки обрезки граней стены для диагонального стыка в WORLD-координатах.
+// Ключевой принцип: грань 'ab' нашей стены должна встречаться с той гранью соседа,
+// которая лежит на той же стороне от оси соседа.
+// Определяем сторону через знак dot-product угловой точки нашей грани с нормалью соседа.
+function getWorldFaceClips(wall, neighbors, endpoint) {
+  const wg = getWallWorldGeometry(wall);
+  const result = { ab: null, dc: null };
+
+  for (const n of neighbors) {
+    const ng = getWallWorldGeometry(n);
+
+    // Нормаль соседа (un-normalized, только знак важен)
+    const nLen = Math.hypot(ng.p2.x - ng.p1.x, ng.p2.y - ng.p1.y);
+    if (nLen < 0.001) continue;
+    const nNx = -(ng.p2.y - ng.p1.y) / nLen;
+    const nNy =  (ng.p2.x - ng.p1.x) / nLen;
+
+    // Угловые точки наших граней на нужном конце
+    const abCorner = endpoint === 'end' ? wg.b : wg.a; // конец грани ab
+    const dcCorner = endpoint === 'end' ? wg.c : wg.d; // конец грани dc
+
+    // Знак: на какой стороне оси соседа лежат наши угловые точки
+    const sideAB = (abCorner.x - ng.p1.x) * nNx + (abCorner.y - ng.p1.y) * nNy;
+    const sideDC = (dcCorner.x - ng.p1.x) * nNx + (dcCorner.y - ng.p1.y) * nNy;
+
+    // Грань соседа для ab: та грань соседа, которая на той же стороне что и abCorner
+    const nFaceForAB = sideAB >= 0
+      ? { p1: ng.a, p2: ng.b }   // +normal сторона соседа
+      : { p1: ng.d, p2: ng.c };  // -normal сторона соседа
+
+    // Грань соседа для dc: противоположная
+    const nFaceForDC = sideDC >= 0
+      ? { p1: ng.a, p2: ng.b }
+      : { p1: ng.d, p2: ng.c };
+
+    // Пересекаем нашу грань ab (как бесконечную линию) с правильной гранью соседа
+    const ptAB = lineLineIntersect(wg.a, wg.b, nFaceForAB.p1, nFaceForAB.p2);
+    if (ptAB) result.ab = ptAB;
+
+    // Пересекаем нашу грань dc с правильной гранью соседа
+    const ptDC = lineLineIntersect(wg.d, wg.c, nFaceForDC.p1, nFaceForDC.p2);
+    if (ptDC) result.dc = ptDC;
+  }
+
+  return result;
+}
+
+// Рисует грань от sa до ea, пропуская участки внутри joint rects (ортогональные стыки).
 function drawClippedFace(sa, ea, joints) {
   const dx = ea.x - sa.x, dy = ea.y - sa.y;
   const len = Math.hypot(dx, dy);
@@ -449,9 +410,12 @@ function drawWallJoints(selectedItems) {
     const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
     const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
     const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
+    // Заливка стыка
     fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
+    // Контур — только boundary edges (внешние грани стыка)
     _ctx.save();
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
+    _ctx.strokeStyle = style.stroke;
+    _ctx.lineWidth = isSel ? 1.5 : 1;
     _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
     _ctx.beginPath();
     for (const path of getJointBoundaryPaths(jr)) {
@@ -483,9 +447,13 @@ function drawOpening(op, wall, isHover, isSel, dh, ds) {
   const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
   const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
   const p1 = toScreen(ax1, ay1), p2 = toScreen(ax2, ay2);
+  // sdx/sdy — перпендикуляр ровно на половину толщины стены
   const scale = _getScale();
   const halfT = wall.thickness / 2;
+  const sdx = -Math.sin(angle) * halfT * scale, sdy = Math.cos(angle) * halfT * scale;
+  // Правильные экранные smещения от оси
   const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
+  // Экранные координаты 4 углов проёма (строго в пределах толщины стены)
   const c1 = toScreen(ax1 + sdxW, ay1 + sdyW);
   const c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
   const c3 = toScreen(ax2 - sdxW, ay2 - sdyW);
@@ -498,42 +466,56 @@ function drawOpening(op, wall, isHover, isSel, dh, ds) {
   _ctx.save();
 
   if (op.type === 'window') {
+    // Заливка проёма
     _ctx.beginPath();
     _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
     _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
     _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
     _ctx.fillStyle = fillColor; _ctx.fill();
+
+    // Только две длинные стороны (вдоль стены) — рама окна
     _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5;
     _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.moveTo(c4.x, c4.y); _ctx.lineTo(c3.x, c3.y);
+    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y); // внешняя грань
+    _ctx.moveTo(c4.x, c4.y); _ctx.lineTo(c3.x, c3.y); // внутренняя грань
+    // Торцы рамы
     _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c4.x, c4.y);
     _ctx.moveTo(c2.x, c2.y); _ctx.lineTo(c3.x, c3.y);
     _ctx.stroke();
+
+    // Одна средняя линия — стеклопакет (одна линия посередине вдоль стены)
     const mx1 = (c1.x + c4.x) / 2, my1 = (c1.y + c4.y) / 2;
     const mx2 = (c2.x + c3.x) / 2, my2 = (c2.y + c3.y) / 2;
     _ctx.beginPath(); _ctx.moveTo(mx1, my1); _ctx.lineTo(mx2, my2);
     _ctx.lineWidth = 1; _ctx.stroke();
+
   } else {
+    // Дверь: только белая заливка проёма (без обводки прямоугольника)
     _ctx.beginPath();
     _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
     _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
     _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
+
     const hp = doorHinge === 'start' ? p1 : p2;
     const leafEnd = doorHinge === 'start' ? p2 : p1;
     const leafLen = Math.hypot(leafEnd.x - hp.x, leafEnd.y - hp.y);
     const baseAngle = doorHinge === 'start' ? angle : angle + Math.PI;
     const openAngle = baseAngle + doorSwing * Math.PI / 2;
     const arcEnd = { x: hp.x + Math.cos(openAngle) * leafLen, y: hp.y + Math.sin(openAngle) * leafLen };
+
+    // Линия петли через толщину стены
     const hc1 = doorHinge === 'start' ? c1 : c2;
     const hc2 = doorHinge === 'start' ? c4 : c3;
     _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.setLineDash([]);
     _ctx.beginPath();
     _ctx.moveTo(hc1.x, hc1.y); _ctx.lineTo(hc2.x, hc2.y);
+    // Полотно двери в закрытом положении
     _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(leafEnd.x, leafEnd.y);
     _ctx.stroke();
+    // Дуга траектории
     _ctx.beginPath(); _ctx.arc(hp.x, hp.y, leafLen, baseAngle, openAngle, doorSwing < 0);
     _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]); _ctx.stroke(); _ctx.setLineDash([]);
+    // Полотно в открытом положении
     _ctx.beginPath(); _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(arcEnd.x, arcEnd.y);
     _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
   }
