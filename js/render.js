@@ -129,6 +129,9 @@ export function redraw(ps) {
   drawWallJoints(ps.selectedItems);
   drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
+  // Hover highlights — drawn AFTER normal rendering so they appear on top
+  if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
+  // Legacy hoverOpening kept for window/door placement tool cursor preview
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
   if (ps.tool === 'wall' && ps.currentGuideLine)  drawGuideLine(ps.currentGuideLine);
@@ -136,6 +139,67 @@ export function redraw(ps) {
   if (ps.tool === 'wall' && ps.currentObjectSnap) drawObjectSnap(ps.currentObjectSnap);
   drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
   drawCursorGhost(ps);
+}
+
+/**
+ * Draw a hover highlight contour around a wall or opening.
+ * hoverItem: { type: 'wall'|'opening', id }
+ */
+function drawHoverHighlight(hoverItem, selectedItems, dh, ds) {
+  const isAlreadySelected = selectedItems.some(i => i.type === hoverItem.type && i.id === hoverItem.id);
+  if (isAlreadySelected) return; // already has selection style, no need to duplicate
+
+  _ctx.save();
+  _ctx.strokeStyle = 'rgba(74,111,227,0.55)';
+  _ctx.lineWidth = 2.5;
+  _ctx.setLineDash([]);
+
+  if (hoverItem.type === 'wall') {
+    const wall = appState.walls.find(w => w.id === hoverItem.id);
+    if (!wall) { _ctx.restore(); return; }
+    const g = sg(wall);
+    _ctx.beginPath();
+    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
+    _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y);
+    _ctx.closePath();
+    _ctx.strokeStyle = 'rgba(74,111,227,0.45)';
+    _ctx.fillStyle   = 'rgba(74,111,227,0.07)';
+    _ctx.fill();
+    _ctx.stroke();
+
+  } else if (hoverItem.type === 'opening') {
+    const op = appState.openings.find(o => o.id === hoverItem.id);
+    if (!op) { _ctx.restore(); return; }
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall) { _ctx.restore(); return; }
+
+    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const halfT = wall.thickness / 2;
+    const halfW = op.width / 2;
+    const t1 = Math.max(0, Math.min(1, op.t - halfW / wlen));
+    const t2 = Math.max(0, Math.min(1, op.t + halfW / wlen));
+    const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
+    const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
+    const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
+    const c1 = toScreen(ax1 + sdxW, ay1 + sdyW);
+    const c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
+    const c3 = toScreen(ax2 - sdxW, ay2 - sdyW);
+    const c4 = toScreen(ax1 - sdxW, ay1 - sdyW);
+
+    _ctx.beginPath();
+    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
+    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y);
+    _ctx.closePath();
+    _ctx.fillStyle   = 'rgba(74,111,227,0.10)';
+    _ctx.strokeStyle = 'rgba(74,111,227,0.55)';
+    _ctx.fill();
+    _ctx.stroke();
+
+    // Also re-draw the opening's own lines on top so they're crisp
+    drawOpening(op, wall, false, false, dh, ds);
+  }
+  _ctx.restore();
 }
 
 function drawGrid() {
