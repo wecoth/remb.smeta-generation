@@ -25,6 +25,7 @@ let isDrawing = false, drawStart = null, drawEnd = null;
 let chainMode = false, lengthInput = '', lengthMode = false;
 let wallOffset = 'center';
 let hoverOpening = null;
+let hoverItem = null;
 let defaultDoorHinge = 'start', defaultDoorSwing = 1;
 let selectedItems = [], wallResizeState = null, wallLengthAnchor = 'start';
 let scale = 0.12, panX = 200, panY = 150;
@@ -32,6 +33,10 @@ let shiftDown = false, ctrlDown = false;
 let isPanning = false, panStartX, panStartY, panStartOffX, panStartOffY;
 let mouseScreen = null, selectBoxStart = null, selectBoxCurrent = null, selectClickCandidate = null;
 let currentGuideLine = null, currentObjectSnap = null;
+// Drag-перемещение выделенных объектов
+let dragState = null; // { startWorld, lastWorld, wallSnapshots, openingSnapshots }
+// Буфер копирования
+let clipboard = null; // { walls, openings }
 
 // ── DOM refs ──────────────────────────────────────────────────────
 let dom = {};
@@ -202,7 +207,7 @@ function doRedraw() {
 function getPlannerState() {
   return {
     scale, selectedItems, tool, isDrawing, drawStart, drawEnd,
-    currentGuideLine, currentObjectSnap, hoverOpening,
+    currentGuideLine, currentObjectSnap, hoverOpening, hoverItem,
     selectBoxStart, selectBoxCurrent, chainMode, lengthMode, lengthInput,
     wallResizeState, wallOffset, defaultDoorHinge, defaultDoorSwing,
     inpWallThick: dom.inpWallThick,
@@ -264,7 +269,7 @@ function updateHistoryBtns() {
 }
 
 function onHistoryRestore() {
-  hoverOpening = null; mouseScreen = null; wallResizeState = null;
+  hoverOpening = null; hoverItem = null; mouseScreen = null; wallResizeState = null;
   resetDrawingState(); clearSelectionBox(); clearSelection();
   computeRooms(getWallHeightFallback());
   updateExpl(dom.explBody, dom.roomCount);
@@ -287,7 +292,7 @@ export function setTool(t) {
   tool = t;
   wallResizeState = null; // Bug #3 fix
   if (t !== 'wall') resetDrawingState();
-  clearSelectionBox(); hoverOpening = null; currentObjectSnap = null;
+  clearSelectionBox(); hoverOpening = null; hoverItem = null; currentObjectSnap = null;
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tool' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
   const labels = { select: 'Выбор', wall: 'Стена', window: 'Окно', door: 'Дверь' };
@@ -514,7 +519,21 @@ function onMouseDown(e) {
       canvas.style.cursor = 'grabbing'; return;
     }
     const hit = hitTestObject(world.x, world.y);
-    if (hit) { selectClickCandidate = hit; clearSelectionBox(); }
+    if (hit) {
+      // Если клик по выделенному объекту — запускаем drag
+      const isSelected = selectedItems.some(i => i.type === hit.type && i.id === hit.id);
+      if (isSelected && selectedItems.length > 0) {
+        const wallSnapshots = selectedItems
+          .filter(i => i.type === 'wall')
+          .map(i => {
+            const w = appState.walls.find(v => v.id === i.id);
+            return w ? { id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, cx1: w.cx1 ?? w.x1, cy1: w.cy1 ?? w.y1, cx2: w.cx2 ?? w.x2, cy2: w.cy2 ?? w.y2 } : null;
+          }).filter(Boolean);
+        dragState = { startWorld: { x: world.x, y: world.y }, lastWorld: { x: world.x, y: world.y }, wallSnapshots };
+        selectBoxStart = null; selectBoxCurrent = null; selectClickCandidate = null;
+        canvas.style.cursor = 'grabbing'; return;
+      }
+      selectClickCandidate = hit; clearSelectionBox(); }
     else { if (!shiftDown) clearSelection(); selectClickCandidate = null; selectBoxStart = { x: pos.x, y: pos.y }; selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw(); }
   }
 }
@@ -564,13 +583,38 @@ function onMouseMove(e) {
   if (tool === 'wall') updateWallObjectSnap(world, pos);
   else currentObjectSnap = null;
 
+  // Drag перемещение выделенных объектов
+  if (tool === 'select' && dragState) {
+    for (const snap of dragState.wallSnapshots) {
+      const wall = appState.walls.find(w => w.id === snap.id);
+      if (!wall) continue;
+      const ddx = world.x - dragState.startWorld.x;
+      const ddy = world.y - dragState.startWorld.y;
+      wall.cx1 = snap.cx1 + ddx; wall.cy1 = snap.cy1 + ddy;
+      wall.cx2 = snap.cx2 + ddx; wall.cy2 = snap.cy2 + ddy;
+      wall.x1  = snap.x1  + ddx; wall.y1  = snap.y1  + ddy;
+      wall.x2  = snap.x2  + ddx; wall.y2  = snap.y2  + ddy;
+    }
+    invalidateJointCache();
+    canvas.style.cursor = 'grabbing'; doRedraw(); return;
+  }
+
+  // Hover подсветка в режиме select
+  if (tool === 'select' && !selectBoxStart && !wallResizeState) {
+    const hit = hitTestObject(world.x, world.y);
+    if (hit?.type !== hoverItem?.type || hit?.id !== hoverItem?.id) {
+      hoverItem = hit; doRedraw();
+    }
+  } else if (hoverItem) {
+    hoverItem = null;
+  }
+
   if (dom.lblCoords) dom.lblCoords.textContent = `X: ${Math.round(world.x)} мм  Y: ${Math.round(world.y)} мм${tool === 'wall' && currentObjectSnap ? `  ·  ${currentObjectSnap.label}` : ''}`;
 
   if (tool === 'select' && selectBoxStart) { selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw(); return; }
 
   if (tool === 'window' || tool === 'door') {
-    const wallThick = parseFloat(dom.inpWallThick?.value) || 200;
-    const hit = findClosestWall(world.x, world.y, wallThick / 2 + 80);
+    const hit = findClosestWall(world.x, world.y);
     if (hit) {
       const thick = parseFloat(dom.inpWallThick?.value) || 200;
       const w = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowWidth' : 'inpDoorWidth')?.value) || (tool === 'window' ? 1200 : 900);
@@ -595,6 +639,16 @@ function onMouseMove(e) {
 }
 
 function onMouseUp(e) {
+  if (dragState) {
+    const moved = dragState.wallSnapshots.some(snap => {
+      const wall = appState.walls.find(w => w.id === snap.id);
+      return wall && (Math.abs(wall.x1 - snap.x1) > 2 || Math.abs(wall.y1 - snap.y1) > 2);
+    });
+    dragState = null;
+    canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+    if (moved) { computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount); recordHistory(); }
+    doRedraw(); return;
+  }
   if (wallResizeState) {
     const shouldRecord = wallResizeState.changed; wallResizeState = null;
     canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
@@ -647,6 +701,37 @@ function onWheel(e) {
 
 function onKeyDown(e) {
   const editable = isEditableTarget(e.target);
+  if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+    if (selectedItems.length) {
+      const wallIds = new Set(selectedItems.filter(i => i.type === 'wall').map(i => i.id));
+      const walls = appState.walls.filter(w => wallIds.has(w.id)).map(w => ({ ...w }));
+      const openings = appState.openings.filter(o => wallIds.has(o.wallId)).map(o => ({ ...o }));
+      clipboard = { walls, openings };
+    }
+    e.preventDefault(); return;
+  }
+  if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+    if (clipboard?.walls?.length) {
+      const offset = 300; // смещение при вставке
+      const idMap = {};
+      const newWalls = clipboard.walls.map(w => {
+        const newId = appState.idWall++;
+        idMap[w.id] = newId;
+        return { ...w, id: newId, x1: w.x1+offset, y1: w.y1+offset, x2: w.x2+offset, y2: w.y2+offset,
+          cx1: (w.cx1??w.x1)+offset, cy1: (w.cy1??w.y1)+offset, cx2: (w.cx2??w.x2)+offset, cy2: (w.cy2??w.y2)+offset };
+      });
+      const newOpenings = (clipboard.openings || []).map(o => ({
+        ...o, id: appState.idOpen++, wallId: idMap[o.wallId] ?? o.wallId,
+      }));
+      appState.walls.push(...newWalls);
+      appState.openings.push(...newOpenings);
+      invalidateJointCache();
+      setSelection(newWalls.map(w => ({ type: 'wall', id: w.id })));
+      computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount);
+      recordHistory(); doRedraw();
+    }
+    e.preventDefault(); return;
+  }
   if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault(); if (e.shiftKey) { redoHistory(onHistoryRestore); } else { undoHistory(onHistoryRestore); }
     updateHistoryBtns(); return;
