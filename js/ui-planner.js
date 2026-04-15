@@ -1,646 +1,691 @@
-// ─── RENDER.JS ────────────────────────────────────────────────────
-import { appState, DRAW_COLORS, ROOM_COLORS, ROOM_STROKES } from './state.js';
+// ─── UI-PLANNER.JS ─────────────────────────────────────────────────
+import { appState } from './state.js';
 import {
-  getWallWorldGeometry, getWallCornerPoints, getWallLength,
-  getWallContourPoint, isWallEndpointCoveredByAnotherWall,
-  buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
-  getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
+  addWall, deleteSelectedItems, findClosestWall, findClosestWallSel,
+  getWallContourPoint, updateWallGeometry, setWallLength, getWallLength,
+  invalidateJointCache,
 } from './wall.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints } from './snapping.js';
+import { addOpening, findClosestOpening, updateDoorOpening } from './opening.js';
+import { computeRooms, updateExpl, getComputedRooms, renameRoom } from './room.js';
+import {
+  snap, setViewport, setModifiers, toScreen, toWorld,
+  findObjectSnapCandidate, findGuideCandidate, getNearestGuideAxis,
+  projectPointToGuideLineWorld, getSnappedWallResizePoint,
+} from './snapping.js';
+import {
+  redraw, initRenderer, getWallResizeHandles, getOpeningScreenBounds,
+  hitTestWallResizeHandle, boundsIntersect, drawAlignedTextBox,
+} from './render.js';
+import { recordHistory, undoHistory, redoHistory, canUndo, canRedo } from './history.js';
 
-let _canvas, _ctx, _hatchPat = null;
-let _getScale = () => 0.12;
+// ── Module state ──────────────────────────────────────────────────
+let canvas, canvasWrap;
+let tool = 'select';
+let isDrawing = false, drawStart = null, drawEnd = null;
+let chainMode = false, lengthInput = '', lengthMode = false;
+let wallOffset = 'center';
+let hoverOpening = null;
+let defaultDoorHinge = 'start', defaultDoorSwing = 1;
+let selectedItems = [], wallResizeState = null, wallLengthAnchor = 'start';
+let scale = 0.12, panX = 200, panY = 150;
+let shiftDown = false, ctrlDown = false;
+let isPanning = false, panStartX, panStartY, panStartOffX, panStartOffY;
+let mouseScreen = null, selectBoxStart = null, selectBoxCurrent = null, selectClickCandidate = null;
+let currentGuideLine = null, currentObjectSnap = null;
 
-export function initRenderer(canvas, ctx, getScaleFn) {
-  _canvas = canvas; _ctx = ctx;
-  _getScale = getScaleFn || (() => 0.12);
-  _hatchPat = null;
+// ── DOM refs ──────────────────────────────────────────────────────
+let dom = {};
+
+export function initPlanner(domRefs) {
+  dom = domRefs;
+  canvas = domRefs.canvas;
+  canvasWrap = domRefs.canvasWrap;
+
+  initRenderer(canvas, canvas.getContext('2d'), () => scale);
+
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseup',   onMouseUp);
+  window.addEventListener('mouseup',   onMouseUp);
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup',   onKeyUp);
+
+  // Tool buttons (event delegation)
+  dom.toolGrid?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-tool]');
+    if (btn) setTool(btn.dataset.tool);
+  });
+
+  // Wall offset buttons (delegation)
+  dom.offsetBtns?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-offset]');
+    if (!btn) return;
+    dom.offsetBtns.querySelectorAll('.offset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wallOffset = btn.dataset.offset;
+  });
+
+  // Door hinge/swing defaults (delegation)
+  dom.doorHingeButtons?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-default-door-hinge]');
+    if (!btn) return;
+    defaultDoorHinge = btn.dataset.defaultDoorHinge;
+    syncDoorButtons();
+    doRedraw();
+  });
+  dom.doorSwingButtons?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-default-door-swing]');
+    if (!btn) return;
+    defaultDoorSwing = Number(btn.dataset.defaultDoorSwing);
+    syncDoorButtons();
+    doRedraw();
+  });
+
+  // Edit panel (delegation — bug #8 fix)
+  dom.editContent?.addEventListener('click', e => {
+    if (selectedItems.length !== 1) return;
+    const wall = selectedItems[0].type === 'wall' ? appState.walls.find(w => w.id === selectedItems[0].id) : null;
+    const anchBtn = e.target.closest('[data-wall-anchor]');
+    if (anchBtn && wall) { wallLengthAnchor = anchBtn.dataset.wallAnchor === 'end' ? 'end' : 'start'; updateEditPanel(); return; }
+    const hingeBtn = e.target.closest('[data-edit-door-hinge]');
+    if (hingeBtn && selectedItems[0].type === 'opening') { updateDoorOpening(selectedItems[0].id, { hinge: hingeBtn.dataset.editDoorHinge }); syncDoorButtons(); doRedraw(); return; }
+    const swingBtn = e.target.closest('[data-edit-door-swing]');
+    if (swingBtn && selectedItems[0].type === 'opening') { updateDoorOpening(selectedItems[0].id, { swing: Number(swingBtn.dataset.editDoorSwing) }); syncDoorButtons(); doRedraw(); }
+  });
+  dom.editContent?.addEventListener('keydown', e => {
+    if (!e.target.matches('[data-wall-length-input]')) return;
+    if (e.key === 'Enter') { e.preventDefault(); commitWallLengthInput(e.target); }
+  });
+  dom.editContent?.addEventListener('change', e => {
+    if (e.target.matches('[data-wall-length-input]')) commitWallLengthInput(e.target);
+  });
+
+  // Delete button
+  dom.btnDeleteSelected?.addEventListener('click', () => {
+    if (!selectedItems.length) return;
+    deleteSelectedItems(selectedItems);
+    clearSelection();
+    computeRooms(getWallHeightFallback());
+    updateExpl(dom.explBody, dom.roomCount);
+    recordHistory();
+    doRedraw();
+  });
+
+  // Undo/Redo buttons
+  dom.btnUndo?.addEventListener('click', () => { undoHistory(onHistoryRestore); updateHistoryBtns(); });
+  dom.btnRedo?.addEventListener('click', () => { redoHistory(onHistoryRestore); updateHistoryBtns(); });
+
+  // New project
+  dom.btnNew?.addEventListener('click', () => {
+    if (!confirm('Создать новый проект? Текущий чертёж будет очищен.')) return;
+    appState.walls = []; appState.openings = []; appState.rooms = [];
+    appState.idWall = 1; appState.idOpen = 1; appState.roomNameOverrides = {};
+    hoverOpening = null; wallResizeState = null;
+    resetDrawingState(); clearSelectionBox(); clearSelection();
+    updateExpl(dom.explBody, dom.roomCount);
+    recordHistory(); doRedraw();
+  });
+
+  // Recalc rooms
+  dom.btnRecalc?.addEventListener('click', () => {
+    computeRooms(getWallHeightFallback());
+    updateExpl(dom.explBody, dom.roomCount);
+    doRedraw();
+  });
+
+  // Zoom
+  dom.btnZoomIn?.addEventListener('click',    () => { scale = Math.min(2, scale * 1.25); syncViewport(); doRedraw(); });
+  dom.btnZoomOut?.addEventListener('click',   () => { scale = Math.max(0.03, scale / 1.25); syncViewport(); doRedraw(); });
+  dom.btnZoomReset?.addEventListener('click', () => { scale = 0.12; panX = 200; panY = 150; syncViewport(); doRedraw(); });
+
+  // Wall param inputs — Bug #9 fix: also update edit panel when thickness/height changes
+  const paramInputs = [dom.inpWallThick, dom.inpWallHeight, dom.inpWindowWidth, dom.inpWindowHeight, dom.inpDoorWidth, dom.inpDoorHeight];
+  paramInputs.forEach(inp => {
+    if (!inp) return;
+    inp.addEventListener('change', () => {
+      // Bug #10 fix: clamp negative values
+      if (Number(inp.value) < Number(inp.min || 0)) inp.value = inp.min || 0;
+      computeRooms(getWallHeightFallback());
+      updateExpl(dom.explBody, dom.roomCount);
+      doRedraw();
+    });
+    inp.addEventListener('focus', e => e.target.select());
+  });
+
+  // Explication rename (delegation)
+  dom.explBody?.addEventListener('focusin', e => { if (e.target.matches('.room-name-input')) e.target.select(); });
+  dom.explBody?.addEventListener('keydown', e => {
+    if (e.target.matches('.room-name-input') && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+  });
+  dom.explBody?.addEventListener('change', e => {
+    if (!e.target.matches('.room-name-input')) return;
+    renameRoom(e.target.dataset.roomKey, e.target.value || e.target.dataset.roomDefault || '');
+    updateExpl(dom.explBody, dom.roomCount);
+    doRedraw();
+    recordHistory();
+  });
+
+  // Import rooms from planner into smeta
+  dom.btnImportRooms?.addEventListener('click', () => {
+    const rooms = getComputedRooms();
+    if (!rooms.length) { alert('Нарисуйте план и пересчитайте помещения'); return; }
+    window._smetaModule?.importRoomsFromPlanner(rooms);
+  });
+
+  setTool('select');
+  syncDoorButtons();
+  recordHistory();
+  updateHistoryBtns();
+  doRedraw();
 }
 
-// ── Utilities ─────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────
 
-function sel(type, id, list) { return list.some(i => i.type === type && i.id === id); }
+function getWallHeightFallback() {
+  return parseFloat(dom.inpWallHeight?.value) || 2700;
+}
 
-function wallStyle(isSelected) {
+function syncViewport() {
+  setViewport(scale, panX, panY);
+}
+
+function doRedraw() {
+  syncViewport();
+  redraw(getPlannerState());
+}
+
+function getPlannerState() {
   return {
-    fill:   isSelected ? DRAW_COLORS.wallFillSelected : DRAW_COLORS.wallFill,
-    stroke: isSelected ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.wallStroke,
+    scale, selectedItems, tool, isDrawing, drawStart, drawEnd,
+    currentGuideLine, currentObjectSnap, hoverOpening,
+    selectBoxStart, selectBoxCurrent, chainMode, lengthMode, lengthInput,
+    wallResizeState, wallOffset, defaultDoorHinge, defaultDoorSwing,
+    inpWallThick: dom.inpWallThick,
+    lengthOverlay: dom.lengthOverlay, lengthLabel: dom.lengthLabel,
+    lblLen: dom.lblLen, lblLenVal: dom.lblLenVal,
+    mouseScreen, isPanning,
   };
 }
 
-function sg(wall) { // screen geometry
-  const w = getWallWorldGeometry(wall);
-  const sc = p => toScreen(p.x, p.y);
-  return { p1: sc(w.p1), p2: sc(w.p2), angle: w.angle, halfT: w.halfT,
-           a: sc(w.a), b: sc(w.b), c: sc(w.c), d: sc(w.d) };
+function resizeCanvas() {
+  const r = canvasWrap.getBoundingClientRect();
+  canvas.width = r.width; canvas.height = r.height;
+  doRedraw();
 }
 
-function hatch() {
-  if (_hatchPat) return _hatchPat;
-  const pc = document.createElement('canvas'); pc.width = 12; pc.height = 12;
-  const px = pc.getContext('2d');
-  px.strokeStyle = DRAW_COLORS.wallHatch; px.lineWidth = 1;
-  px.beginPath(); px.moveTo(-2, 12); px.lineTo(12, -2); px.moveTo(4, 12); px.lineTo(12, 4); px.stroke();
-  _hatchPat = _ctx.createPattern(pc, 'repeat'); return _hatchPat;
+function resetDrawingState() {
+  isDrawing = false; chainMode = false; drawStart = null; drawEnd = null;
+  currentGuideLine = null; currentObjectSnap = null;
+  lengthInput = ''; lengthMode = false;
+  if (dom.lengthOverlay) dom.lengthOverlay.style.display = 'none';
+  if (dom.lblLen) dom.lblLen.style.display = 'none';
 }
 
-function fillWall(pathFn, fill) {
-  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
-  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
-  _ctx.restore();
+function clearSelectionBox() { selectBoxStart = null; selectBoxCurrent = null; }
+
+function clearSelection() {
+  selectedItems = []; wallResizeState = null;
+  if (dom.editPanel) dom.editPanel.style.display = 'none';
+  if (dom.editContent) dom.editContent.innerHTML = '';
+  syncDoorButtons(); doRedraw();
 }
 
-function wallInteriorSide(wall, fallback = 1) {
-  const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
-  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
-  let best = null;
-  for (const r of appState.rooms) {
-    if (!r.boundarySegments.some(s => s.wall && s.wall.id === wall.id)) continue;
-    const dot = (r.center.x - mid.x) * normal.x + (r.center.y - mid.y) * normal.y;
-    if (Math.abs(dot) < 1) continue;
-    if (best === null || Math.abs(dot) > Math.abs(best)) best = dot;
+function setSelection(items) {
+  const seen = new Set(), unique = [];
+  for (const i of items) { const k = `${i.type}:${i.id}`; if (!seen.has(k)) { seen.add(k); unique.push(i); } }
+  selectedItems = unique;
+  if (dom.editPanel) dom.editPanel.style.display = selectedItems.length ? 'block' : 'none';
+  updateEditPanel(); syncDoorButtons(); doRedraw();
+}
+
+function selectObject(type, id) { setSelection([{ type, id }]); }
+
+function toggleSelection(type, id) {
+  const k = `${type}:${id}`;
+  if (selectedItems.some(i => `${i.type}:${i.id}` === k))
+    setSelection(selectedItems.filter(i => `${i.type}:${i.id}` !== k));
+  else
+    setSelection([...selectedItems, { type, id }]);
+}
+
+function getSelectedWall() {
+  if (selectedItems.length !== 1 || selectedItems[0].type !== 'wall') return null;
+  return appState.walls.find(w => w.id === selectedItems[0].id) || null;
+}
+
+function updateHistoryBtns() {
+  if (dom.btnUndo) dom.btnUndo.disabled = !canUndo();
+  if (dom.btnRedo) dom.btnRedo.disabled = !canRedo();
+}
+
+function onHistoryRestore() {
+  hoverOpening = null; mouseScreen = null; wallResizeState = null;
+  resetDrawingState(); clearSelectionBox(); clearSelection();
+  computeRooms(getWallHeightFallback());
+  updateExpl(dom.explBody, dom.roomCount);
+  updateHistoryBtns(); doRedraw();
+}
+
+function updateSnapBadge() {
+  if (!dom.snapBadge) return;
+  dom.snapBadge.textContent = (shiftDown && ctrlDown) ? 'Привязка: 100 мм'
+    : shiftDown ? 'Привязка: 10 мм' : 'Привязка: 1 мм';
+}
+
+function isEditableTarget(target) {
+  return !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+}
+
+// ── Tool ──────────────────────────────────────────────────────────
+
+export function setTool(t) {
+  tool = t;
+  wallResizeState = null; // Bug #3 fix
+  if (t !== 'wall') resetDrawingState();
+  clearSelectionBox(); hoverOpening = null; currentObjectSnap = null;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tool' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
+  const labels = { select: 'Выбор', wall: 'Стена', window: 'Окно', door: 'Дверь' };
+  if (dom.lblTool) dom.lblTool.textContent = labels[t] || t;
+  canvas.style.cursor = t === 'select' ? 'default' : 'crosshair';
+  document.getElementById('windowParams')?.classList.toggle('active', t === 'window');
+  document.getElementById('doorParams')?.classList.toggle('active', t === 'door');
+  if (t !== 'select') clearSelection();
+  doRedraw();
+}
+
+// ── Edit panel ────────────────────────────────────────────────────
+
+function updateEditPanel() {
+  if (!dom.editContent) return;
+  if (!selectedItems.length) { dom.editContent.innerHTML = ''; return; }
+  if (selectedItems.length > 1) {
+    const wc = selectedItems.filter(i => i.type === 'wall').length;
+    const oc = selectedItems.filter(i => i.type === 'opening').length;
+    dom.editContent.innerHTML = `<div class="edit-row"><label>Выбрано</label><b>${selectedItems.length}</b></div>
+      <div class="edit-row"><label>Стены</label><b>${wc}</b></div>
+      <div class="edit-row"><label>Проёмы</label><b>${oc}</b></div>`;
+    return;
   }
-  return best === null ? fallback : best >= 0 ? 1 : -1;
+  const it = selectedItems[0];
+  if (it.type === 'wall') {
+    const w = appState.walls.find(v => v.id === it.id); if (!w) return;
+    const len = Math.round(getWallLength(w));
+    dom.editContent.innerHTML = `
+      <div class="param-group">
+        <div class="param-label">Длина <span class="param-unit">мм</span></div>
+        <div class="param-input-wrap"><input class="param-input" type="number" min="20" step="1" value="${len}" data-wall-length-input><span class="param-input-unit">мм</span></div>
+      </div>
+      <div class="param-group">
+        <div class="param-label">Фиксировать край</div>
+        <div class="choice-grid">
+          <button class="choice-btn compact${wallLengthAnchor === 'start' ? ' active' : ''}" type="button" data-wall-anchor="start">Начало</button>
+          <button class="choice-btn compact${wallLengthAnchor === 'end' ? ' active' : ''}" type="button" data-wall-anchor="end">Конец</button>
+        </div>
+      </div>
+      <div class="param-group">
+        <div class="param-label">Толщина <span class="param-unit">мм</span></div>
+        <div class="param-input-wrap"><input class="param-input" type="number" min="50" max="1000" step="10" value="${w.thickness}" data-wall-thick-input><span class="param-input-unit">мм</span></div>
+      </div>
+      <div class="param-group">
+        <div class="param-label">Высота <span class="param-unit">мм</span></div>
+        <div class="param-input-wrap"><input class="param-input" type="number" min="1000" max="6000" step="100" value="${w.height}" data-wall-height-input><span class="param-input-unit">мм</span></div>
+      </div>
+      <div class="edit-note">Длину можно ввести вручную или потянуть маркеры на концах стены.</div>`;
+    // Bug #9 fix: attach change listeners for thickness/height
+    dom.editContent.querySelector('[data-wall-thick-input]')?.addEventListener('change', e => {
+      const v = Math.max(50, Number(e.target.value) || 200); // Bug #10 fix
+      w.thickness = v; invalidateJointCache(); computeRooms(getWallHeightFallback());
+      updateExpl(dom.explBody, dom.roomCount); recordHistory(); doRedraw();
+    });
+    dom.editContent.querySelector('[data-wall-height-input]')?.addEventListener('change', e => {
+      const v = Math.max(1000, Number(e.target.value) || 2700); // Bug #10 fix
+      w.height = v; computeRooms(getWallHeightFallback());
+      updateExpl(dom.explBody, dom.roomCount); recordHistory(); doRedraw();
+    });
+  } else if (it.type === 'opening') {
+    const op = appState.openings.find(o => o.id === it.id); if (!op) return;
+    const tl = op.type === 'window' ? 'Окно' : 'Дверь';
+    let html = `<div class="edit-row"><label>Тип</label><b>${tl}</b></div>
+      <div class="edit-row"><label>Ширина</label><b>${op.width} мм</b></div>
+      <div class="edit-row"><label>Высота</label><b>${op.height} мм</b></div>`;
+    if (op.type === 'door') {
+      html += `<div class="param-group" style="margin-top:6px"><div class="param-label">Петля</div>
+        <div class="choice-grid"><button class="choice-btn compact" type="button" data-edit-door-hinge="start">Слева</button><button class="choice-btn compact" type="button" data-edit-door-hinge="end">Справа</button></div></div>
+        <div class="param-group"><div class="param-label">Открывание</div>
+        <div class="choice-grid"><button class="choice-btn compact" type="button" data-edit-door-swing="-1">На себя</button><button class="choice-btn compact" type="button" data-edit-door-swing="1">От себя</button></div></div>`;
+    }
+    dom.editContent.innerHTML = html;
+  }
+  syncDoorButtons();
 }
 
-// ── Exported helpers ──────────────────────────────────────────────
-
-export function drawAlignedTextBox(text, pos, angle, opts = {}) {
-  let a = angle;
-  if (a > Math.PI / 2 || a < -Math.PI / 2) a += Math.PI;
-  _ctx.save(); _ctx.translate(pos.x, pos.y); _ctx.rotate(a);
-  _ctx.font = opts.font || '600 10px Onest, Inter, sans-serif';
-  const tw = _ctx.measureText(text).width, bw = tw + 12, bh = 16;
-  _ctx.fillStyle = opts.background || 'rgba(255,255,255,0.95)';
-  _ctx.beginPath();
-  if (_ctx.roundRect) _ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 5);
-  else _ctx.rect(-bw / 2, -bh / 2, bw, bh);
-  _ctx.fill(); _ctx.fillStyle = opts.textColor || '#0f172a';
-  _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(text, 0, 0); _ctx.restore();
+function commitWallLengthInput(inputEl) {
+  const wall = getSelectedWall(); if (!wall) return;
+  // Bug #10 fix: clamp to ≥ 20
+  const val = Math.max(20, parseFloat(inputEl.value) || 0);
+  inputEl.value = val;
+  setWallLength(wall, val, wallLengthAnchor);
+  computeRooms(getWallHeightFallback());
+  updateExpl(dom.explBody, dom.roomCount);
+  recordHistory(); doRedraw();
 }
 
-export function getWallResizeHandles(wall) {
-  return ['start', 'end'].map(ep => ({
-    wall, endpoint: ep, point: getWallContourPoint(wall, ep),
-    screen: toScreen(getWallContourPoint(wall, ep).x, getWallContourPoint(wall, ep).y),
-  }));
+function syncDoorButtons() {
+  document.querySelectorAll('[data-default-door-hinge]').forEach(b => b.classList.toggle('active', b.dataset.defaultDoorHinge === defaultDoorHinge));
+  document.querySelectorAll('[data-default-door-swing]').forEach(b => b.classList.toggle('active', Number(b.dataset.defaultDoorSwing) === defaultDoorSwing));
+  const selDoor = selectedItems.length === 1 && selectedItems[0].type === 'opening'
+    ? appState.openings.find(o => o.id === selectedItems[0].id && o.type === 'door') : null;
+  if (!selDoor) return;
+  document.querySelectorAll('[data-edit-door-hinge]').forEach(b => b.classList.toggle('active', b.dataset.editDoorHinge === (selDoor.hinge || defaultDoorHinge)));
+  document.querySelectorAll('[data-edit-door-swing]').forEach(b => b.classList.toggle('active', Number(b.dataset.editDoorSwing) === (selDoor.swing ?? defaultDoorSwing)));
 }
 
-export function getOpeningScreenBounds(op) {
-  const wall = appState.walls.find(w => w.id === op.wallId); if (!wall) return null;
-  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1); if (wlen < 1) return null;
-  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const halfT = wall.thickness / 2;
-  const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
-  const t1 = Math.max(0, Math.min(1, op.t - op.width / 2 / wlen));
-  const t2 = Math.max(0, Math.min(1, op.t + op.width / 2 / wlen));
-  const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
-  const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
-  const corners = [
-    toScreen(ax1 + sdxW, ay1 + sdyW), toScreen(ax2 + sdxW, ay2 + sdyW),
-    toScreen(ax2 - sdxW, ay2 - sdyW), toScreen(ax1 - sdxW, ay1 - sdyW),
-  ];
-  return { left: Math.min(...corners.map(p => p.x)), top: Math.min(...corners.map(p => p.y)),
-           right: Math.max(...corners.map(p => p.x)), bottom: Math.max(...corners.map(p => p.y)) };
+// ── Wall preview / finalize ───────────────────────────────────────
+
+function getWallPreviewEnd(world) {
+  const screenPt = mouseScreen ? { ...mouseScreen } : toScreen(world.x, world.y);
+  const snappedBase = snap(world.x, world.y, { screenPoint: screenPt, includePerpendicular: !!drawStart, startPoint: drawStart });
+  let rawEnd = { ...snappedBase };
+  if (!snappedBase.snapType && !shiftDown && drawStart) {
+    const dx = rawEnd.x - drawStart.x, dy = rawEnd.y - drawStart.y, len = Math.hypot(dx, dy);
+    if (len > 20) {
+      let angle = Math.atan2(dy, dx);
+      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        const diff = Math.abs(angle - sa);
+        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) { angle = sa; rawEnd = { x: drawStart.x + Math.cos(angle) * len, y: drawStart.y + Math.sin(angle) * len }; break; }
+      }
+    }
+  }
+  if (currentGuideLine && !snappedBase.snapType) {
+    const nearest = getNearestGuideAxis(screenPt, currentGuideLine);
+    const axisGuide = nearest ? { anchor: currentGuideLine.anchor, dir: nearest.dir } : currentGuideLine;
+    rawEnd = { ...rawEnd, ...projectPointToGuideLineWorld(rawEnd, axisGuide) };
+  }
+  if (lengthMode && lengthInput && drawStart) {
+    const targetLen = parseFloat(lengthInput);
+    if (!isNaN(targetLen) && targetLen > 0) {
+      if (currentGuideLine) {
+        const nearest = getNearestGuideAxis(screenPt, currentGuideLine);
+        const axisDir = nearest ? nearest.dir : currentGuideLine.dir;
+        const axisGuide = { anchor: currentGuideLine.anchor, dir: axisDir };
+        const ax = axisGuide.anchor.x - drawStart.x, ay = axisGuide.anchor.y - drawStart.y;
+        const dot = ax * axisGuide.dir.x + ay * axisGuide.dir.y;
+        const dist2 = ax * ax + ay * ay, disc = dot * dot - (dist2 - targetLen * targetLen);
+        if (disc >= 0) {
+          const sq = Math.sqrt(disc);
+          const p1 = { x: axisGuide.anchor.x + axisGuide.dir.x * (-dot + sq), y: axisGuide.anchor.y + axisGuide.dir.y * (-dot + sq) };
+          const p2 = { x: axisGuide.anchor.x + axisGuide.dir.x * (-dot - sq), y: axisGuide.anchor.y + axisGuide.dir.y * (-dot - sq) };
+          rawEnd = Math.hypot(rawEnd.x - p1.x, rawEnd.y - p1.y) <= Math.hypot(rawEnd.x - p2.x, rawEnd.y - p2.y) ? p1 : p2;
+        }
+      } else {
+        const dx = rawEnd.x - drawStart.x, dy = rawEnd.y - drawStart.y, curLen = Math.hypot(dx, dy);
+        if (curLen > 0.1) rawEnd = { x: drawStart.x + (dx / curLen) * targetLen, y: drawStart.y + (dy / curLen) * targetLen };
+      }
+    }
+  }
+  rawEnd.snappedToEndpoint = snappedBase.snappedToEndpoint;
+  rawEnd.snapType = snappedBase.snapType;
+  return rawEnd;
 }
 
-export function boundsIntersect(a, b) {
-  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+function finalizeWall(end) {
+  if (!drawStart) return false;
+  const len = Math.hypot(end.x - drawStart.x, end.y - drawStart.y);
+  if (len <= 20) return false; // Bug #4 fix
+  const thick = parseFloat(dom.inpWallThick?.value) || 200;
+  const height = parseFloat(dom.inpWallHeight?.value) || 2700;
+  addWall(drawStart, end, thick, height, wallOffset);
+  computeRooms(getWallHeightFallback());
+  updateExpl(dom.explBody, dom.roomCount);
+  drawStart = { x: end.x, y: end.y }; drawEnd = { x: end.x, y: end.y };
+  currentGuideLine = null; currentObjectSnap = null;
+  lengthInput = ''; lengthMode = false; chainMode = true; isDrawing = true;
+  recordHistory(); doRedraw(); return true;
 }
 
-export function hitTestWallResizeHandle(sp, tool, selectedItems) {
-  if (tool !== 'select') return null;
-  const wall = selectedItems.length === 1 && selectedItems[0].type === 'wall'
-    ? appState.walls.find(w => w.id === selectedItems[0].id) : null;
-  if (!wall) return null;
-  for (const h of getWallResizeHandles(wall))
-    if (Math.hypot(sp.x - h.screen.x, sp.y - h.screen.y) <= 10) return h;
+function updateWallObjectSnap(worldPoint, screenPoint) {
+  if (tool !== 'wall') { currentObjectSnap = null; return; }
+  currentObjectSnap = findObjectSnapCandidate(worldPoint, screenPoint, {
+    includeEndpoint: true, includeCorner: true, includeMidpoint: true,
+    includeIntersection: true, includeWallPoint: true,
+    includePerpendicular: isDrawing && !!drawStart, startPoint: drawStart,
+  });
+}
+
+function updateWallGuide(worldPoint, screenPoint) {
+  if (tool !== 'wall' || !isDrawing || !drawStart) { currentGuideLine = null; return; }
+  const candidate = findGuideCandidate(screenPoint);
+  if (candidate) { currentGuideLine = candidate; return; }
+  if (currentGuideLine) {
+    const nearest = getNearestGuideAxis(screenPoint, currentGuideLine);
+    const guideDistance = nearest ? nearest.distance : Infinity;
+    const anchorScreen = toScreen(currentGuideLine.anchor.x, currentGuideLine.anchor.y);
+    const anchorDistance = Math.hypot(screenPoint.x - anchorScreen.x, screenPoint.y - anchorScreen.y);
+    if (guideDistance <= 18 || anchorDistance <= 20) return;
+  }
+  currentGuideLine = null;
+}
+
+// ── Canvas events ─────────────────────────────────────────────────
+
+function getCanvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function onMouseDown(e) {
+  if (e.button === 2 || e.button === 1) {
+    isPanning = true; panStartX = e.clientX; panStartY = e.clientY;
+    panStartOffX = panX; panStartOffY = panY;
+    canvas.style.cursor = 'grabbing'; e.preventDefault(); return;
+  }
+  const pos = getCanvasPos(e);
+  const world = toWorld(pos.x, pos.y);
+  mouseScreen = { x: pos.x, y: pos.y };
+  if (tool !== 'select' && selectedItems.length && !shiftDown) clearSelection();
+
+  if (tool === 'wall') {
+    if (!isDrawing) {
+      const snapped = snap(world.x, world.y, { screenPoint: pos });
+      isDrawing = true; chainMode = false;
+      drawStart = { x: snapped.x, y: snapped.y }; drawEnd = { ...snapped };
+      lengthInput = ''; lengthMode = false; doRedraw();
+    } else {
+      const end = getWallPreviewEnd(world); finalizeWall(end);
+    }
+  } else if (tool === 'window' || tool === 'door') {
+    if (hoverOpening) {
+      addOpening(hoverOpening.wall, hoverOpening.t, hoverOpening.width, hoverOpening.height, tool, hoverOpening);
+      computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount);
+      recordHistory(); doRedraw();
+    }
+  } else if (tool === 'select') {
+    const handle = hitTestWallResizeHandle(pos, tool, selectedItems);
+    if (handle) {
+      wallResizeState = { wallId: handle.wall.id, endpoint: handle.endpoint,
+        fixedPoint: getWallContourPoint(handle.wall, handle.endpoint === 'start' ? 'end' : 'start'), changed: false };
+      selectBoxStart = null; selectBoxCurrent = null; selectClickCandidate = null;
+      canvas.style.cursor = 'grabbing'; return;
+    }
+    const hit = hitTestObject(world.x, world.y);
+    if (hit) { selectClickCandidate = hit; clearSelectionBox(); }
+    else { if (!shiftDown) clearSelection(); selectClickCandidate = null; selectBoxStart = { x: pos.x, y: pos.y }; selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw(); }
+  }
+}
+
+function hitTestObject(wx, wy) {
+  const op = findClosestOpening(wx, wy); if (op) return { type: 'opening', id: op.id };
+  const wall = findClosestWallSel(wx, wy); if (wall) return { type: 'wall', id: wall.id };
   return null;
 }
 
-// ── MAIN REDRAW ───────────────────────────────────────────────────
-
-export function redraw(ps) {
-  _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-  drawGrid();
-  drawRoomFills(ps.selectedItems);
-  drawWalls(ps.selectedItems);
-  drawWallJoints(ps.selectedItems);
-  drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
-  if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
-  if (ps.tool === 'wall' && ps.currentGuideLine)  drawGuideLine(ps.currentGuideLine);
-  if (ps.tool === 'wall' && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
-  if (ps.tool === 'wall' && ps.currentObjectSnap) drawObjectSnap(ps.currentObjectSnap);
-  drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
-  drawCursorGhost(ps);
+// Bug #1 fix: debounce computeRooms during wall resize
+let _resizeDebounce = null;
+function debouncedComputeRooms() {
+  clearTimeout(_resizeDebounce);
+  _resizeDebounce = setTimeout(() => {
+    computeRooms(getWallHeightFallback());
+    updateExpl(dom.explBody, dom.roomCount);
+    doRedraw();
+  }, 80);
 }
 
-function drawHoverHighlight(hoverItem, selectedItems, dh, ds) {
-  const isAlreadySelected = selectedItems.some(i => i.type === hoverItem.type && i.id === hoverItem.id);
-  if (isAlreadySelected) return;
-  _ctx.save();
-  if (hoverItem.type === 'wall') {
-    const wall = appState.walls.find(w => w.id === hoverItem.id);
-    if (!wall) { _ctx.restore(); return; }
-    const g = sg(wall);
-    _ctx.beginPath();
-    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
-    _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y);
-    _ctx.closePath();
-    _ctx.fillStyle = 'rgba(74,111,227,0.07)';
-    _ctx.strokeStyle = 'rgba(74,111,227,0.45)';
-    _ctx.lineWidth = 2; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
-    _ctx.fill(); _ctx.stroke();
-  } else if (hoverItem.type === 'opening') {
-    const op = appState.openings.find(o => o.id === hoverItem.id);
-    if (!op) { _ctx.restore(); return; }
-    const wall = appState.walls.find(w => w.id === op.wallId);
-    if (!wall) { _ctx.restore(); return; }
-    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-    const halfT = wall.thickness / 2;
-    const t1 = Math.max(0, Math.min(1, op.t - op.width / 2 / wlen));
-    const t2 = Math.max(0, Math.min(1, op.t + op.width / 2 / wlen));
-    const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
-    const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
-    const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
-    const c1 = toScreen(ax1 + sdxW, ay1 + sdyW), c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
-    const c3 = toScreen(ax2 - sdxW, ay2 - sdyW), c4 = toScreen(ax1 - sdxW, ay1 - sdyW);
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
-    _ctx.fillStyle = 'rgba(74,111,227,0.10)';
-    _ctx.strokeStyle = 'rgba(74,111,227,0.55)';
-    _ctx.lineWidth = 2; _ctx.fill(); _ctx.stroke();
-    drawOpening(op, wall, false, false, dh, ds);
+function onMouseMove(e) {
+  if (isPanning) {
+    panX = panStartOffX + (e.clientX - panStartX);
+    panY = panStartOffY + (e.clientY - panStartY);
+    syncViewport(); doRedraw(); return;
   }
-  _ctx.restore();
-}
+  const pos = getCanvasPos(e), world = toWorld(pos.x, pos.y);
+  mouseScreen = { x: pos.x, y: pos.y };
+  setModifiers(shiftDown, ctrlDown);
 
-function drawGrid() {
-  const W = _canvas.width, H = _canvas.height;
-  const stepMin = 100, stepMaj = 1000;
-  const wMin = toWorld(0, 0), wMax = toWorld(W, H);
-  _ctx.save();
-  _ctx.strokeStyle = '#e8eaee'; _ctx.lineWidth = 0.5;
-  for (let x = Math.floor(wMin.x / stepMin) * stepMin; x <= wMax.x + stepMin; x += stepMin) {
-    const sx = toScreen(x, 0).x; _ctx.beginPath(); _ctx.moveTo(sx, 0); _ctx.lineTo(sx, H); _ctx.stroke();
-  }
-  for (let y = Math.floor(wMin.y / stepMin) * stepMin; y <= wMax.y + stepMin; y += stepMin) {
-    const sy = toScreen(0, y).y; _ctx.beginPath(); _ctx.moveTo(0, sy); _ctx.lineTo(W, sy); _ctx.stroke();
-  }
-  _ctx.strokeStyle = '#c8cdd8'; _ctx.lineWidth = 1;
-  for (let x = Math.floor(wMin.x / stepMaj) * stepMaj; x <= wMax.x + stepMaj; x += stepMaj) {
-    const sx = toScreen(x, 0).x; _ctx.beginPath(); _ctx.moveTo(sx, 0); _ctx.lineTo(sx, H); _ctx.stroke();
-  }
-  for (let y = Math.floor(wMin.y / stepMaj) * stepMaj; y <= wMax.y + stepMaj; y += stepMaj) {
-    const sy = toScreen(0, y).y; _ctx.beginPath(); _ctx.moveTo(0, sy); _ctx.lineTo(W, sy); _ctx.stroke();
-  }
-  _ctx.fillStyle = '#a0aab8'; _ctx.font = '10px Onest, Inter, sans-serif'; _ctx.textAlign = 'left';
-  for (let x = Math.floor(wMin.x / stepMaj) * stepMaj; x <= wMax.x + stepMaj; x += stepMaj) {
-    const sx = toScreen(x, 0).x; if (sx > 2 && sx < W - 2) _ctx.fillText((x / 1000).toFixed(0) + 'м', sx + 2, 12);
-  }
-  for (let y = Math.floor(wMin.y / stepMaj) * stepMaj; y <= wMax.y + stepMaj; y += stepMaj) {
-    const sy = toScreen(0, y).y; if (sy > 14 && sy < H - 2) _ctx.fillText((y / 1000).toFixed(0) + 'м', 2, sy - 2);
-  }
-  _ctx.restore();
-}
-
-function drawRoomFills(selectedItems) {
-  const scale = _getScale();
-  for (let i = 0; i < appState.rooms.length; i++) {
-    const r = appState.rooms[i]; if (!r.cells?.length) continue;
-    _ctx.save();
-    _ctx.beginPath();
-    for (const c of r.cells) { const p = toScreen(c.x1, c.y1); _ctx.rect(p.x, p.y, (c.x2 - c.x1) * scale, (c.y2 - c.y1) * scale); }
-    _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
-    _ctx.strokeStyle = ROOM_STROKES[i % ROOM_STROKES.length]; _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]);
-    for (const s of r.boundarySegments) {
-      const p1 = toScreen(s.x1, s.y1), p2 = toScreen(s.x2, s.y2);
-      _ctx.beginPath(); _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y); _ctx.stroke();
+  if (wallResizeState) {
+    const wall = appState.walls.find(w => w.id === wallResizeState.wallId);
+    if (!wall) { wallResizeState = null; doRedraw(); return; }
+    currentGuideLine = null; currentObjectSnap = null;
+    const moved = getSnappedWallResizePoint(wallResizeState.fixedPoint, world, pos, shiftDown);
+    const ns = wallResizeState.endpoint === 'start' ? moved : wallResizeState.fixedPoint;
+    const ne = wallResizeState.endpoint === 'start' ? wallResizeState.fixedPoint : moved;
+    if (Math.hypot(ne.x - ns.x, ne.y - ns.y) >= 20) {
+      const changed = updateWallGeometry(wall, ns, ne, { preserveFrom: wallResizeState.endpoint === 'start' ? 'end' : 'start' });
+      wallResizeState.changed = wallResizeState.changed || changed;
+      debouncedComputeRooms(); // Bug #1 fix
     }
-    _ctx.setLineDash([]);
-    if (scale > 0.08) { // Bug #6 fix
-      const sc = toScreen(r.center.x, r.center.y);
-      _ctx.fillStyle = DRAW_COLORS.roomLabel;
-      _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200))}px Onest, Inter, sans-serif`;
-      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
-      _ctx.font = `500 ${Math.max(9, Math.min(12, scale * 160))}px Onest, Inter, sans-serif`;
-      _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(1)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
-    }
-    _ctx.restore();
+    canvas.style.cursor = 'grabbing'; doRedraw(); return;
+  }
+
+  if (tool === 'wall') updateWallObjectSnap(world, pos);
+  else currentObjectSnap = null;
+
+  if (dom.lblCoords) dom.lblCoords.textContent = `X: ${Math.round(world.x)} мм  Y: ${Math.round(world.y)} мм${tool === 'wall' && currentObjectSnap ? `  ·  ${currentObjectSnap.label}` : ''}`;
+
+  if (tool === 'select' && selectBoxStart) { selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw(); return; }
+
+  if (tool === 'window' || tool === 'door') {
+    const wallThick = parseFloat(dom.inpWallThick?.value) || 200;
+    const hit = findClosestWall(world.x, world.y, wallThick / 2 + 80);
+    if (hit) {
+      const thick = parseFloat(dom.inpWallThick?.value) || 200;
+      const w = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowWidth' : 'inpDoorWidth')?.value) || (tool === 'window' ? 1200 : 900);
+      const h = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowHeight' : 'inpDoorHeight')?.value) || (tool === 'window' ? 1500 : 2100);
+      const wlen = Math.hypot(hit.wall.x2 - hit.wall.x1, hit.wall.y2 - hit.wall.y1);
+      const angle = Math.atan2(hit.wall.y2 - hit.wall.y1, hit.wall.x2 - hit.wall.x1);
+      const nx = -Math.sin(angle), ny = Math.cos(angle);
+      const px = hit.wall.x1 + (hit.wall.x2 - hit.wall.x1) * hit.t, py = hit.wall.y1 + (hit.wall.y2 - hit.wall.y1) * hit.t;
+      const side = ((world.x - px) * nx + (world.y - py) * ny) >= 0 ? 1 : -1;
+      hoverOpening = wlen > w + 1 ? { wall: hit.wall, t: hit.t, width: w, height: h, type: tool, hinge: defaultDoorHinge, swing: defaultDoorSwing, side } : null;
+    } else hoverOpening = null;
+    doRedraw();
+  } else if (hoverOpening) { hoverOpening = null; doRedraw(); }
+
+  if (isDrawing && tool === 'wall' && drawStart) {
+    updateWallGuide(world, pos); drawEnd = getWallPreviewEnd(world); doRedraw();
+  } else if (tool === 'wall' && !isDrawing) doRedraw();
+
+  if (tool === 'select' && !selectBoxStart) {
+    canvas.style.cursor = hitTestWallResizeHandle(pos, tool, selectedItems) ? 'grab' : 'default';
   }
 }
 
-function drawWalls(selectedItems) {
-  const scale = _getScale(); const jmap = buildWallJointMap();
-  const jrects = getWallJointRects();
-
-  // Pass 1: fill all walls (solid + hatch)
-  for (const w of appState.walls) {
-    const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-    const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
-    fillWall(trace, style.fill);
-  }
-
-  // Pass 2: fill joint rects (orthogonal corners only — covers interior lines)
-  for (const jr of jrects) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
-  }
-
-  // Pass 3: stroke wall outlines
-  for (const w of appState.walls) {
-    const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-    const sj = getWallJointItemsForEndpoint(jmap, w, 'start').length > 1 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
-    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
-
-    // Для диагональных стыков joint rect не создаётся — используем trim на halfT
-    // Для ортогональных стыков joint rect есть — trim не нужен (он покрывается clip)
-    const hasSjRect = myJoints.some(jr => jr.wallIds.includes(w.id));
-    const trimS = sj && !hasSjRect;
-    const trimE = ej && !hasSjRect;
-
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
-    _ctx.beginPath();
-    drawClippedFace(g.a, g.b, w, myJoints, 'ab', trimS, trimE);
-    drawClippedFace(g.d, g.c, w, myJoints, 'dc', trimS, trimE);
-    if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
-    if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
-    _ctx.stroke();
-
-    if (scale > 0.08) {
-      const len = getWallLength(w), mx = (g.p1.x + g.p2.x) / 2, my = (g.p1.y + g.p2.y) / 2;
-      const side = wallInteriorSide(w), off = g.halfT * scale + 18;
-      drawAlignedTextBox(`${Math.round(len)} мм`,
-        { x: mx + (-Math.sin(g.angle) * off * side), y: my + (Math.cos(g.angle) * off * side) },
-        g.angle, { textColor: isSel ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.roomMeta });
+function onMouseUp(e) {
+  if (wallResizeState) {
+    const shouldRecord = wallResizeState.changed; wallResizeState = null;
+    canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+    if (shouldRecord) {
+      computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount);
+      recordHistory();
     }
-    _ctx.restore();
+    doRedraw(); return;
   }
-}
-
-// Рисует грань стены от sa до ea, пропуская отрезки которые попадают в joint rects.
-// trimStart/trimEnd — если true, обрезает halfT пикселей с соответствующего конца (для диагональных стыков).
-function drawClippedFace(sa, ea, wall, joints, _tag, trimStart = false, trimEnd = false) {
-  // Параметры грани в экранных координатах
-  const dx = ea.x - sa.x, dy = ea.y - sa.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.5) return;
-
-  // Вычисляем начало и конец с учётом trim для диагональных стыков
-  const scale = _getScale();
-  const halfT_screen = wall.thickness / 2 * scale;
-  const tStart = trimStart ? Math.min(halfT_screen / len, 0.5) : 0;
-  const tEnd   = trimEnd   ? Math.max(1 - halfT_screen / len, 0.5) : 1;
-
-  if (!joints.length) {
-    if (tStart > 0 || tEnd < 1) {
-      _ctx.moveTo(sa.x + dx * tStart, sa.y + dy * tStart);
-      _ctx.lineTo(sa.x + dx * tEnd,   sa.y + dy * tEnd);
-    } else {
-      _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
-    }
-    return;
+  if (tool === 'select' && selectClickCandidate) {
+    const hit = selectClickCandidate; selectClickCandidate = null;
+    if (shiftDown) toggleSelection(hit.type, hit.id);
+    else selectObject(hit.type, hit.id);
+    doRedraw(); return;
   }
-
-  // Собираем интервалы [t1,t2] которые нужно ПРОПУСТИТЬ (внутри joint)
-  const skip = [];
-  for (const jr of joints) {
-    // joint rect в экранных координатах
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x) - 1, rt = Math.min(tl.y, br.y) - 1;
-    const rr = Math.max(tl.x, br.x) + 1, rb = Math.max(tl.y, br.y) + 1;
-
-    // Пересечение отрезка [sa→ea] с прямоугольником joint
-    // Используем параметрическое пересечение
-    let tEnter = 0, tExit = 1;
-    const params = [
-      dx !== 0 ? (rl - sa.x) / dx : (sa.x >= rl ? 0 : 1),
-      dx !== 0 ? (rr - sa.x) / dx : (sa.x <= rr ? 1 : 0),
-      dy !== 0 ? (rt - sa.y) / dy : (sa.y >= rt ? 0 : 1),
-      dy !== 0 ? (rb - sa.y) / dy : (sa.y <= rb ? 1 : 0),
-    ];
-    tEnter = Math.max(tEnter, Math.min(params[0], params[1]), Math.min(params[2], params[3]));
-    tExit  = Math.min(tExit,  Math.max(params[0], params[1]), Math.max(params[2], params[3]));
-    if (tEnter < tExit - 0.01) skip.push([tEnter, tExit]);
-  }
-
-  if (!skip.length) {
-    _ctx.moveTo(sa.x + dx * tStart, sa.y + dy * tStart);
-    _ctx.lineTo(sa.x + dx * tEnd,   sa.y + dy * tEnd);
-    return;
-  }
-
-  // Сортируем пропуски
-  skip.sort((a, b) => a[0] - b[0]);
-
-  // Рисуем отрезки между пропусками, с учётом tStart/tEnd
-  let cur = tStart;
-  for (const [t1, t2] of skip) {
-    const segStart = Math.max(cur, tStart);
-    const segEnd   = Math.min(t1,  tEnd);
-    if (segStart < segEnd - 0.01) {
-      _ctx.moveTo(sa.x + dx * segStart, sa.y + dy * segStart);
-      _ctx.lineTo(sa.x + dx * segEnd,   sa.y + dy * segEnd);
-    }
-    cur = Math.max(cur, t2);
-  }
-  const finalStart = Math.max(cur, tStart);
-  if (finalStart < tEnd - 0.01) {
-    _ctx.moveTo(sa.x + dx * finalStart, sa.y + dy * finalStart);
-    _ctx.lineTo(sa.x + dx * tEnd,       sa.y + dy * tEnd);
-  }
-}
-
-function drawWallJoints(selectedItems) {
-  for (const jr of getWallJointRects()) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    // Заливка стыка
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
-    // Контур — только boundary edges (внешние грани стыка)
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke;
-    _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
-    _ctx.beginPath();
-    for (const path of getJointBoundaryPaths(jr)) {
-      if (!path.length) continue;
-      const s = toScreen(path[0].x, path[0].y);
-      _ctx.moveTo(s.x, s.y);
-      for (let i = 1; i < path.length; i++) {
-        const p = toScreen(path[i].x, path[i].y);
-        _ctx.lineTo(p.x, p.y);
+  if (tool === 'select' && selectBoxStart) {
+    const box = selectBoxStart && selectBoxCurrent ? {
+      left: Math.min(selectBoxStart.x, selectBoxCurrent.x), top: Math.min(selectBoxStart.y, selectBoxCurrent.y),
+      right: Math.max(selectBoxStart.x, selectBoxCurrent.x), bottom: Math.max(selectBoxStart.y, selectBoxCurrent.y),
+    } : null;
+    if (box && (box.right - box.left) > 5 && (box.bottom - box.top) > 5) {
+      const items = [];
+      for (const wall of appState.walls) {
+        const wb = { left: Math.min(toScreen(wall.x1, wall.y1).x, toScreen(wall.x2, wall.y2).x) - wall.thickness,
+          right: Math.max(toScreen(wall.x1, wall.y1).x, toScreen(wall.x2, wall.y2).x) + wall.thickness,
+          top: Math.min(toScreen(wall.x1, wall.y1).y, toScreen(wall.x2, wall.y2).y) - wall.thickness,
+          bottom: Math.max(toScreen(wall.x1, wall.y1).y, toScreen(wall.x2, wall.y2).y) + wall.thickness };
+        if (boundsIntersect(wb, box)) items.push({ type: 'wall', id: wall.id });
       }
+      for (const op of appState.openings) {
+        const ob = getOpeningScreenBounds(op);
+        if (ob && boundsIntersect(ob, box)) items.push({ type: 'opening', id: op.id });
+      }
+      if (items.length) setSelection(shiftDown ? [...selectedItems, ...items] : items);
+      else if (!shiftDown) clearSelection();
+    } else if (!shiftDown) clearSelection();
+    clearSelectionBox(); doRedraw(); return;
+  }
+  if (isPanning) { isPanning = false; canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair'; doRedraw(); }
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  const pos = getCanvasPos(e), factor = e.deltaY < 0 ? 1.12 : 0.88;
+  const newScale = Math.min(2, Math.max(0.03, scale * factor));
+  panX = pos.x - (pos.x - panX) * (newScale / scale);
+  panY = pos.y - (pos.y - panY) * (newScale / scale);
+  scale = newScale; syncViewport(); doRedraw();
+}
+
+function onKeyDown(e) {
+  const editable = isEditableTarget(e.target);
+  if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault(); if (e.shiftKey) { redoHistory(onHistoryRestore); } else { undoHistory(onHistoryRestore); }
+    updateHistoryBtns(); return;
+  }
+  if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault(); redoHistory(onHistoryRestore); updateHistoryBtns(); return;
+  }
+  if (e.key === 'Shift') { shiftDown = true; setModifiers(true, ctrlDown); updateSnapBadge(); }
+  if (e.key === 'Control') { ctrlDown = true; setModifiers(shiftDown, true); updateSnapBadge(); }
+  if (e.key === 'Escape') {
+    if (isDrawing) { resetDrawingState(); doRedraw(); }
+    clearSelectionBox(); clearSelection(); hoverOpening = null; doRedraw();
+  }
+  if (!editable && (e.key === 'Delete' || e.key === 'Backspace') && selectedItems.length) {
+    dom.btnDeleteSelected?.click(); e.preventDefault();
+  }
+  if (!editable && isDrawing && tool === 'wall') {
+    if (/^[0-9]$/.test(e.key)) { lengthMode = true; lengthInput += e.key; e.preventDefault(); doRedraw(); }
+    else if (e.key === 'Backspace' && lengthMode) {
+      lengthInput = lengthInput.slice(0, -1); if (!lengthInput) lengthMode = false; e.preventDefault(); doRedraw();
+    } else if (e.key === 'Enter' && lengthMode && lengthInput) { // Bug #7 fix: only if lengthInput non-empty
+      const targetLen = parseFloat(lengthInput);
+      if (!isNaN(targetLen) && targetLen > 0 && drawEnd && drawStart) {
+        const end = getWallPreviewEnd(drawEnd); finalizeWall(end);
+      }
+      lengthInput = ''; lengthMode = false; e.preventDefault(); doRedraw();
     }
-    _ctx.stroke();
-    _ctx.restore();
+  }
+  if (!editable && !e.ctrlKey && !e.metaKey) {
+    if (e.key === 'v' || e.key === 'V') setTool('select');
+    if (e.key === 'w' || e.key === 'W') setTool('wall');
+    if (e.key === 'o' || e.key === 'O') setTool('window');
+    if (e.key === 'd' || e.key === 'D') setTool('door');
   }
 }
 
-function drawOpenings(selectedItems, dh, ds) {
-  for (const op of appState.openings) {
-    const wall = appState.walls.find(w => w.id === op.wallId); if (!wall) continue;
-    drawOpening(op, wall, false, sel('opening', op.id, selectedItems), dh, ds);
-  }
+function onKeyUp(e) {
+  if (e.key === 'Shift') { shiftDown = false; setModifiers(false, ctrlDown); updateSnapBadge(); }
+  if (e.key === 'Control') { ctrlDown = false; setModifiers(shiftDown, false); updateSnapBadge(); }
 }
 
-function drawOpening(op, wall, isHover, isSel, dh, ds) {
-  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1); if (wlen < 1) return;
-  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const halfW = op.width / 2;
-  const t1 = Math.max(0, Math.min(1, op.t - halfW / wlen)), t2 = Math.max(0, Math.min(1, op.t + halfW / wlen));
-  const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
-  const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
-  const p1 = toScreen(ax1, ay1), p2 = toScreen(ax2, ay2);
-  // sdx/sdy — перпендикуляр ровно на половину толщины стены
-  const scale = _getScale();
-  const halfT = wall.thickness / 2;
-  const sdx = -Math.sin(angle) * halfT * scale, sdy = Math.cos(angle) * halfT * scale;
-  // Правильные экранные smещения от оси
-  const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
-  // Экранные координаты 4 углов проёма (строго в пределах толщины стены)
-  const c1 = toScreen(ax1 + sdxW, ay1 + sdyW);
-  const c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
-  const c3 = toScreen(ax2 - sdxW, ay2 - sdyW);
-  const c4 = toScreen(ax1 - sdxW, ay1 - sdyW);
-
-  const color = op.type === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke;
-  const fillColor = op.type === 'window' ? (isHover ? DRAW_COLORS.windowHover : DRAW_COLORS.windowFill)
-    : (isHover ? DRAW_COLORS.doorHover : DRAW_COLORS.doorFill);
-  const doorHinge = op.hinge || dh, doorSwing = op.swing ?? ds;
-  _ctx.save();
-
-  if (op.type === 'window') {
-    // Заливка проёма
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
-    _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
-    _ctx.fillStyle = fillColor; _ctx.fill();
-
-    // Только две длинные стороны (вдоль стены) — рама окна
-    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5;
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y); // внешняя грань
-    _ctx.moveTo(c4.x, c4.y); _ctx.lineTo(c3.x, c3.y); // внутренняя грань
-    // Торцы рамы
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c4.x, c4.y);
-    _ctx.moveTo(c2.x, c2.y); _ctx.lineTo(c3.x, c3.y);
-    _ctx.stroke();
-
-    // Одна средняя линия — стеклопакет (одна линия посередине вдоль стены)
-    const mx1 = (c1.x + c4.x) / 2, my1 = (c1.y + c4.y) / 2;
-    const mx2 = (c2.x + c3.x) / 2, my2 = (c2.y + c3.y) / 2;
-    _ctx.beginPath(); _ctx.moveTo(mx1, my1); _ctx.lineTo(mx2, my2);
-    _ctx.lineWidth = 1; _ctx.stroke();
-
-  } else {
-    // Дверь: только белая заливка проёма (без обводки прямоугольника)
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
-    _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
-
-    const hp = doorHinge === 'start' ? p1 : p2;
-    const leafEnd = doorHinge === 'start' ? p2 : p1;
-    const leafLen = Math.hypot(leafEnd.x - hp.x, leafEnd.y - hp.y);
-    const baseAngle = doorHinge === 'start' ? angle : angle + Math.PI;
-    const openAngle = baseAngle + doorSwing * Math.PI / 2;
-    const arcEnd = { x: hp.x + Math.cos(openAngle) * leafLen, y: hp.y + Math.sin(openAngle) * leafLen };
-
-    // Линия петли через толщину стены
-    const hc1 = doorHinge === 'start' ? c1 : c2;
-    const hc2 = doorHinge === 'start' ? c4 : c3;
-    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.setLineDash([]);
-    _ctx.beginPath();
-    _ctx.moveTo(hc1.x, hc1.y); _ctx.lineTo(hc2.x, hc2.y);
-    // Полотно двери в закрытом положении
-    _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(leafEnd.x, leafEnd.y);
-    _ctx.stroke();
-    // Дуга траектории
-    _ctx.beginPath(); _ctx.arc(hp.x, hp.y, leafLen, baseAngle, openAngle, doorSwing < 0);
-    _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]); _ctx.stroke(); _ctx.setLineDash([]);
-    // Полотно в открытом положении
-    _ctx.beginPath(); _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(arcEnd.x, arcEnd.y);
-    _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
-  }
-
-  if (isHover) drawOpeningDimensions(op, wall, angle, { x1: ax1, y1: ay1, x2: ax2, y2: ay2 });
-  _ctx.restore();
-}
-
-function drawOpeningDimensions(op, wall, angle, seg) {
-  const ws = toScreen(wall.x1, wall.y1), we = toScreen(wall.x2, wall.y2);
-  const os = toScreen(seg.x1, seg.y1), oe = toScreen(seg.x2, seg.y2);
-  const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
-  const side = wallInteriorSide(wall, 1), off = wall.thickness / 2 + 18;
-  const oP = p => ({ x: p.x + normal.x * off * side, y: p.y + normal.y * off * side });
-  const dim = (from, to, label, color) => {
-    if (Math.hypot(to.x - from.x, to.y - from.y) < 8) return;
-    const fo = oP(from), to2 = oP(to);
-    _ctx.save(); _ctx.strokeStyle = color; _ctx.lineWidth = 1;
-    _ctx.beginPath(); _ctx.moveTo(from.x, from.y); _ctx.lineTo(fo.x, fo.y);
-    _ctx.moveTo(to.x, to.y); _ctx.lineTo(to2.x, to2.y); _ctx.moveTo(fo.x, fo.y); _ctx.lineTo(to2.x, to2.y); _ctx.stroke(); _ctx.restore();
-    drawAlignedTextBox(label, { x: (fo.x + to2.x) / 2, y: (fo.y + to2.y) / 2 }, angle);
-  };
-  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-  dim(ws, os, `${Math.round(op.t * wlen - op.width / 2)} мм`, DRAW_COLORS.dimension);
-  dim(os, oe, `${op.width} мм`, op.type === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke);
-  dim(oe, we, `${Math.round(wlen - (op.t * wlen + op.width / 2))} мм`, DRAW_COLORS.dimension);
-}
-
-function drawSelectedHandles(tool, selectedItems, wallResizeState) {
-  if (tool !== 'select') return;
-  const wall = selectedItems.length === 1 && selectedItems[0].type === 'wall'
-    ? appState.walls.find(w => w.id === selectedItems[0].id) : null;
-  if (!wall) return;
-  for (const h of getWallResizeHandles(wall)) {
-    const active = wallResizeState?.wallId === wall.id && wallResizeState?.endpoint === h.endpoint;
-    _ctx.save(); _ctx.beginPath(); _ctx.arc(h.screen.x, h.screen.y, active ? 7.5 : 6.5, 0, Math.PI * 2);
-    _ctx.fillStyle = DRAW_COLORS.handleFill; _ctx.fill();
-    _ctx.strokeStyle = active ? DRAW_COLORS.handleActive : DRAW_COLORS.handleStroke;
-    _ctx.lineWidth = active ? 2.5 : 1.8; _ctx.stroke();
-    _ctx.beginPath(); _ctx.arc(h.screen.x, h.screen.y, 2, 0, Math.PI * 2);
-    _ctx.fillStyle = active ? DRAW_COLORS.handleActive : DRAW_COLORS.handleStroke; _ctx.fill(); _ctx.restore();
-  }
-}
-
-function drawTempWall(ps) {
-  const { drawStart: ds, drawEnd: de, chainMode, lengthMode, lengthInput, wallOffset, inpWallThick, lengthOverlay, lengthLabel, lblLen, lblLenVal } = ps;
-  if (!ds || !de) return;
-  const scale = _getScale(), thick = parseFloat(inpWallThick?.value) || 200;
-  const angle = Math.atan2(de.y - ds.y, de.x - ds.x);
-  const ao = (cx, cy, off) => {
-    if (off === 'center') return { x: cx, y: cy };
-    const px = -Math.sin(angle), py = Math.cos(angle), sign = off === 'right' ? 1 : -1;
-    return { x: cx + sign * px * thick / 2, y: cy + sign * py * thick / 2 };
-  };
-  const s = ao(ds.x, ds.y, wallOffset), e2 = ao(de.x, de.y, wallOffset);
-  const p1 = toScreen(s.x, s.y), p2 = toScreen(e2.x, e2.y);
-  const ps1 = toScreen(ds.x, ds.y), ps2 = toScreen(de.x, de.y);
-  const halfT = (thick / 2) * scale;
-  const ndx = -Math.sin(angle) * halfT, ndy = Math.cos(angle) * halfT;
-  const len = Math.hypot(de.x - ds.x, de.y - ds.y);
-  _ctx.save();
-  _ctx.beginPath(); _ctx.moveTo(p1.x + ndx, p1.y + ndy); _ctx.lineTo(p2.x + ndx, p2.y + ndy);
-  _ctx.lineTo(p2.x - ndx, p2.y - ndy); _ctx.lineTo(p1.x - ndx, p1.y - ndy); _ctx.closePath();
-  _ctx.fillStyle = DRAW_COLORS.previewFill; _ctx.fill();
-  _ctx.strokeStyle = DRAW_COLORS.previewStroke; _ctx.lineWidth = 1.5; _ctx.setLineDash([6, 4]); _ctx.stroke(); _ctx.setLineDash([]);
-  _ctx.beginPath(); _ctx.moveTo(ps1.x, ps1.y); _ctx.lineTo(ps2.x, ps2.y);
-  _ctx.strokeStyle = DRAW_COLORS.previewCenterLine; _ctx.lineWidth = 0.8; _ctx.setLineDash([3, 4]); _ctx.stroke(); _ctx.setLineDash([]);
-  _ctx.beginPath(); _ctx.arc(ps1.x, ps1.y, chainMode ? 6 : 4, 0, Math.PI * 2);
-  _ctx.fillStyle = chainMode ? DRAW_COLORS.handleActive : DRAW_COLORS.previewStroke; _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke();
-  const snapType = de.snapType, endSnap = !!snapType || de.snappedToEndpoint;
-  const scm = { corner: DRAW_COLORS.corner, endpoint: DRAW_COLORS.endpoint, midpoint: DRAW_COLORS.midpoint,
-    intersection: DRAW_COLORS.intersection, perpendicular: DRAW_COLORS.perpendicular, wallFace: DRAW_COLORS.wallFace, wallAxis: DRAW_COLORS.wallAxis };
-  _ctx.beginPath(); _ctx.arc(ps2.x, ps2.y, endSnap ? 8 : 4, 0, Math.PI * 2);
-  _ctx.fillStyle = scm[snapType] || (endSnap ? DRAW_COLORS.endpoint : DRAW_COLORS.previewStroke);
-  _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke();
-  if (endSnap) { _ctx.beginPath(); _ctx.arc(ps2.x, ps2.y, 14, 0, Math.PI * 2); _ctx.strokeStyle = 'rgba(55,65,81,0.35)'; _ctx.lineWidth = 2; _ctx.stroke(); }
-  if (chainMode) {
-    _ctx.fillStyle = 'rgba(55,65,81,0.92)'; _ctx.beginPath();
-    if (_ctx.roundRect) _ctx.roundRect(8, 32, 130, 20, 4); else _ctx.rect(8, 32, 130, 20); _ctx.fill();
-    _ctx.fillStyle = '#fff'; _ctx.font = '600 11px Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'middle';
-    _ctx.fillText('⛓ Цепочка стен · Esc — стоп', 14, 42);
-  }
-  _ctx.restore();
-  const midX = (ps1.x + ps2.x) / 2, midY = (ps1.y + ps2.y) / 2;
-  if (lengthOverlay) lengthOverlay.style.display = 'block';
-  if (lengthLabel) { lengthLabel.style.left = midX + 'px'; lengthLabel.style.top = (midY - 8) + 'px';
-    lengthLabel.textContent = (lengthMode && lengthInput) ? `${lengthInput}_ мм` : `${Math.round(len)} мм`; }
-  if (lblLen) lblLen.style.display = 'inline';
-  if (lblLenVal) lblLenVal.textContent = Math.round(len);
-}
-
-function drawGuideLine(guide) {
-  const anchor = toScreen(guide.anchor.x, guide.anchor.y); _ctx.save();
-  for (const axis of getGuideAxes(guide)) {
-    const { start, end } = getGuideLineScreenEndpoints({ anchor: guide.anchor, dir: axis.dir });
-    _ctx.strokeStyle = axis.color; _ctx.lineWidth = 2; _ctx.setLineDash([5, 8]);
-    _ctx.beginPath(); _ctx.moveTo(start.x, start.y); _ctx.lineTo(end.x, end.y); _ctx.stroke();
-  }
-  _ctx.setLineDash([]); _ctx.fillStyle = DRAW_COLORS.guidePrimary;
-  _ctx.beginPath(); _ctx.arc(anchor.x, anchor.y, 4.5, 0, Math.PI * 2); _ctx.fill();
-  _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke(); _ctx.restore();
-}
-
-function drawCornerHotspots(snap) {
-  const pts = new Map();
-  if (Array.isArray(snap.highlightPoints) && snap.highlightPoints.length)
-    snap.highlightPoints.forEach(p => { const k = `${Math.round(p.x)},${Math.round(p.y)}`; if (!pts.has(k)) pts.set(k, p); });
-  else {
-    const ids = snap.wallIds?.length ? snap.wallIds : snap.wallId ? [snap.wallId] : [];
-    for (const id of ids) { const w = appState.walls.find(v => v.id === id); if (!w) continue;
-      for (const p of getWallCornerPoints(w)) { const k = `${Math.round(p.x)},${Math.round(p.y)}`; if (!pts.has(k)) pts.set(k, p); } }
-  }
-  _ctx.save();
-  for (const p of pts.values()) { const s = toScreen(p.x, p.y), active = Math.hypot(p.x - snap.x, p.y - snap.y) < 1;
-    _ctx.beginPath(); _ctx.arc(s.x, s.y, active ? 5 : 4, 0, Math.PI * 2);
-    _ctx.fillStyle = '#fff'; _ctx.fill(); _ctx.strokeStyle = active ? DRAW_COLORS.corner : 'rgba(17,24,39,0.35)';
-    _ctx.lineWidth = active ? 2 : 1.5; _ctx.stroke(); }
-  _ctx.restore();
-}
-
-function drawObjectSnap(snap) {
-  const p = toScreen(snap.x, snap.y);
-  const cm = { corner: DRAW_COLORS.corner, endpoint: DRAW_COLORS.endpoint, midpoint: DRAW_COLORS.midpoint,
-    intersection: DRAW_COLORS.intersection, perpendicular: DRAW_COLORS.perpendicular, wallFace: DRAW_COLORS.wallFace, wallAxis: DRAW_COLORS.wallAxis };
-  const color = cm[snap.type] || DRAW_COLORS.previewStroke;
-  _ctx.save(); _ctx.strokeStyle = color; _ctx.fillStyle = '#fff'; _ctx.lineWidth = 2;
-  if (snap.type === 'corner' || snap.type === 'endpoint') { _ctx.beginPath(); _ctx.rect(p.x - 4.5, p.y - 4.5, 9, 9); _ctx.fill(); _ctx.stroke(); }
-  else if (snap.type === 'midpoint') { _ctx.beginPath(); _ctx.moveTo(p.x, p.y - 6); _ctx.lineTo(p.x + 6, p.y); _ctx.lineTo(p.x, p.y + 6); _ctx.lineTo(p.x - 6, p.y); _ctx.closePath(); _ctx.fill(); _ctx.stroke(); }
-  else if (snap.type === 'intersection') { _ctx.beginPath(); _ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); _ctx.fill(); _ctx.stroke(); }
-  else if (snap.type === 'wallFace' || snap.type === 'wallAxis') {
-    const wa = snap.wallAngle || 0, ux = Math.cos(wa), uy = Math.sin(wa), nx = -uy, ny = ux;
-    _ctx.beginPath(); _ctx.moveTo(p.x - ux * 7, p.y - uy * 7); _ctx.lineTo(p.x + ux * 7, p.y + uy * 7);
-    _ctx.moveTo(p.x - nx * 4, p.y - ny * 4); _ctx.lineTo(p.x + nx * 4, p.y + ny * 4); _ctx.stroke();
-    _ctx.beginPath(); _ctx.arc(p.x, p.y, snap.type === 'wallFace' ? 4.5 : 3.5, 0, Math.PI * 2); _ctx.fill(); _ctx.stroke();
-  }
-  drawAlignedTextBox(snap.label, { x: p.x, y: p.y - 18 }, 0, { textColor: color, background: 'rgba(255,255,255,0.96)' });
-  _ctx.restore();
-}
-
-function drawSelectionBox(start, current) {
-  if (!start || !current) return;
-  const box = { left: Math.min(start.x, current.x), top: Math.min(start.y, current.y), right: Math.max(start.x, current.x), bottom: Math.max(start.y, current.y) };
-  if ((box.right - box.left) <= 5 && (box.bottom - box.top) <= 5) return;
-  _ctx.save(); _ctx.fillStyle = DRAW_COLORS.selectionFill; _ctx.strokeStyle = DRAW_COLORS.selectionStroke;
-  _ctx.lineWidth = 1; _ctx.setLineDash([6, 4]);
-  _ctx.fillRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
-  _ctx.strokeRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
-  _ctx.setLineDash([]); _ctx.restore();
-}
-
-function drawCursorGhost(ps) {
-  const { tool, mouseScreen, isPanning, inpWallThick } = ps;
-  if (!mouseScreen || isPanning || (tool !== 'window' && tool !== 'door')) return;
-  const scale = _getScale(), thick = parseFloat(inpWallThick?.value) || 200;
-  const w = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowWidth' : 'inpDoorWidth')?.value) || (tool === 'window' ? 1200 : 900);
-  const h = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowHeight' : 'inpDoorHeight')?.value) || (tool === 'window' ? 1500 : 2100);
-  const gw = Math.max(36, Math.min(220, w * scale)), gd = Math.max(12, Math.min(40, thick * scale));
-  const ox = Math.min(_canvas.width - gw - 84, mouseScreen.x + 18), oy = Math.min(_canvas.height - 62, mouseScreen.y + 18);
-  _ctx.save(); _ctx.translate(ox, oy);
-  _ctx.fillStyle = 'rgba(255,255,255,0.92)'; _ctx.strokeStyle = tool === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke; _ctx.lineWidth = 1.2;
-  _ctx.beginPath(); if (_ctx.roundRect) _ctx.roundRect(-8, -8, gw + 16, gd + 34, 10); else _ctx.rect(-8, -8, gw + 16, gd + 34); _ctx.fill(); _ctx.stroke();
-  _ctx.beginPath(); _ctx.rect(0, 0, gw, gd);
-  _ctx.fillStyle = tool === 'window' ? DRAW_COLORS.windowHover : DRAW_COLORS.doorHover; _ctx.fill();
-  _ctx.strokeStyle = tool === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke; _ctx.stroke();
-  _ctx.fillStyle = DRAW_COLORS.roomLabel; _ctx.font = '600 10px Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'top';
-  _ctx.fillText(`${w} × ${h} мм`, 0, gd + 8); _ctx.restore();
-}
+export function forceRedraw() { doRedraw(); }
