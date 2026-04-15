@@ -112,30 +112,7 @@ export function isPointInsideWallSurface(point, wall, padding = 0.75) {
   return along >= -padding && along <= len + padding && Math.abs(normal) <= wall.thickness / 2 + padding;
 }
 
-/**
- * Distance from point to wall surface (axis-aligned distance to the rectangle).
- * Returns 0 if point is inside the wall.
- */
-export function distanceToWallSurface(point, wall) {
-  const start = { x: wall.x1, y: wall.y1 };
-  const end   = { x: wall.x2, y: wall.y2 };
-  const dx = end.x - start.x, dy = end.y - start.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.0001) return Math.hypot(point.x - start.x, point.y - start.y);
-  const ux = dx / len, uy = dy / len;
-  const nx = -uy, ny = ux;
-  const relX = point.x - start.x, relY = point.y - start.y;
-  const along  = relX * ux + relY * uy;
-  const normal = Math.abs(relX * nx + relY * ny);
-  const clampedAlong = Math.max(0, Math.min(len, along));
-  const closestX = start.x + ux * clampedAlong;
-  const closestY = start.y + uy * clampedAlong;
-  const distToAxis = Math.hypot(point.x - closestX, point.y - closestY);
-  return Math.max(0, distToAxis - wall.thickness / 2);
-}
-
 export function isWallEndpointCoveredByAnotherWall(wall, endpoint) {
-  // Use contour point (where user clicked) — this matches how joints are detected
   const point = endpoint === 'start'
     ? { x: wall.cx1 ?? wall.x1, y: wall.cy1 ?? wall.y1 }
     : { x: wall.cx2 ?? wall.x2, y: wall.cy2 ?? wall.y2 };
@@ -184,20 +161,14 @@ export function invalidateJointCache() {
   _jointRectsCache = null;
 }
 
-/**
- * Compute all joint fill rectangles.
- * Uses endpoint-to-endpoint detection via jointMap (contour points cx/cy).
- * This correctly handles corners drawn by offset since the contour point
- * where the user clicked is the same for both walls at the joint.
- */
 export function getWallJointRects(jointMap = null) {
-  const cacheKey = JSON.stringify(appState.walls.map(w =>
-    `${w.id},${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`));
+  // Bug #12 fix: cache the result and only recompute when walls change.
+  const cacheKey = JSON.stringify(appState.walls.map(w => `${w.id},${w.x1},${w.y1},${w.x2},${w.y2},${w.thickness}`));
   if (_jointRectsCache && _jointRectsCacheKey === cacheKey) return _jointRectsCache;
 
   const map = jointMap || buildWallJointMap();
   const rects = [];
-  const seenKeys = new Set();
+  const seenRects = new Set();
 
   for (const items of map.values()) {
     if (items.length < 2) continue;
@@ -207,47 +178,20 @@ export function getWallJointRects(jointMap = null) {
 
     for (const horizontal of horizontals) {
       for (const vertical of verticals) {
-        // Use the physical midpoint of the joint for rect calculation,
-        // not the contour point (which may be offset from the physical axis).
-        // We project the contour joint onto each wall's physical axis.
-        const hGeo = getWallWorldGeometry(horizontal.wall);
-        const vGeo = getWallWorldGeometry(vertical.wall);
-
-        // Physical joint: intersection of the two physical axes (or closest point)
-        // For orthogonal walls this is simply (hAxis.y, vAxis.x) at the joint.
-        // We use hGeo p1/p2 and vGeo p1/p2 to find it.
-        const hAngle = hGeo.angle, vAngle = vGeo.angle;
-        const isHHoriz = Math.abs(Math.cos(hAngle)) > Math.abs(Math.sin(hAngle));
-        const isVVert  = Math.abs(Math.sin(vAngle)) > Math.abs(Math.cos(vAngle));
-
-        // For axis-aligned walls, physical joint x comes from vertical wall axis,
-        // physical joint y comes from horizontal wall axis.
-        let jx, jy;
-        if (isHHoriz && isVVert) {
-          jx = (vGeo.p1.x + vGeo.p2.x) / 2; // vertical wall's x axis
-          jy = (hGeo.p1.y + hGeo.p2.y) / 2; // horizontal wall's y axis
-          // More precise: use actual axis values
-          jx = vGeo.p1.x; // vertical wall runs vertically, x1==x2
-          jy = hGeo.p1.y; // horizontal wall runs horizontally, y1==y2
-        } else {
-          // Non-axis-aligned: fall back to contour point
-          jx = horizontal.point.x;
-          jy = horizontal.point.y;
-        }
-
+        const joint = horizontal.point;
         const hBounds = getWallWorldBounds(horizontal.wall);
         const vBounds = getWallWorldBounds(vertical.wall);
-        const x1 = horizontal.direction.x > 0 ? vBounds.minX : Math.max(vBounds.minX, jx);
-        const x2 = horizontal.direction.x > 0 ? Math.min(vBounds.maxX, jx) : vBounds.maxX;
-        const y1 = vertical.direction.y > 0 ? hBounds.minY : Math.max(hBounds.minY, jy);
-        const y2 = vertical.direction.y > 0 ? Math.min(hBounds.maxY, jy) : hBounds.maxY;
+        const x1 = horizontal.direction.x > 0 ? vBounds.minX : Math.max(vBounds.minX, joint.x);
+        const x2 = horizontal.direction.x > 0 ? Math.min(vBounds.maxX, joint.x) : vBounds.maxX;
+        const y1 = vertical.direction.y > 0 ? hBounds.minY : Math.max(hBounds.minY, joint.y);
+        const y2 = vertical.direction.y > 0 ? Math.min(hBounds.maxY, joint.y) : hBounds.maxY;
         const left = Math.min(x1, x2), right = Math.max(x1, x2);
         const top  = Math.min(y1, y2), bottom = Math.max(y1, y2);
         if ((right - left) < 1 || (bottom - top) < 1) continue;
 
         const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
-        if (seenKeys.has(key)) continue;
-        seenKeys.add(key);
+        if (seenRects.has(key)) continue;
+        seenRects.add(key);
 
         const boundaryEdges = getJointBoundaryEdges(left, top, right, bottom, horizontal.direction, vertical.direction);
         if (!boundaryEdges.length) continue;
@@ -416,6 +360,7 @@ export function deleteSelectedItems(selectedItems) {
   const wallIds    = new Set(selectedItems.filter(i => i.type === 'wall').map(i => i.id));
   const openingIds = new Set(selectedItems.filter(i => i.type === 'opening').map(i => i.id));
   appState.walls    = appState.walls.filter(w => !wallIds.has(w.id));
+  // Bug #2 fix: also remove openings whose wall was deleted
   appState.openings = appState.openings.filter(o =>
     !wallIds.has(o.wallId) && !openingIds.has(o.id));
   invalidateJointCache();
@@ -441,49 +386,11 @@ export function findClosestWall(wx, wy, threshold = 60) {
   return best;
 }
 
-/**
- * Find the wall whose SURFACE is closest to the given world point.
- * Uses actual perpendicular distance to the wall rectangle, not just the axis.
- */
 export function findClosestWallSel(wx, wy, threshold = 40) {
   let best = null, bestDist = threshold;
   for (const w of appState.walls) {
-    const dist = distanceToWallSurface({ x: wx, y: wy }, w);
+    const { dist } = segmentClosest(wx, wy, w);
     if (dist < bestDist) { best = w; bestDist = dist; }
-  }
-  return best;
-}
-
-/**
- * Find the opening whose centre (on the wall axis) is within threshold of
- * the given world point.  The threshold is in world-mm so it adapts to scale.
- */
-export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
-  let best = null, bestDist = thresholdWorld;
-  for (const op of appState.openings) {
-    const wall = appState.walls.find(w => w.id === op.wallId);
-    if (!wall) continue;
-    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-    const halfT = wall.thickness / 2;
-
-    // Centre of the opening in world coords
-    const cx = wall.x1 + (wall.x2 - wall.x1) * op.t;
-    const cy = wall.y1 + (wall.y2 - wall.y1) * op.t;
-
-    // Project the query point onto the opening's local frame
-    const ux = Math.cos(angle), uy = Math.sin(angle);
-    const nx = -uy, ny = ux;
-    const relX = wx - cx, relY = wy - cy;
-    const along  = relX * ux + relY * uy;  // along the wall axis
-    const normal = Math.abs(relX * nx + relY * ny);  // perpendicular to wall
-
-    const halfW = op.width / 2;
-    const dAlong  = Math.max(0, Math.abs(along)  - halfW);
-    const dNormal = Math.max(0, normal - halfT);
-    const dist = Math.hypot(dAlong, dNormal);
-
-    if (dist < bestDist) { best = op; bestDist = dist; }
   }
   return best;
 }
