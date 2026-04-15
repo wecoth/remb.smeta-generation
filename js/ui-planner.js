@@ -3,9 +3,8 @@ import { appState } from './state.js';
 import {
   addWall, deleteSelectedItems, findClosestWall, findClosestWallSel,
   getWallContourPoint, updateWallGeometry, setWallLength, getWallLength,
-  invalidateJointCache,
+  invalidateJointCache, findClosestOpeningByProximity,
 } from './wall.js';
-import { addOpening, findClosestOpening, updateDoorOpening } from './opening.js';
 import { computeRooms, updateExpl, getComputedRooms, renameRoom } from './room.js';
 import {
   snap, setViewport, setModifiers, toScreen, toWorld,
@@ -24,7 +23,7 @@ let tool = 'select';
 let isDrawing = false, drawStart = null, drawEnd = null;
 let chainMode = false, lengthInput = '', lengthMode = false;
 let wallOffset = 'center';
-let hoverOpening = null;
+let hoverOpening = null, hoverItem = null;
 let defaultDoorHinge = 'start', defaultDoorSwing = 1;
 let selectedItems = [], wallResizeState = null, wallLengthAnchor = 'start';
 let scale = 0.12, panX = 200, panY = 150;
@@ -125,7 +124,7 @@ export function initPlanner(domRefs) {
     if (!confirm('Создать новый проект? Текущий чертёж будет очищен.')) return;
     appState.walls = []; appState.openings = []; appState.rooms = [];
     appState.idWall = 1; appState.idOpen = 1; appState.roomNameOverrides = {};
-    hoverOpening = null; wallResizeState = null;
+    hoverOpening = null; hoverItem = null; wallResizeState = null;
     resetDrawingState(); clearSelectionBox(); clearSelection();
     updateExpl(dom.explBody, dom.roomCount);
     recordHistory(); doRedraw();
@@ -202,7 +201,7 @@ function doRedraw() {
 function getPlannerState() {
   return {
     scale, selectedItems, tool, isDrawing, drawStart, drawEnd,
-    currentGuideLine, currentObjectSnap, hoverOpening,
+    currentGuideLine, currentObjectSnap, hoverOpening, hoverItem,
     selectBoxStart, selectBoxCurrent, chainMode, lengthMode, lengthInput,
     wallResizeState, wallOffset, defaultDoorHinge, defaultDoorSwing,
     inpWallThick: dom.inpWallThick,
@@ -229,7 +228,7 @@ function resetDrawingState() {
 function clearSelectionBox() { selectBoxStart = null; selectBoxCurrent = null; }
 
 function clearSelection() {
-  selectedItems = []; wallResizeState = null;
+  selectedItems = []; wallResizeState = null; hoverItem = null;
   if (dom.editPanel) dom.editPanel.style.display = 'none';
   if (dom.editContent) dom.editContent.innerHTML = '';
   syncDoorButtons(); doRedraw();
@@ -264,7 +263,7 @@ function updateHistoryBtns() {
 }
 
 function onHistoryRestore() {
-  hoverOpening = null; mouseScreen = null; wallResizeState = null;
+  hoverOpening = null; hoverItem = null; mouseScreen = null; wallResizeState = null;
   resetDrawingState(); clearSelectionBox(); clearSelection();
   computeRooms(getWallHeightFallback());
   updateExpl(dom.explBody, dom.roomCount);
@@ -287,7 +286,7 @@ export function setTool(t) {
   tool = t;
   wallResizeState = null; // Bug #3 fix
   if (t !== 'wall') resetDrawingState();
-  clearSelectionBox(); hoverOpening = null; currentObjectSnap = null;
+  clearSelectionBox(); hoverOpening = null; hoverItem = null; currentObjectSnap = null;
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tool' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
   const labels = { select: 'Выбор', wall: 'Стена', window: 'Окно', door: 'Дверь' };
@@ -520,8 +519,11 @@ function onMouseDown(e) {
 }
 
 function hitTestObject(wx, wy) {
-  const op = findClosestOpening(wx, wy); if (op) return { type: 'opening', id: op.id };
-  const wall = findClosestWallSel(wx, wy); if (wall) return { type: 'wall', id: wall.id };
+  const CLICK_THRESHOLD = 80 / scale;
+  const op = findClosestOpeningByProximity(wx, wy, CLICK_THRESHOLD);
+  if (op) return { type: 'opening', id: op.id };
+  const wall = findClosestWallSel(wx, wy, CLICK_THRESHOLD);
+  if (wall) return { type: 'wall', id: wall.id };
   return null;
 }
 
@@ -568,6 +570,29 @@ function onMouseMove(e) {
 
   if (tool === 'select' && selectBoxStart) { selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw(); return; }
 
+  // ── Proximity hover (select tool) ────────────────────────────────
+  if (tool === 'select' && !selectBoxStart && !wallResizeState) {
+    const HOVER_THRESHOLD_WORLD = 60 / scale; // ~60 screen pixels in world mm
+    const hoverOp = findClosestOpeningByProximity(world.x, world.y, HOVER_THRESHOLD_WORLD);
+    if (hoverOp) {
+      const newHover = { type: 'opening', id: hoverOp.id };
+      if (!hoverItem || hoverItem.type !== newHover.type || hoverItem.id !== newHover.id) {
+        hoverItem = newHover; doRedraw();
+      }
+    } else {
+      const hoverW = findClosestWallSel(world.x, world.y, HOVER_THRESHOLD_WORLD);
+      const newHoverId = hoverW ? hoverW.id : null;
+      const curId = hoverItem?.type === 'wall' ? hoverItem.id : null;
+      if (newHoverId !== curId) {
+        hoverItem = hoverW ? { type: 'wall', id: hoverW.id } : null;
+        doRedraw();
+      }
+    }
+    canvas.style.cursor = hoverItem ? 'pointer' : (hitTestWallResizeHandle(pos, tool, selectedItems) ? 'grab' : 'default');
+  } else if (tool !== 'select') {
+    if (hoverItem) { hoverItem = null; doRedraw(); }
+  }
+
   if (tool === 'window' || tool === 'door') {
     const hit = findClosestWall(world.x, world.y);
     if (hit) {
@@ -588,7 +613,7 @@ function onMouseMove(e) {
     updateWallGuide(world, pos); drawEnd = getWallPreviewEnd(world); doRedraw();
   } else if (tool === 'wall' && !isDrawing) doRedraw();
 
-  if (tool === 'select' && !selectBoxStart) {
+  if (tool === 'select' && !selectBoxStart && !hoverItem) {
     canvas.style.cursor = hitTestWallResizeHandle(pos, tool, selectedItems) ? 'grab' : 'default';
   }
 }
@@ -657,7 +682,7 @@ function onKeyDown(e) {
   if (e.key === 'Control') { ctrlDown = true; setModifiers(shiftDown, true); updateSnapBadge(); }
   if (e.key === 'Escape') {
     if (isDrawing) { resetDrawingState(); doRedraw(); }
-    clearSelectionBox(); clearSelection(); hoverOpening = null; doRedraw();
+    clearSelectionBox(); clearSelection(); hoverOpening = null; hoverItem = null; doRedraw();
   }
   if (!editable && (e.key === 'Delete' || e.key === 'Backspace') && selectedItems.length) {
     dom.btnDeleteSelected?.click(); e.preventDefault();
