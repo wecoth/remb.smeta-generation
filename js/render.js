@@ -237,64 +237,67 @@ function drawRoomFills(selectedItems) {
 }
 
 function drawWalls(selectedItems) {
-  const scale = _getScale(); const jmap = buildWallJointMap();
+  const scale = _getScale();
+  const jmap = buildWallJointMap();
   const jrects = getWallJointRects();
 
-  // Pass 1: fill all walls (solid + hatch)
-  for (const w of appState.walls) {
-    const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-    const trace = () => { _ctx.beginPath(); _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y); _ctx.closePath(); };
-    fillWall(trace, style.fill);
+  // Предварительно вычисляем clip-точки для всех стен
+  const wallData = appState.walls.map(w => {
+    const g = sg(w);
+    const isSel = sel('wall', w.id, selectedItems);
+    const style = wallStyle(isSel);
+    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
+    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
+    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
+    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
+    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
+    const sp = getWallContourPoint(w, 'start');
+    const ep = getWallContourPoint(w, 'end');
+    const hasStartJR = myJoints.some(jr =>
+      sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
+    const hasEndJR = myJoints.some(jr =>
+      ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
+    const wclipS = (sj && !hasStartJR) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
+    const wclipE = (ej && !hasEndJR)   ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
+    // Screen-координаты 4 углов с учётом clip
+    const ptA = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : g.a;
+    const ptB = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : g.b;
+    const ptC = wclipE?.dc ? toScreen(wclipE.dc.x, wclipE.dc.y) : g.c;
+    const ptD = wclipS?.dc ? toScreen(wclipS.dc.x, wclipS.dc.y) : g.d;
+    return { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD };
+  });
+
+  // Pass 1: fill обрезанным полигоном
+  for (const { style, ptA, ptB, ptC, ptD } of wallData) {
+    fillWall(() => {
+      _ctx.beginPath();
+      _ctx.moveTo(ptA.x, ptA.y); _ctx.lineTo(ptB.x, ptB.y);
+      _ctx.lineTo(ptC.x, ptC.y); _ctx.lineTo(ptD.x, ptD.y);
+      _ctx.closePath();
+    }, style.fill);
   }
 
-  // Pass 2: fill joint rects (orthogonal corners only — covers interior lines)
+  // Pass 2: fill joint rects (ортогональные углы)
   for (const jr of jrects) {
     const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
     const style = wallStyle(isSel);
     const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
     const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
     const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr-rl, rb-rt); }, style.fill);
   }
 
-  // Pass 3: stroke wall outlines
-  for (const w of appState.walls) {
-    const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
-    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
-    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
-    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
-
-    // Проверяем joint rect КОНКРЕТНО на каждом конце, а не у стены в целом.
-    // Стена может иметь joint rect на одном конце (ортогональный) и диагональный на другом.
-    const sp = getWallContourPoint(w, 'start');
-    const ep = getWallContourPoint(w, 'end');
-    const hasStartJointRect = myJoints.some(jr =>
-      sp.x >= jr.left - 2 && sp.x <= jr.right + 2 && sp.y >= jr.top - 2 && sp.y <= jr.bottom + 2);
-    const hasEndJointRect = myJoints.some(jr =>
-      ep.x >= jr.left - 2 && ep.x <= jr.right + 2 && ep.y >= jr.top - 2 && ep.y <= jr.bottom + 2);
-
-    // Clip в world-координатах для диагональных стыков (только если нет joint rect на этом конце)
-    const wclipS = (sj && !hasStartJointRect) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
-    const wclipE = (ej && !hasEndJointRect)   ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
-
-    // Переводим world clip-точки в screen
-    const clipSab = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : null;
-    const clipEab = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : null;
-    const clipSdc = wclipS?.dc ? toScreen(wclipS.dc.x, wclipS.dc.y) : null;
-    const clipEdc = wclipE?.dc ? toScreen(wclipE.dc.x, wclipE.dc.y) : null;
-
+  // Pass 3: stroke outlines
+  for (const { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD } of wallData) {
     _ctx.save();
     _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
     _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
     _ctx.beginPath();
-    drawClippedFace(clipSab || g.a, clipEab || g.b, myJoints);
-    drawClippedFace(clipSdc || g.d, clipEdc || g.c, myJoints);
+    drawClippedFace(ptA, ptB, myJoints); // грань ab
+    drawClippedFace(ptD, ptC, myJoints); // грань dc
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
-
     if (scale > 0.08) {
       const len = getWallLength(w), mx = (g.p1.x + g.p2.x) / 2, my = (g.p1.y + g.p2.y) / 2;
       const side = wallInteriorSide(w), off = g.halfT * scale + 18;
