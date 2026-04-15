@@ -259,6 +259,7 @@ function drawRoomFills(selectedItems) {
 
 function drawWalls(selectedItems) {
   const scale = _getScale();
+  const jmap = buildWallJointMap();
 
   // Pass 1: fill all walls
   for (const w of appState.walls) {
@@ -277,9 +278,12 @@ function drawWalls(selectedItems) {
     fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
   }
 
-  // Pass 3: stroke all wall outlines — each wall as a closed path with miter joins
+  // Pass 3: stroke wall outlines — closed rect per wall, miter joins
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
+    const sj = getWallJointItemsForEndpoint(jmap, w, 'start').length > 1 || isWallEndpointCoveredByAnotherWall(w, 'start');
+    const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
+
     _ctx.save();
     _ctx.strokeStyle = style.stroke;
     _ctx.lineWidth = isSel ? 1.8 : 1.2;
@@ -287,11 +291,12 @@ function drawWalls(selectedItems) {
     _ctx.miterLimit = 10;
     _ctx.lineCap = 'butt';
     _ctx.beginPath();
-    _ctx.moveTo(g.a.x, g.a.y);
-    _ctx.lineTo(g.b.x, g.b.y);
-    _ctx.lineTo(g.c.x, g.c.y);
-    _ctx.lineTo(g.d.x, g.d.y);
-    _ctx.closePath();
+    // Long faces always
+    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
+    _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.c.x, g.c.y);
+    // End caps only when no joint
+    if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
+    if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
     _ctx.restore();
 
