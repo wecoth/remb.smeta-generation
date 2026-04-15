@@ -40,23 +40,17 @@ export function computeRooms(wallHeightFallback = 2700) {
   appState.rooms = [];
   const eps = 2;
 
-  // Включаем как оси стен, так и их внешние кромки
-  // Это позволяет привязываться к внешней стороне соседней стены
-  const axisWalls = appState.walls.filter(w =>
-    Math.abs((w.cy1 ?? w.y1) - (w.cy2 ?? w.y2)) < eps ||
-    Math.abs((w.cx1 ?? w.x1) - (w.cx2 ?? w.x2)) < eps
-  );
-  if (axisWalls.length < 3) return;
+  // Включаем ВСЕ стены, не только строго осевые —
+  // потому что привязка может идти к внешней кромке соседней стены
+  const allWalls = appState.walls;
+  if (allWalls.length < 3) return;
 
-  // Bug #11 fix: cluster floating-point coordinates before building grid
-  // Добавляем и оси (cx/cy) и внешние кромки (x/y) для корректной привязки
+  // Собираем координаты: и оси (cx/cy) и физические грани (x/y)
+  // Это позволяет замыкать контур при привязке к любой грани стены
   const rawXs = [], rawYs = [];
-  for (const w of axisWalls) {
-    rawXs.push(w.cx1 ?? w.x1, w.cx2 ?? w.x2);
-    rawYs.push(w.cy1 ?? w.y1, w.cy2 ?? w.y2);
-    // Добавляем внешние кромки
-    rawXs.push(w.x1, w.x2);
-    rawYs.push(w.y1, w.y2);
+  for (const w of allWalls) {
+    rawXs.push(w.cx1 ?? w.x1, w.cx2 ?? w.x2, w.x1, w.x2);
+    rawYs.push(w.cy1 ?? w.y1, w.cy2 ?? w.y2, w.y1, w.y2);
   }
   const xList = clusterValues(rawXs, 5);
   const yList = clusterValues(rawYs, 5);
@@ -65,47 +59,52 @@ export function computeRooms(wallHeightFallback = 2700) {
   const horizEdges = new Set();
   const vertEdges  = new Set();
 
-  // Строим edges по осям стен — основной способ
-  for (const w of axisWalls) {
-    const x1 = w.cx1 ?? w.x1, y1 = w.cy1 ?? w.y1;
-    const x2 = w.cx2 ?? w.x2, y2 = w.cy2 ?? w.y2;
-    if (Math.abs(y1 - y2) < eps) {
-      const yIdx = yList.findIndex(v => Math.abs(v - y1) < eps);
-      if (yIdx < 0) continue;
-      const xmin = Math.min(x1, x2), xmax = Math.max(x1, x2);
-      for (let i = 0; i < xList.length - 1; i++) {
-        if (xList[i] >= xmin - eps && xList[i + 1] <= xmax + eps)
-          horizEdges.add(`${yIdx},${i}`);
-      }
-    } else {
-      const xIdx = xList.findIndex(v => Math.abs(v - x1) < eps);
-      if (xIdx < 0) continue;
-      const ymin = Math.min(y1, y2), ymax = Math.max(y1, y2);
-      for (let j = 0; j < yList.length - 1; j++) {
-        if (yList[j] >= ymin - eps && yList[j + 1] <= ymax + eps)
-          vertEdges.add(`${xIdx},${j}`);
-      }
+  // Вспомогательная функция — добавляем горизонтальный edge по y-координате
+  function addHorizEdge(y, xFrom, xTo) {
+    const yIdx = yList.findIndex(v => Math.abs(v - y) < eps);
+    if (yIdx < 0) return;
+    const xmin = Math.min(xFrom, xTo), xmax = Math.max(xFrom, xTo);
+    for (let i = 0; i < xList.length - 1; i++) {
+      if (xList[i] >= xmin - eps && xList[i + 1] <= xmax + eps)
+        horizEdges.add(`${yIdx},${i}`);
     }
-    // Добавляем edges по внешним кромкам стены как дополнительные границы
-    const ex1 = w.x1, ey1 = w.y1, ex2 = w.x2, ey2 = w.y2;
-    if (Math.abs(ey1 - ey2) < eps) {
-      const yIdx = yList.findIndex(v => Math.abs(v - ey1) < eps);
-      if (yIdx >= 0) {
-        const xmin = Math.min(ex1, ex2), xmax = Math.max(ex1, ex2);
-        for (let i = 0; i < xList.length - 1; i++) {
-          if (xList[i] >= xmin - eps && xList[i + 1] <= xmax + eps)
-            horizEdges.add(`${yIdx},${i}`);
-        }
-      }
-    } else if (Math.abs(ex1 - ex2) < eps) {
-      const xIdx = xList.findIndex(v => Math.abs(v - ex1) < eps);
-      if (xIdx >= 0) {
-        const ymin = Math.min(ey1, ey2), ymax = Math.max(ey1, ey2);
-        for (let j = 0; j < yList.length - 1; j++) {
-          if (yList[j] >= ymin - eps && yList[j + 1] <= ymax + eps)
-            vertEdges.add(`${xIdx},${j}`);
-        }
-      }
+  }
+
+  // Вспомогательная функция — добавляем вертикальный edge по x-координате
+  function addVertEdge(x, yFrom, yTo) {
+    const xIdx = xList.findIndex(v => Math.abs(v - x) < eps);
+    if (xIdx < 0) return;
+    const ymin = Math.min(yFrom, yTo), ymax = Math.max(yFrom, yTo);
+    for (let j = 0; j < yList.length - 1; j++) {
+      if (yList[j] >= ymin - eps && yList[j + 1] <= ymax + eps)
+        vertEdges.add(`${xIdx},${j}`);
+    }
+  }
+
+  // Фильтруем только горизонтальные и вертикальные стены
+  const axisWalls = allWalls.filter(w =>
+    Math.abs((w.cy1 ?? w.y1) - (w.cy2 ?? w.y2)) < eps ||
+    Math.abs((w.cx1 ?? w.x1) - (w.cx2 ?? w.x2)) < eps
+  );
+  if (axisWalls.length < 3) return;
+
+  for (const w of axisWalls) {
+    const cx1 = w.cx1 ?? w.x1, cy1 = w.cy1 ?? w.y1;
+    const cx2 = w.cx2 ?? w.x2, cy2 = w.cy2 ?? w.y2;
+
+    // Edges по контурной оси (cx/cy)
+    if (Math.abs(cy1 - cy2) < eps) {
+      addHorizEdge(cy1, cx1, cx2);
+    } else if (Math.abs(cx1 - cx2) < eps) {
+      addVertEdge(cx1, cy1, cy2);
+    }
+
+    // Edges по физическим граням стены (x/y со смещением offset)
+    // Это ключевое: позволяет строить соседние помещения от внешних кромок
+    if (Math.abs(w.y1 - w.y2) < eps) {
+      addHorizEdge(w.y1, w.x1, w.x2);
+    } else if (Math.abs(w.x1 - w.x2) < eps) {
+      addVertEdge(w.x1, w.y1, w.y2);
     }
   }
 
@@ -128,12 +127,21 @@ export function computeRooms(wallHeightFallback = 2700) {
     return axisWalls.find(w => {
       const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
       const wx2 = w.cx2 ?? w.x2, wy2 = w.cy2 ?? w.y2;
+      // Проверяем совпадение по контурной оси (cx/cy)
       if (seg.orientation === 'h') {
-        return Math.abs(wy1 - wy2) < eps && Math.abs(wy1 - seg.y1) < eps &&
-               rangesOverlap(seg.x1, seg.x2, wx1, wx2);
+        if (Math.abs(wy1 - wy2) < eps && Math.abs(wy1 - seg.y1) < eps &&
+            rangesOverlap(seg.x1, seg.x2, wx1, wx2)) return true;
+      } else {
+        if (Math.abs(wx1 - wx2) < eps && Math.abs(wx1 - seg.x1) < eps &&
+            rangesOverlap(seg.y1, seg.y2, wy1, wy2)) return true;
       }
-      return Math.abs(wx1 - wx2) < eps && Math.abs(wx1 - seg.x1) < eps &&
-             rangesOverlap(seg.y1, seg.y2, wy1, wy2);
+      // Проверяем совпадение по физическим граням (x/y со смещением)
+      if (seg.orientation === 'h') {
+        return Math.abs(w.y1 - w.y2) < eps && Math.abs(w.y1 - seg.y1) < eps &&
+               rangesOverlap(seg.x1, seg.x2, w.x1, w.x2);
+      }
+      return Math.abs(w.x1 - w.x2) < eps && Math.abs(w.x1 - seg.x1) < eps &&
+             rangesOverlap(seg.y1, seg.y2, w.y1, w.y2);
     }) || null;
   }
 
