@@ -172,10 +172,18 @@ export function getWallJointRects(jointMap = null) {
 
   for (const items of map.values()) {
     if (items.length < 2) continue;
-    // Only handle strictly orthogonal joints (one horizontal + one vertical wall)
-    // For diagonal walls, sj/ej endpoint hiding handles the junction visually
-    const horizontals = items.filter(item => Math.abs(item.direction.x) > 0 && item.direction.y === 0);
-    const verticals   = items.filter(item => Math.abs(item.direction.y) > 0 && item.direction.x === 0);
+    // Используем РЕАЛЬНЫЙ угол стены (не снапнутое направление).
+    // Иначе 45° стена классифицируется как "горизонтальная" и создаёт
+    // ложный joint rect с вертикальной стеной → артефакты на диагональных углах.
+    const ORTHO_TOL = 0.15; // sin(~8.6°)
+    const horizontals = items.filter(item => {
+      const a = Math.atan2(item.wall.y2 - item.wall.y1, item.wall.x2 - item.wall.x1);
+      return Math.abs(Math.sin(a)) < ORTHO_TOL;
+    });
+    const verticals = items.filter(item => {
+      const a = Math.atan2(item.wall.y2 - item.wall.y1, item.wall.x2 - item.wall.x1);
+      return Math.abs(Math.cos(a)) < ORTHO_TOL;
+    });
     if (!horizontals.length || !verticals.length) continue;
 
     for (const horizontal of horizontals) {
