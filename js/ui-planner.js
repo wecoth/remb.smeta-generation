@@ -523,12 +523,14 @@ function onMouseDown(e) {
       // Если клик по выделенному объекту — запускаем drag
       const isSelected = selectedItems.some(i => i.type === hit.type && i.id === hit.id);
       if (isSelected && selectedItems.length > 0) {
-        const wallSnapshots = selectedItems
-          .filter(i => i.type === 'wall')
-          .map(i => {
-            const w = appState.walls.find(v => v.id === i.id);
-            return w ? { id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, cx1: w.cx1 ?? w.x1, cy1: w.cy1 ?? w.y1, cx2: w.cx2 ?? w.x2, cy2: w.cy2 ?? w.y2 } : null;
-          }).filter(Boolean);
+        // Собираем все стены связанные топологически с выделенными
+        const seedIds = selectedItems.filter(i => i.type === 'wall').map(i => i.id);
+        const connectedIds = getTopologicallyConnected(seedIds);
+        const wallSnapshots = [...connectedIds].map(id => {
+          const w = appState.walls.find(v => v.id === id);
+          return w ? { id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
+            cx1: w.cx1 ?? w.x1, cy1: w.cy1 ?? w.y1, cx2: w.cx2 ?? w.x2, cy2: w.cy2 ?? w.y2 } : null;
+        }).filter(Boolean);
         dragState = { startWorld: { x: world.x, y: world.y }, lastWorld: { x: world.x, y: world.y }, wallSnapshots };
         selectBoxStart = null; selectBoxCurrent = null; selectClickCandidate = null;
         canvas.style.cursor = 'grabbing'; return;
@@ -542,6 +544,34 @@ function hitTestObject(wx, wy) {
   const op = findClosestOpening(wx, wy); if (op) return { type: 'opening', id: op.id };
   const wall = findClosestWallSel(wx, wy); if (wall) return { type: 'wall', id: wall.id };
   return null;
+}
+
+// Возвращает Set id всех стен, топологически связанных с заданными через общие контурные точки
+function getTopologicallyConnected(seedWallIds) {
+  const SNAP = 2; // мм, порог совпадения точек
+  const visited = new Set(seedWallIds);
+  const queue = [...seedWallIds];
+  while (queue.length) {
+    const id = queue.shift();
+    const wall = appState.walls.find(w => w.id === id);
+    if (!wall) continue;
+    const myPts = [
+      { x: wall.cx1 ?? wall.x1, y: wall.cy1 ?? wall.y1 },
+      { x: wall.cx2 ?? wall.x2, y: wall.cy2 ?? wall.y2 },
+    ];
+    for (const other of appState.walls) {
+      if (visited.has(other.id)) continue;
+      const otherPts = [
+        { x: other.cx1 ?? other.x1, y: other.cy1 ?? other.y1 },
+        { x: other.cx2 ?? other.x2, y: other.cy2 ?? other.y2 },
+      ];
+      const connected = myPts.some(mp => otherPts.some(op =>
+        Math.hypot(mp.x - op.x, mp.y - op.y) <= SNAP
+      ));
+      if (connected) { visited.add(other.id); queue.push(other.id); }
+    }
+  }
+  return visited;
 }
 
 // Bug #1 fix: debounce computeRooms during wall resize
