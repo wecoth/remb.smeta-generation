@@ -321,17 +321,37 @@ function lineLineIntersect(a, b, c, d) {
 }
 
 // Вычисляет clip-точки для диагональных стыков в world-координатах.
-// Принцип: ab грань нашей стены всегда встречается с ab гранью соседа,
-// dc — с dc. Это следует из геометрии (левая встречает левую, правая — правую).
+// ab грань нашей стены встречается с ab гранью соседа, dc — с dc.
+// Валидация: clip-точка должна быть в правильной половине стены (не уходить за середину).
 function getWorldFaceClips(wall, neighbors, endpoint) {
   const wg = getWallWorldGeometry(wall);
   const result = { ab: null, dc: null };
+
   for (const n of neighbors) {
     const ng = getWallWorldGeometry(n);
+
     const ptAB = lineLineIntersect(wg.a, wg.b, ng.a, ng.b);
-    if (ptAB) result.ab = ptAB;
+    if (ptAB) {
+      const dx = wg.b.x - wg.a.x, dy = wg.b.y - wg.a.y;
+      const len2 = dx*dx + dy*dy;
+      if (len2 > 0.0001) {
+        const t = ((ptAB.x - wg.a.x)*dx + (ptAB.y - wg.a.y)*dy) / len2;
+        // start: t ∈ [-0.5, 0.5]; end: t ∈ [0.5, 1.5]
+        if (endpoint === 'start' ? (t >= -0.5 && t <= 0.5) : (t >= 0.5 && t <= 1.5))
+          result.ab = ptAB;
+      }
+    }
+
     const ptDC = lineLineIntersect(wg.d, wg.c, ng.d, ng.c);
-    if (ptDC) result.dc = ptDC;
+    if (ptDC) {
+      const dx = wg.c.x - wg.d.x, dy = wg.c.y - wg.d.y;
+      const len2 = dx*dx + dy*dy;
+      if (len2 > 0.0001) {
+        const t = ((ptDC.x - wg.d.x)*dx + (ptDC.y - wg.d.y)*dy) / len2;
+        if (endpoint === 'start' ? (t >= -0.5 && t <= 0.5) : (t >= 0.5 && t <= 1.5))
+          result.dc = ptDC;
+      }
+    }
   }
   return result;
 }
