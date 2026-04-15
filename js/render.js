@@ -266,9 +266,18 @@ function drawWalls(selectedItems) {
     const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
 
-    // Clip в world-координатах для диагональных стыков
-    const wclipS = (sj && myJoints.length === 0) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
-    const wclipE = (ej && myJoints.length === 0) ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
+    // Проверяем joint rect КОНКРЕТНО на каждом конце, а не у стены в целом.
+    // Стена может иметь joint rect на одном конце (ортогональный) и диагональный на другом.
+    const sp = getWallContourPoint(w, 'start');
+    const ep = getWallContourPoint(w, 'end');
+    const hasStartJointRect = myJoints.some(jr =>
+      sp.x >= jr.left - 2 && sp.x <= jr.right + 2 && sp.y >= jr.top - 2 && sp.y <= jr.bottom + 2);
+    const hasEndJointRect = myJoints.some(jr =>
+      ep.x >= jr.left - 2 && ep.x <= jr.right + 2 && ep.y >= jr.top - 2 && ep.y <= jr.bottom + 2);
+
+    // Clip в world-координатах для диагональных стыков (только если нет joint rect на этом конце)
+    const wclipS = (sj && !hasStartJointRect) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
+    const wclipE = (ej && !hasEndJointRect)   ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
 
     // Переводим world clip-точки в screen
     const clipSab = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : null;
