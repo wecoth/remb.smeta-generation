@@ -184,53 +184,112 @@ export function invalidateJointCache() {
 }
 
 /**
- * Compute all wall overlap rectangles.
- * Covers corner, T-junction, and overlapping cases.
- * For each pair of walls whose bounding boxes overlap we take the intersection
- * rect. Each of its 4 edges is a boundary edge when its midpoint is NOT inside
- * BOTH walls simultaneously (i.e. it is an exposed outer face).
+ * Compute all joint fill rectangles.
+ *
+ * Two passes:
+ * 1. Original endpoint-to-endpoint algorithm (works perfectly for axis-aligned corners).
+ * 2. T-junction pass: when an endpoint of one wall lands inside another wall's body,
+ *    compute the overlap rect and boundary edges directly.
  */
 export function getWallJointRects(jointMap = null) {
   const cacheKey = JSON.stringify(appState.walls.map(w =>
     `${w.id},${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`));
   if (_jointRectsCache && _jointRectsCacheKey === cacheKey) return _jointRectsCache;
 
+  const map = jointMap || buildWallJointMap();
   const rects = [];
   const seenKeys = new Set();
-  const walls = appState.walls;
 
-  for (let i = 0; i < walls.length; i++) {
-    for (let j = i + 1; j < walls.length; j++) {
-      const a = walls[i], b = walls[j];
-      const ba = getWallWorldBounds(a), bb = getWallWorldBounds(b);
+  // ── Pass 1: original endpoint-to-endpoint corner algorithm ───────
+  for (const items of map.values()) {
+    if (items.length < 2) continue;
+    const horizontals = items.filter(item => Math.abs(item.direction.x) > 0);
+    const verticals   = items.filter(item => Math.abs(item.direction.y) > 0);
+    if (!horizontals.length || !verticals.length) continue;
 
-      const left   = Math.max(ba.minX, bb.minX);
-      const right  = Math.min(ba.maxX, bb.maxX);
-      const top    = Math.max(ba.minY, bb.minY);
-      const bottom = Math.min(ba.maxY, bb.maxY);
+    for (const horizontal of horizontals) {
+      for (const vertical of verticals) {
+        const joint = horizontal.point;
+        const hBounds = getWallWorldBounds(horizontal.wall);
+        const vBounds = getWallWorldBounds(vertical.wall);
+        const x1 = horizontal.direction.x > 0 ? vBounds.minX : Math.max(vBounds.minX, joint.x);
+        const x2 = horizontal.direction.x > 0 ? Math.min(vBounds.maxX, joint.x) : vBounds.maxX;
+        const y1 = vertical.direction.y > 0 ? hBounds.minY : Math.max(hBounds.minY, joint.y);
+        const y2 = vertical.direction.y > 0 ? Math.min(hBounds.maxY, joint.y) : hBounds.maxY;
+        const left = Math.min(x1, x2), right = Math.max(x1, x2);
+        const top  = Math.min(y1, y2), bottom = Math.max(y1, y2);
+        if ((right - left) < 1 || (bottom - top) < 1) continue;
 
-      if (right - left < 1 || bottom - top < 1) continue;
+        const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
 
-      const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
+        const boundaryEdges = getJointBoundaryEdges(left, top, right, bottom, horizontal.direction, vertical.direction);
+        if (!boundaryEdges.length) continue;
 
-      const cx = (left + right) / 2, cy = (top + bottom) / 2;
-      const eps = 1.5;
-      const edgeDefs = [
-        { side: 'top',    mid: { x: cx, y: top },    x1: left,  y1: top,    x2: right, y2: top    },
-        { side: 'bottom', mid: { x: cx, y: bottom },  x1: left,  y1: bottom, x2: right, y2: bottom },
-        { side: 'left',   mid: { x: left,  y: cy },   x1: left,  y1: top,    x2: left,  y2: bottom },
-        { side: 'right',  mid: { x: right, y: cy },   x1: right, y1: top,    x2: right, y2: bottom },
-      ];
+        rects.push({
+          key, left, top, right, bottom,
+          wallIds: [...new Set([horizontal.wall.id, vertical.wall.id])],
+          boundaryEdges,
+        });
+      }
+    }
+  }
 
-      const boundaryEdges = edgeDefs.filter(e => {
-        const inA = isPointInsideWallSurface(e.mid, a, eps);
-        const inB = isPointInsideWallSurface(e.mid, b, eps);
-        return !(inA && inB); // skip seams buried inside both walls
-      });
+  // ── Pass 2: T-junction — endpoint of wall A lands inside wall B ───
+  for (const wallA of appState.walls) {
+    for (const ep of ['start', 'end']) {
+      // Physical endpoint of wallA
+      const pt = ep === 'start'
+        ? { x: wallA.x1, y: wallA.y1 }
+        : { x: wallA.x2, y: wallA.y2 };
 
-      rects.push({ key, left, top, right, bottom, wallIds: [a.id, b.id], boundaryEdges });
+      for (const wallB of appState.walls) {
+        if (wallB.id === wallA.id) continue;
+        // Only handle the case where pt is inside wallB's body
+        // but wallB's endpoint is NOT the same point (that's handled by pass 1)
+        if (!isPointInsideWallSurface(pt, wallB, 2)) continue;
+
+        // Skip if wallB's own endpoints are close to pt (pass 1 covers those)
+        const bStart = { x: wallB.x1, y: wallB.y1 };
+        const bEnd   = { x: wallB.x2, y: wallB.y2 };
+        if (Math.hypot(pt.x - bStart.x, pt.y - bStart.y) < 5) continue;
+        if (Math.hypot(pt.x - bEnd.x,   pt.y - bEnd.y)   < 5) continue;
+
+        // The joint rect is the intersection of the two wall bounding boxes
+        const ba = getWallWorldBounds(wallA);
+        const bb = getWallWorldBounds(wallB);
+        const left   = Math.max(ba.minX, bb.minX);
+        const right  = Math.min(ba.maxX, bb.maxX);
+        const top    = Math.max(ba.minY, bb.minY);
+        const bottom = Math.min(ba.maxY, bb.maxY);
+        if (right - left < 1 || bottom - top < 1) continue;
+
+        const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+
+        // Boundary edges: sides of the joint rect that are outer faces of wallA
+        // (the entering wall), not buried inside wallB
+        const cx = (left + right) / 2, cy = (top + bottom) / 2;
+        const eps = 2;
+        const edgeDefs = [
+          { side: 'top',    mid: { x: cx, y: top },    x1: left,  y1: top,    x2: right, y2: top    },
+          { side: 'bottom', mid: { x: cx, y: bottom },  x1: left,  y1: bottom, x2: right, y2: bottom },
+          { side: 'left',   mid: { x: left,  y: cy },   x1: left,  y1: top,    x2: left,  y2: bottom },
+          { side: 'right',  mid: { x: right, y: cy },   x1: right, y1: top,    x2: right, y2: bottom },
+        ];
+        const boundaryEdges = edgeDefs.filter(e =>
+          isPointInsideWallSurface(e.mid, wallA, eps) &&
+          !isPointInsideWallSurface(e.mid, wallB, eps)
+        );
+
+        rects.push({
+          key, left, top, right, bottom,
+          wallIds: [wallA.id, wallB.id],
+          boundaryEdges,
+        });
+      }
     }
   }
 
