@@ -172,8 +172,10 @@ export function getWallJointRects(jointMap = null) {
 
   for (const items of map.values()) {
     if (items.length < 2) continue;
-    const horizontals = items.filter(item => Math.abs(item.direction.x) > 0);
-    const verticals   = items.filter(item => Math.abs(item.direction.y) > 0);
+    // Only handle strictly orthogonal joints (one horizontal + one vertical wall)
+    // For diagonal walls, sj/ej endpoint hiding handles the junction visually
+    const horizontals = items.filter(item => Math.abs(item.direction.x) > 0 && item.direction.y === 0);
+    const verticals   = items.filter(item => Math.abs(item.direction.y) > 0 && item.direction.x === 0);
     if (!horizontals.length || !verticals.length) continue;
 
     for (const horizontal of horizontals) {
