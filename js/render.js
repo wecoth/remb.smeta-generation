@@ -259,7 +259,6 @@ function drawRoomFills(selectedItems) {
 
 function drawWalls(selectedItems) {
   const scale = _getScale();
-  const jmap = buildWallJointMap();
 
   // Pass 1: fill all walls
   for (const w of appState.walls) {
@@ -278,24 +277,23 @@ function drawWalls(selectedItems) {
     fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
   }
 
-  // Pass 3: stroke all wall outlines on top — no clipping needed
+  // Pass 3: stroke all wall outlines — each wall as a closed path with miter joins
   for (const w of appState.walls) {
     const g = sg(w), isSel = sel('wall', w.id, selectedItems), style = wallStyle(isSel);
-    const sj = getWallJointItemsForEndpoint(jmap, w, 'start').length > 1 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = getWallJointItemsForEndpoint(jmap, w, 'end').length   > 1 || isWallEndpointCoveredByAnotherWall(w, 'end');
-
     _ctx.save();
     _ctx.strokeStyle = style.stroke;
-    _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
+    _ctx.lineWidth = isSel ? 1.8 : 1.2;
+    _ctx.lineJoin = 'miter';
+    _ctx.miterLimit = 10;
+    _ctx.lineCap = 'butt';
     _ctx.beginPath();
-    // Long faces (always draw full length)
-    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
-    _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.c.x, g.c.y);
-    // End caps — only when no joint
-    if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
-    if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
+    _ctx.moveTo(g.a.x, g.a.y);
+    _ctx.lineTo(g.b.x, g.b.y);
+    _ctx.lineTo(g.c.x, g.c.y);
+    _ctx.lineTo(g.d.x, g.d.y);
+    _ctx.closePath();
     _ctx.stroke();
+    _ctx.restore();
 
     if (scale > 0.08) {
       const len = getWallLength(w), mx = (g.p1.x + g.p2.x) / 2, my = (g.p1.y + g.p2.y) / 2;
@@ -304,7 +302,6 @@ function drawWalls(selectedItems) {
         { x: mx + (-Math.sin(g.angle) * off * side), y: my + (Math.cos(g.angle) * off * side) },
         g.angle, { textColor: isSel ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.roomMeta });
     }
-    _ctx.restore();
   }
 }
 
