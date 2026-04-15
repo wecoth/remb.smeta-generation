@@ -112,6 +112,28 @@ export function isPointInsideWallSurface(point, wall, padding = 0.75) {
   return along >= -padding && along <= len + padding && Math.abs(normal) <= wall.thickness / 2 + padding;
 }
 
+/**
+ * Distance from point to wall surface (axis-aligned distance to the rectangle).
+ * Returns 0 if point is inside the wall.
+ */
+export function distanceToWallSurface(point, wall) {
+  const start = { x: wall.x1, y: wall.y1 };
+  const end   = { x: wall.x2, y: wall.y2 };
+  const dx = end.x - start.x, dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.0001) return Math.hypot(point.x - start.x, point.y - start.y);
+  const ux = dx / len, uy = dy / len;
+  const nx = -uy, ny = ux;
+  const relX = point.x - start.x, relY = point.y - start.y;
+  const along  = relX * ux + relY * uy;
+  const normal = Math.abs(relX * nx + relY * ny);
+  const clampedAlong = Math.max(0, Math.min(len, along));
+  const closestX = start.x + ux * clampedAlong;
+  const closestY = start.y + uy * clampedAlong;
+  const distToAxis = Math.hypot(point.x - closestX, point.y - closestY);
+  return Math.max(0, distToAxis - wall.thickness / 2);
+}
+
 export function isWallEndpointCoveredByAnotherWall(wall, endpoint) {
   const point = endpoint === 'start'
     ? { x: wall.x1, y: wall.y1 }
@@ -161,53 +183,118 @@ export function invalidateJointCache() {
   _jointRectsCache = null;
 }
 
+/**
+ * Compute all wall overlap rectangles — covers all cases:
+ *   • endpoint-to-endpoint (corner)
+ *   • endpoint-to-middle (T-junction)
+ *   • overlapping parallel ends
+ *
+ * Strategy: for every pair of walls whose bounding boxes overlap,
+ * intersect the two rectangles and if the intersection area is non-trivial
+ * treat it as a joint rect that must be filled.
+ */
 export function getWallJointRects(jointMap = null) {
-  // Bug #12 fix: cache the result and only recompute when walls change.
-  const cacheKey = JSON.stringify(appState.walls.map(w => `${w.id},${w.x1},${w.y1},${w.x2},${w.y2},${w.thickness}`));
+  const cacheKey = JSON.stringify(appState.walls.map(w =>
+    `${w.id},${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`));
   if (_jointRectsCache && _jointRectsCacheKey === cacheKey) return _jointRectsCache;
 
-  const map = jointMap || buildWallJointMap();
   const rects = [];
-  const seenRects = new Set();
+  const seenKeys = new Set();
+  const walls = appState.walls;
 
-  for (const items of map.values()) {
-    if (items.length < 2) continue;
-    const horizontals = items.filter(item => Math.abs(item.direction.x) > 0);
-    const verticals   = items.filter(item => Math.abs(item.direction.y) > 0);
-    if (!horizontals.length || !verticals.length) continue;
+  for (let i = 0; i < walls.length; i++) {
+    for (let j = i + 1; j < walls.length; j++) {
+      const a = walls[i], b = walls[j];
+      const ba = getWallWorldBounds(a), bb = getWallWorldBounds(b);
 
-    for (const horizontal of horizontals) {
-      for (const vertical of verticals) {
-        const joint = horizontal.point;
-        const hBounds = getWallWorldBounds(horizontal.wall);
-        const vBounds = getWallWorldBounds(vertical.wall);
-        const x1 = horizontal.direction.x > 0 ? vBounds.minX : Math.max(vBounds.minX, joint.x);
-        const x2 = horizontal.direction.x > 0 ? Math.min(vBounds.maxX, joint.x) : vBounds.maxX;
-        const y1 = vertical.direction.y > 0 ? hBounds.minY : Math.max(hBounds.minY, joint.y);
-        const y2 = vertical.direction.y > 0 ? Math.min(hBounds.maxY, joint.y) : hBounds.maxY;
-        const left = Math.min(x1, x2), right = Math.max(x1, x2);
-        const top  = Math.min(y1, y2), bottom = Math.max(y1, y2);
-        if ((right - left) < 1 || (bottom - top) < 1) continue;
+      // Quick AABB rejection
+      if (ba.maxX < bb.minX - 1 || bb.maxX < ba.minX - 1) continue;
+      if (ba.maxY < bb.minY - 1 || bb.maxY < ba.minY - 1) continue;
 
-        const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
-        if (seenRects.has(key)) continue;
-        seenRects.add(key);
+      // Intersection rectangle of the two wall bodies
+      const left   = Math.max(ba.minX, bb.minX);
+      const right  = Math.min(ba.maxX, bb.maxX);
+      const top    = Math.max(ba.minY, bb.minY);
+      const bottom = Math.min(ba.maxY, bb.maxY);
 
-        const boundaryEdges = getJointBoundaryEdges(left, top, right, bottom, horizontal.direction, vertical.direction);
-        if (!boundaryEdges.length) continue;
+      if (right - left < 1 || bottom - top < 1) continue;
 
-        rects.push({
-          key, left, top, right, bottom,
-          wallIds: [...new Set([horizontal.wall.id, vertical.wall.id])],
-          boundaryEdges,
-        });
-      }
+      const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+
+      // Determine which outer edges of the joint rect are boundary edges
+      // (i.e. not covered by either wall body, so they form the visible corner).
+      const boundaryEdges = _computeJointBoundaryEdges(left, top, right, bottom, a, b);
+
+      rects.push({
+        key, left, top, right, bottom,
+        wallIds: [a.id, b.id],
+        boundaryEdges,
+      });
     }
   }
 
   _jointRectsCache = rects;
   _jointRectsCacheKey = cacheKey;
   return rects;
+}
+
+/**
+ * For the intersection rect of two walls, figure out which of its four edges
+ * are "outer boundary" edges (should be drawn as wall outline).
+ * An edge is a boundary edge if it lies on the outer face of one of the walls
+ * but is NOT inside the body of the other wall.
+ */
+function _computeJointBoundaryEdges(left, top, right, bottom, wallA, wallB) {
+  const eps = 2;
+  const edges = [];
+
+  // Helper: is a horizontal segment (y=y0, x in [x1,x2]) a face of wall w?
+  function isHFace(y, x1, x2, w) {
+    const b = getWallWorldBounds(w);
+    return (Math.abs(y - b.minY) < eps || Math.abs(y - b.maxY) < eps) &&
+           x1 >= b.minX - eps && x2 <= b.maxX + eps;
+  }
+  function isVFace(x, y1, y2, w) {
+    const b = getWallWorldBounds(w);
+    return (Math.abs(x - b.minX) < eps || Math.abs(x - b.maxX) < eps) &&
+           y1 >= b.minY - eps && y2 <= b.maxY + eps;
+  }
+  // Is the midpoint of an edge inside the OTHER wall's body?
+  function midInsideWall(mx, my, w) {
+    return isPointInsideWallSurface({ x: mx, y: my }, w, eps);
+  }
+
+  const midTop    = { x: (left + right) / 2, y: top };
+  const midBottom = { x: (left + right) / 2, y: bottom };
+  const midLeft   = { x: left,  y: (top + bottom) / 2 };
+  const midRight  = { x: right, y: (top + bottom) / 2 };
+
+  // Top edge: boundary if it's a face of one wall and NOT inside the other
+  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
+    if (isHFace(top, left, right, own) && !midInsideWall(midTop.x, midTop.y, other))
+      edges.push({ side: 'top', x1: left, y1: top, x2: right, y2: top });
+  }
+  // Bottom edge
+  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
+    if (isHFace(bottom, left, right, own) && !midInsideWall(midBottom.x, midBottom.y, other))
+      edges.push({ side: 'bottom', x1: left, y1: bottom, x2: right, y2: bottom });
+  }
+  // Left edge
+  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
+    if (isVFace(left, top, bottom, own) && !midInsideWall(midLeft.x, midLeft.y, other))
+      edges.push({ side: 'left', x1: left, y1: top, x2: left, y2: bottom });
+  }
+  // Right edge
+  for (const [own, other] of [[wallA, wallB], [wallB, wallA]]) {
+    if (isVFace(right, top, bottom, own) && !midInsideWall(midRight.x, midRight.y, other))
+      edges.push({ side: 'right', x1: right, y1: top, x2: right, y2: bottom });
+  }
+
+  // Deduplicate by side
+  const seen = new Set();
+  return edges.filter(e => seen.has(e.side) ? false : (seen.add(e.side), true));
 }
 
 export function getJointBoundaryEdges(left, top, right, bottom, hDir, vDir) {
@@ -360,7 +447,6 @@ export function deleteSelectedItems(selectedItems) {
   const wallIds    = new Set(selectedItems.filter(i => i.type === 'wall').map(i => i.id));
   const openingIds = new Set(selectedItems.filter(i => i.type === 'opening').map(i => i.id));
   appState.walls    = appState.walls.filter(w => !wallIds.has(w.id));
-  // Bug #2 fix: also remove openings whose wall was deleted
   appState.openings = appState.openings.filter(o =>
     !wallIds.has(o.wallId) && !openingIds.has(o.id));
   invalidateJointCache();
@@ -386,11 +472,49 @@ export function findClosestWall(wx, wy, threshold = 60) {
   return best;
 }
 
+/**
+ * Find the wall whose SURFACE is closest to the given world point.
+ * Uses actual perpendicular distance to the wall rectangle, not just the axis.
+ */
 export function findClosestWallSel(wx, wy, threshold = 40) {
   let best = null, bestDist = threshold;
   for (const w of appState.walls) {
-    const { dist } = segmentClosest(wx, wy, w);
+    const dist = distanceToWallSurface({ x: wx, y: wy }, w);
     if (dist < bestDist) { best = w; bestDist = dist; }
+  }
+  return best;
+}
+
+/**
+ * Find the opening whose centre (on the wall axis) is within threshold of
+ * the given world point.  The threshold is in world-mm so it adapts to scale.
+ */
+export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
+  let best = null, bestDist = thresholdWorld;
+  for (const op of appState.openings) {
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall) continue;
+    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const halfT = wall.thickness / 2;
+
+    // Centre of the opening in world coords
+    const cx = wall.x1 + (wall.x2 - wall.x1) * op.t;
+    const cy = wall.y1 + (wall.y2 - wall.y1) * op.t;
+
+    // Project the query point onto the opening's local frame
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const nx = -uy, ny = ux;
+    const relX = wx - cx, relY = wy - cy;
+    const along  = relX * ux + relY * uy;  // along the wall axis
+    const normal = Math.abs(relX * nx + relY * ny);  // perpendicular to wall
+
+    const halfW = op.width / 2;
+    const dAlong  = Math.max(0, Math.abs(along)  - halfW);
+    const dNormal = Math.max(0, normal - halfT);
+    const dist = Math.hypot(dAlong, dNormal);
+
+    if (dist < bestDist) { best = op; bestDist = dist; }
   }
   return best;
 }
