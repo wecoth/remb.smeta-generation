@@ -684,7 +684,6 @@ function drawCursorGhost(ps) {
   _ctx.fillStyle = DRAW_COLORS.roomLabel; _ctx.font = '600 10px Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'top';
   _ctx.fillText(`${w} × ${h} мм`, 0, gd + 8); _ctx.restore();
 }// ─── RENDER.JS ────────────────────────────────────────────────────
-import { appState, DRAW_COLORS, ROOM_COLORS, ROOM_STROKES } from './state.js';
 import {
   getWallWorldGeometry, getWallCornerPoints, getWallLength,
   getWallContourPoint, isWallEndpointCoveredByAnotherWall,
