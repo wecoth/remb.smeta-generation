@@ -216,7 +216,13 @@ function drawRoomFills(selectedItems) {
     const r = appState.rooms[i]; if (!r.cells?.length) continue;
     _ctx.save();
     _ctx.beginPath();
-    for (const c of r.cells) { const p = toScreen(c.x1, c.y1); _ctx.rect(p.x, p.y, (c.x2 - c.x1) * scale, (c.y2 - c.y1) * scale); }
+    // +1px overlap между ячейками убирает щели при любом масштабе
+    for (const c of r.cells) {
+      const p = toScreen(c.x1, c.y1);
+      const w = (c.x2 - c.x1) * scale + 1;
+      const h = (c.y2 - c.y1) * scale + 1;
+      _ctx.rect(p.x, p.y, w, h);
+    }
     _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
     _ctx.strokeStyle = ROOM_STROKES[i % ROOM_STROKES.length]; _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]);
     for (const s of r.boundarySegments) {
