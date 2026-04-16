@@ -227,12 +227,7 @@ function drawRoomFills(selectedItems) {
       _ctx.rect(p.x, p.y, w, h);
     }
     _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
-    _ctx.strokeStyle = ROOM_STROKES[i % ROOM_STROKES.length]; _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]);
-    for (const s of r.boundarySegments) {
-      const p1 = toScreen(s.x1, s.y1), p2 = toScreen(s.x2, s.y2);
-      _ctx.beginPath(); _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y); _ctx.stroke();
-    }
-    _ctx.setLineDash([]);
+   
     if (scale > 0.08) { // Bug #6 fix
       const sc = toScreen(r.center.x, r.center.y);
       _ctx.fillStyle = DRAW_COLORS.roomLabel;
