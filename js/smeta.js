@@ -392,6 +392,19 @@ export function liveUpdate() {
     const pfb = document.getElementById('prevFinBody'); if (pfb) pfb.innerHTML = rows;
     const pfv = document.getElementById('prevFinVal'); if (pfv) pfv.textContent = fmt(smrV + matV);
   }
+
+  // Страница обмерного плана — показываем если есть полный чертёж
+  const fullPlanPage = document.getElementById('fullPlanPage');
+  const fullPlanImg  = document.getElementById('fullPlanImg');
+  const fullImg = appState.planDataFull || null;
+  if (fullPlanPage) {
+    if (fullImg) {
+      fullPlanPage.style.display = 'block';
+      if (fullPlanImg) { fullPlanImg.src = fullImg; fullPlanImg.style.display = 'block'; }
+    } else {
+      fullPlanPage.style.display = 'none';
+    }
+  }
 }
 
 // ── Preview modal ─────────────────────────────────────────────────
