@@ -303,13 +303,7 @@ function drawWalls(selectedItems) {
     if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
     if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
-    if (scale > 0.08) {
-      const len = getWallLength(w), mx = (g.p1.x + g.p2.x) / 2, my = (g.p1.y + g.p2.y) / 2;
-      const side = wallInteriorSide(w), off = g.halfT * scale + 18;
-      drawAlignedTextBox(`${Math.round(len)} мм`,
-        { x: mx + (-Math.sin(g.angle) * off * side), y: my + (Math.cos(g.angle) * off * side) },
-        g.angle, { textColor: isSel ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.roomMeta });
-    }
+
     _ctx.restore();
   }
 }
@@ -614,14 +608,15 @@ function drawTempWall(ps) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 // РАЗМЕРНЫЕ ЦЕПОЧКИ
-// Для каждой стены: от края до проёма, ширина проёма, от проёма до края.
-// Если проёмов нет — одна метка по центру (уже есть в drawWalls, но
-// здесь рисуем выносные линии в архитектурном стиле снаружи стены).
+// Снаружи стены: общий размер угол-угол
+// Внутри помещения: цепочка от угла до проёма / проём / от проёма до угла
+// Если проёмов нет — только внешний общий размер
 // ══════════════════════════════════════════════════════════════════
 function drawWallDimensions() {
   const scale = _getScale();
-  if (scale < 0.07) return; // слишком мелко — не рисуем
+  if (scale < 0.07) return;
 
   _ctx.save();
 
@@ -630,27 +625,78 @@ function drawWallDimensions() {
     if (wlen < 100) continue;
 
     const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-    const ux = Math.cos(angle), uy = Math.sin(angle); // вдоль стены
-    const nx = -uy, ny = ux;                           // нормаль
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const nx = -uy, ny = ux;
 
-    // Сторона выноса: наружу от комнаты
-    const side = -wallInteriorSide(wall, 1);
-    const OFFSET_MM = wall.thickness / 2 + 120; // отступ от оси стены в мм
-    const TICK_MM   = 60;  // длина засечки в мм
-    const GAP_MM    = 30;  // зазор между торцом стены и началом линии
+    // +1 = внутрь комнаты, -1 = наружу
+    const interiorSign = wallInteriorSide(wall, 1);
 
-    // Собираем точки разбивки вдоль стены (в мм от начала)
-    // 0 ... [op1_start, op1_end] ... [op2_start, op2_end] ... wlen
+    // Мировая точка: along мм вдоль стены, normalOff мм по нормали (+ = в сторону interior)
+    const worldPt = (along, normalOff) => ({
+      x: wall.x1 + ux * along + nx * normalOff,
+      y: wall.y1 + uy * along + ny * normalOff,
+    });
+
+    const halfT = wall.thickness / 2;
+
+    // ── Проёмы на этой стене ───────────────────────────────────
     const wallOpenings = appState.openings
       .filter(op => op.wallId === wall.id)
       .map(op => ({
         start: Math.max(0, op.t * wlen - op.width / 2),
         end:   Math.min(wlen, op.t * wlen + op.width / 2),
-        width: op.width,
       }))
       .sort((a, b) => a.start - b.start);
 
-    // Строим массив сегментов: { from, to, isOpening }
+    const hasOpenings = wallOpenings.length > 0;
+
+    // ══ СНАРУЖИ: общий размер угол-угол ═══════════════════════
+    const OUT_OFFSET = (halfT + 120) * (-interiorSign); // наружу
+    const OUT_TICK   = 50;
+    const GAP        = 20;
+
+    const drawDimLine = (from, to, normalOff, segs) => {
+      // выносная линия
+      const ls = toScreen(worldPt(from + GAP, normalOff).x, worldPt(from + GAP, normalOff).y);
+      const le = toScreen(worldPt(to   - GAP, normalOff).x, worldPt(to   - GAP, normalOff).y);
+      _ctx.lineWidth = 0.7;
+      _ctx.strokeStyle = '#9ca3af';
+      _ctx.setLineDash([]);
+      _ctx.beginPath(); _ctx.moveTo(ls.x, ls.y); _ctx.lineTo(le.x, le.y); _ctx.stroke();
+
+      // засечки на всех границах сегментов
+      const ticks = new Set([from, to]);
+      if (segs) segs.forEach(s => { ticks.add(s.from); ticks.add(s.to); });
+      for (const pos of ticks) {
+        if (pos < from + GAP * 0.5 || pos > to - GAP * 0.5) continue;
+        const b = toScreen(worldPt(pos, normalOff - OUT_TICK / 2).x, worldPt(pos, normalOff - OUT_TICK / 2).y);
+        const t = toScreen(worldPt(pos, normalOff + OUT_TICK / 2).x, worldPt(pos, normalOff + OUT_TICK / 2).y);
+        _ctx.lineWidth = 0.7;
+        _ctx.strokeStyle = '#9ca3af';
+        _ctx.beginPath(); _ctx.moveTo(b.x, b.y); _ctx.lineTo(t.x, t.y); _ctx.stroke();
+      }
+    };
+
+    // Внешняя линия — всегда (общий размер)
+    drawDimLine(0, wlen, OUT_OFFSET, hasOpenings ? null : null);
+
+    // Подпись общего размера снаружи
+    {
+      const mid = wlen / 2;
+      const pt  = toScreen(worldPt(mid, OUT_OFFSET).x, worldPt(mid, OUT_OFFSET).y);
+      drawAlignedTextBox(`${Math.round(wlen)} мм`, pt, angle, {
+        font: '500 9px Onest, Inter, sans-serif',
+        background: 'rgba(255,255,255,0.95)',
+        textColor: '#6b7280',
+      });
+    }
+
+    // ══ ВНУТРИ: цепочка с проёмами (только если есть проёмы) ══
+    if (!hasOpenings) continue;
+
+    const IN_OFFSET = (halfT + 80) * interiorSign; // внутрь комнаты
+
+    // Строим сегменты цепочки
     const segs = [];
     let cursor = 0;
     for (const op of wallOpenings) {
@@ -660,64 +706,26 @@ function drawWallDimensions() {
     }
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
-    // Если нет проёмов и один сегмент — не рисуем (drawWalls уже показывает размер)
-    if (segs.length <= 1 && !wallOpenings.length) continue;
+    // Внутренняя выносная линия
+    drawDimLine(0, wlen, IN_OFFSET, segs);
 
-    // Вспомогательная функция: мировая точка по параметру t вдоль стены + отступ по нормали
-    const worldPt = (along, normalOff) => ({
-      x: wall.x1 + ux * along + nx * normalOff * side,
-      y: wall.y1 + uy * along + ny * normalOff * side,
-    });
-
-    // Точки засечек — все границы сегментов
-    const tickPositions = new Set([0, wlen]);
-    for (const seg of segs) { tickPositions.add(seg.from); tickPositions.add(seg.to); }
-
-    _ctx.strokeStyle = '#6b7280';
-    _ctx.lineWidth = 0.8;
-    _ctx.setLineDash([]);
-
-    // Рисуем выносную линию (горизонталь)
-    const lineStart = worldPt(GAP_MM,  OFFSET_MM);
-    const lineEnd   = worldPt(wlen - GAP_MM, OFFSET_MM);
-    const sLS = toScreen(lineStart.x, lineStart.y);
-    const sLE = toScreen(lineEnd.x,   lineEnd.y);
-    _ctx.beginPath(); _ctx.moveTo(sLS.x, sLS.y); _ctx.lineTo(sLE.x, sLE.y); _ctx.stroke();
-
-    // Засечки
-    for (const pos of tickPositions) {
-      if (pos < GAP_MM || pos > wlen - GAP_MM) continue;
-      const base  = worldPt(pos, OFFSET_MM - TICK_MM / 2);
-      const tip   = worldPt(pos, OFFSET_MM + TICK_MM / 2);
-      const sBase = toScreen(base.x, base.y);
-      const sTip  = toScreen(tip.x,  tip.y);
-      _ctx.beginPath(); _ctx.moveTo(sBase.x, sBase.y); _ctx.lineTo(sTip.x, sTip.y); _ctx.stroke();
-    }
-
-    // Подписи размеров по центру каждого сегмента
+    // Подписи каждого сегмента
     for (const seg of segs) {
       const len = seg.to - seg.from;
-      if (len < 50) continue; // слишком маленький сегмент — не подписываем
       const mid = (seg.from + seg.to) / 2;
-      const labelPt = worldPt(mid, OFFSET_MM);
-      const sLabel  = toScreen(labelPt.x, labelPt.y);
-
+      const pt  = toScreen(worldPt(mid, IN_OFFSET).x, worldPt(mid, IN_OFFSET).y);
       const text = `${Math.round(len)} мм`;
-      const bgColor = seg.isOpening
-        ? 'rgba(239,246,255,0.97)' // голубоватый для проёмов
-        : 'rgba(255,255,255,0.97)';
-      const textColor = seg.isOpening ? '#2563eb' : '#374151';
-
-      drawAlignedTextBox(text, sLabel, angle, {
+      drawAlignedTextBox(text, pt, angle, {
         font: `${seg.isOpening ? '700' : '500'} 9px Onest, Inter, sans-serif`,
-        background: bgColor,
-        textColor,
+        background: seg.isOpening ? 'rgba(239,246,255,0.97)' : 'rgba(255,255,255,0.97)',
+        textColor:  seg.isOpening ? '#2563eb' : '#374151',
       });
     }
   }
 
   _ctx.restore();
 }
+
 
 function drawGuideLine(guide) {
   const anchor = toScreen(guide.anchor.x, guide.anchor.y); _ctx.save();
