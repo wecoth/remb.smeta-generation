@@ -1,695 +1,672 @@
-// ─── RENDER.JS ────────────────────────────────────────────────────
-import { appState, DRAW_COLORS, ROOM_COLORS, ROOM_STROKES } from './state.js';
-import {
-  getWallWorldGeometry, getWallCornerPoints, getWallLength,
-  getWallContourPoint, isWallEndpointCoveredByAnotherWall,
-  buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
-  getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
-} from './wall.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints } from './snapping.js';
+// ─── ROOM.JS ──────────────────────────────────────────────────────
+import { appState, ROOM_STROKES } from './state.js';
 
-let _canvas, _ctx, _hatchPat = null;
-let _getScale = () => 0.12;
-
-export function initRenderer(canvas, ctx, getScaleFn) {
-  _canvas = canvas; _ctx = ctx;
-  _getScale = getScaleFn || (() => 0.12);
-  _hatchPat = null;
+// ── Room key ──────────────────────────────────────────────────────
+export function getRoomKey(pixels, cellMm) {
+  if (!pixels.length) return '0,0';
+  let sx = 0, sy = 0;
+  for (const [px, py] of pixels) { sx += px; sy += py; }
+  const cx = Math.round((sx / pixels.length * cellMm) / 50) * 50;
+  const cy = Math.round((sy / pixels.length * cellMm) / 50) * 50;
+  return `${cx},${cy}`;
 }
 
-// ── Utilities ─────────────────────────────────────────────────────
+export function roomDefaultName(index) { return `Комната ${index + 1}`; }
 
-function sel(type, id, list) { return list.some(i => i.type === type && i.id === id); }
-
-function wallStyle(isSelected) {
-  return {
-    fill:   isSelected ? DRAW_COLORS.wallFillSelected : DRAW_COLORS.wallFill,
-    stroke: isSelected ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.wallStroke,
-  };
-}
-
-function sg(wall) { // screen geometry
-  const w = getWallWorldGeometry(wall);
-  const sc = p => toScreen(p.x, p.y);
-  return { p1: sc(w.p1), p2: sc(w.p2), angle: w.angle, halfT: w.halfT,
-           a: sc(w.a), b: sc(w.b), c: sc(w.c), d: sc(w.d) };
-}
-
-function hatch() {
-  if (_hatchPat) return _hatchPat;
-  const pc = document.createElement('canvas'); pc.width = 12; pc.height = 12;
-  const px = pc.getContext('2d');
-  px.strokeStyle = DRAW_COLORS.wallHatch; px.lineWidth = 1;
-  px.beginPath(); px.moveTo(-2, 12); px.lineTo(12, -2); px.moveTo(4, 12); px.lineTo(12, 4); px.stroke();
-  _hatchPat = _ctx.createPattern(pc, 'repeat'); return _hatchPat;
-}
-
-function fillWall(pathFn, fill) {
-  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
-  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
-  _ctx.restore();
-}
-
-function wallInteriorSide(wall, fallback = 1) {
-  const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
-  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
-  let best = null;
-  for (const r of appState.rooms) {
-    if (!r.boundarySegments.some(s => s.wall && s.wall.id === wall.id)) continue;
-    const dot = (r.center.x - mid.x) * normal.x + (r.center.y - mid.y) * normal.y;
-    if (Math.abs(dot) < 1) continue;
-    if (best === null || Math.abs(dot) > Math.abs(best)) best = dot;
+export function renameRoom(roomKey, nextName) {
+  const room = appState.rooms.find(r => r.key === roomKey);
+  if (!room) return;
+  const normalized = (nextName || '').trim();
+  if (!normalized || normalized === room.defaultName) {
+    delete appState.roomNameOverrides[roomKey];
+  } else {
+    appState.roomNameOverrides[roomKey] = normalized;
   }
-  return best === null ? fallback : best >= 0 ? 1 : -1;
+  for (const r of appState.rooms) {
+    r.name = appState.roomNameOverrides[r.key] || r.defaultName;
+  }
 }
 
-// ── Exported helpers ──────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+// FLOOD FILL
+// ══════════════════════════════════════════════════════════════════
+const CELL_MM = 50;
 
-export function drawAlignedTextBox(text, pos, angle, opts = {}) {
-  let a = angle;
-  if (a > Math.PI / 2 || a < -Math.PI / 2) a += Math.PI;
-  _ctx.save(); _ctx.translate(pos.x, pos.y); _ctx.rotate(a);
-  _ctx.font = opts.font || '600 10px Onest, Inter, sans-serif';
-  const tw = _ctx.measureText(text).width, bw = tw + 12, bh = 16;
-  _ctx.fillStyle = opts.background || 'rgba(255,255,255,0.95)';
-  _ctx.beginPath();
-  if (_ctx.roundRect) _ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 5);
-  else _ctx.rect(-bw / 2, -bh / 2, bw, bh);
-  _ctx.fill(); _ctx.fillStyle = opts.textColor || '#0f172a';
-  _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(text, 0, 0); _ctx.restore();
+export function computeRooms(wallHeightFallback = 2700) {
+  appState.rooms = [];
+  if (appState.walls.length < 3) return;
+
+  // ── 1. Bbox ────────────────────────────────────────────────────
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const w of appState.walls) {
+    const half = w.thickness / 2 + 5;
+    minX = Math.min(minX, w.x1 - half, w.x2 - half);
+    minY = Math.min(minY, w.y1 - half, w.y2 - half);
+    maxX = Math.max(maxX, w.x1 + half, w.x2 + half);
+    maxY = Math.max(maxY, w.y1 + half, w.y2 + half);
+  }
+  const PAD = CELL_MM * 2;
+  minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
+
+  const cols = Math.ceil((maxX - minX) / CELL_MM) + 1;
+  const rows = Math.ceil((maxY - minY) / CELL_MM) + 1;
+  if (cols > 2000 || rows > 2000) return;
+
+  // ── 2. Растеризация стен ───────────────────────────────────────
+  // bitmap_flood: с inflate поперёк — гарантирует замыкание контура
+  // bitmap_area:  без inflate — точная площадь; дверные проёмы пробиты
+  const bitmap_flood = new Uint8Array(cols * rows);
+  const bitmap_area  = new Uint8Array(cols * rows);
+  for (const w of appState.walls) {
+    rasterizeWall(w, bitmap_flood, cols, rows, minX, minY, true);
+    rasterizeWall(w, bitmap_area,  cols, rows, minX, minY, false);
+  }
+  // Пробиваем дверные проёмы в bitmap_area:
+  // убираем пиксели стены в зоне каждого дверного проёма.
+  // Тогда flood fill захватит площадь под проёмом и честно разделит
+  // её между смежными помещениями.
+  for (const op of appState.openings) {
+    if (op.type !== 'door') continue;
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall) continue;
+    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (wlen < 1) continue;
+    const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const nx = -uy, ny = ux; // нормаль
+    const half = wall.thickness / 2;
+    // Центр проёма
+    const cx = wall.x1 + (wall.x2 - wall.x1) * op.t;
+    const cy = wall.y1 + (wall.y2 - wall.y1) * op.t;
+    const hw = op.width / 2; // полуширина проёма
+    // Bbox зоны проёма с небольшим запасом
+    const pad = CELL_MM;
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        if (bitmap_area[gy * cols + gx] === 0) continue; // уже свободно
+        const wx = minX + (gx + 0.5) * CELL_MM;
+        const wy = minY + (gy + 0.5) * CELL_MM;
+        const rx = wx - cx, ry = wy - cy;
+        const along  = rx * ux + ry * uy;   // вдоль стены
+        const normal = rx * nx + ry * ny;   // поперёк стены
+        if (Math.abs(along) <= hw + pad * 0.5 &&
+            Math.abs(normal) <= half + pad * 0.5) {
+          bitmap_area[gy * cols + gx] = 0; // пробиваем проём
+        }
+      }
+    }
+  }
+  // Для flood fill используем bitmap_flood
+  const bitmap = bitmap_flood;
+
+  // ── 3. BFS flood fill ──────────────────────────────────────────
+  const regionId          = new Int32Array(cols * rows);
+  let nextId = 1;
+  const regionPixels      = new Map();
+  const regionTouchesEdge = new Set();
+
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const idx = gy * cols + gx;
+      if (bitmap[idx] !== 0 || regionId[idx] !== 0) continue;
+
+      const id = nextId++;
+      const pixels = [];
+      const queue  = [idx];
+      regionId[idx] = id;
+      let touchesEdge = false;
+
+      while (queue.length) {
+        const ci = queue.pop();
+        const cx = ci % cols, cy = (ci / cols) | 0;
+        pixels.push([cx, cy]);
+        if (cx === 0 || cy === 0 || cx === cols - 1 || cy === rows - 1) touchesEdge = true;
+        for (const [nx, ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]) {
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const ni = ny * cols + nx;
+          if (bitmap[ni] !== 0 || regionId[ni] !== 0) continue;
+          regionId[ni] = id;
+          queue.push(ni);
+        }
+      }
+      regionPixels.set(id, pixels);
+      if (touchesEdge) regionTouchesEdge.add(id);
+    }
+  }
+
+  // ── Определяем exterior регион (самый большой touchesEdge) ────
+  // Нужен для детекции входной двери
+  let exteriorRegionId = -1;
+  let exteriorMaxSize  = 0;
+  for (const id of regionTouchesEdge) {
+    const sz = regionPixels.get(id)?.length ?? 0;
+    if (sz > exteriorMaxSize) { exteriorMaxSize = sz; exteriorRegionId = id; }
+  }
+
+  // Строим набор пикселей exterior для быстрой проверки
+  const exteriorPixelSet = new Set();
+  if (exteriorRegionId > 0) {
+    for (const [gx, gy] of (regionPixels.get(exteriorRegionId) || [])) {
+      exteriorPixelSet.add(gy * cols + gx);
+    }
+  }
+
+  // ── Определяем стены граничащие с exterior ────────────────────
+  // Внешняя стена = стена у которой exterior регион находится
+  // С ОБЕИХ сторон ИЛИ хотя бы с одной стороны НО не граничит
+  // ни с одним внутренним помещением.
+  // Упрощённый надёжный подход: стена внешняя если её серединная
+  // точка + смещение наружу попадает в exterior пиксель.
+  const exteriorWallIds = new Set();
+  for (const wall of appState.walls) {
+    const mx = (wall.x1 + wall.x2) / 2;
+    const my = (wall.y1 + wall.y2) / 2;
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (len < 1) continue;
+    // Нормаль к стене (оба направления)
+    const nx = -(wall.y2 - wall.y1) / len;
+    const ny =  (wall.x2 - wall.x1) / len;
+    // Проверяем обе стороны стены на расстоянии thickness/2 + 1 клетка
+    const checkDist = wall.thickness / 2 + CELL_MM * 1.5;
+    for (const sign of [1, -1]) {
+      const px = mx + nx * sign * checkDist;
+      const py = my + ny * sign * checkDist;
+      const gx = Math.round((px - minX) / CELL_MM - 0.5);
+      const gy = Math.round((py - minY) / CELL_MM - 0.5);
+      if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+      const pidx = gy * cols + gx;
+      if (exteriorPixelSet.has(pidx)) {
+        exteriorWallIds.add(wall.id);
+        break;
+      }
+    }
+  }
+
+  // ── 4. Метрики ─────────────────────────────────────────────────
+  const cellArea    = CELL_MM * CELL_MM;
+  const minRoomArea = 100000;
+
+  for (const [id, pixels] of regionPixels) {
+    if (regionTouchesEdge.has(id)) continue;
+    if (pixels.length * cellArea < minRoomArea) continue;
+
+    // Площадь пола — по количеству пикселей flood fill (внутреннее пространство)
+    // bitmap_flood использует inflate поэтому flood fill уже не включает зону стен
+    const areaMm2 = pixels.length * cellArea;
+    if (areaMm2 < minRoomArea) continue;
+
+    // Центроид
+    let sumX = 0, sumY = 0;
+    for (const [gx, gy] of pixels) { sumX += gx; sumY += gy; }
+    const centerWorld = {
+      x: minX + (sumX / pixels.length + 0.5) * CELL_MM,
+      y: minY + (sumY / pixels.length + 0.5) * CELL_MM,
+    };
+
+    // Граничные стены
+    const boundaryWalls = new Map();
+    for (const [gx, gy] of pixels) {
+      for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        if (bitmap[ny * cols + nx] === 1) {
+          const wx = minX + (nx + 0.5) * CELL_MM, wy = minY + (ny + 0.5) * CELL_MM;
+          const wall = findWallAtPoint(wx, wy);
+          if (wall && !boundaryWalls.has(wall.id)) boundaryWalls.set(wall.id, wall);
+        }
+      }
+    }
+
+    // Высота
+    let roomHeightMm = wallHeightFallback;
+    for (const wall of boundaryWalls.values()) {
+      if (wall.height && wall.height < roomHeightMm) roomHeightMm = wall.height;
+    }
+
+    // Проёмы
+    const roomOpenings = appState.openings.filter(op => boundaryWalls.has(op.wallId));
+
+    // Входная дверь — дверь на стене граничащей с exterior
+    const entranceDoorId = detectEntranceDoor(roomOpenings, exteriorWallIds);
+
+    // Метрики
+    const metrics = computeRoomMetrics(
+      [...boundaryWalls.values()], roomOpenings,
+      roomHeightMm, centerWorld, entranceDoorId
+    );
+
+    // Площадь пола — Shoelace по внутреннему контуру стен.
+    // Точная геометрия, не зависит от разрешения bitmap.
+    // Fallback на flood fill если контур не замкнут.
+    const orderedForArea = orderBoundaryWalls([...boundaryWalls.values()]);
+    const geoAreaMm2     = shoelaceInnerArea(orderedForArea);
+    const areaMm2Final   = geoAreaMm2 > 10000 ? geoAreaMm2 : pixels.length * CELL_MM * CELL_MM;
+
+    // cells для render.js
+    const cells = pixels.map(([gx, gy]) => ({
+      x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
+      x2: minX + (gx + 1) * CELL_MM, y2: minY + (gy + 1) * CELL_MM,
+    }));
+
+    // boundarySegments для render.js
+    const boundarySegments = [];
+    for (const wall of boundaryWalls.values()) {
+      boundarySegments.push({
+        orientation: Math.abs(wall.y2 - wall.y1) < Math.abs(wall.x2 - wall.x1) ? 'h' : 'v',
+        x1: Math.min(wall.x1, wall.x2), y1: Math.min(wall.y1, wall.y2),
+        x2: Math.max(wall.x1, wall.x2), y2: Math.max(wall.y1, wall.y2),
+        length: Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1),
+        wall,
+      });
+    }
+
+    const key         = getRoomKey(pixels, CELL_MM);
+    const defaultName = roomDefaultName(appState.rooms.length);
+
+    appState.rooms.push({
+      key, cells, boundarySegments, center: centerWorld,
+      defaultName,
+      name: appState.roomNameOverrides[key] || defaultName,
+      area:         areaMm2Final / 1e6,
+      volume:       areaMm2Final * roomHeightMm / 1e9,
+      height:       roomHeightMm / 1000,
+      perimeter:    metrics.perimeterFloorM,
+      wallArea:     metrics.wallAreaNetM2,
+      openingsArea: metrics.openingsAreaM2,
+      metrics,
+    });
+  }
+
+  // ── 5. Делим площадь пола под дверными проёмами пополам ───────
+  // Внутренняя дверь = стена граничит ровно с двумя комнатами
+  for (const op of appState.openings) {
+    if (op.type !== 'door') continue;
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall || wall.thickness < 1) continue;
+
+    const borderingIndices = [];
+    for (let i = 0; i < appState.rooms.length; i++) {
+      if (appState.rooms[i].boundarySegments.some(bs => bs.wall.id === op.wallId)) {
+        borderingIndices.push(i);
+      }
+    }
+
+    if (borderingIndices.length === 2) {
+      const halfM2 = (op.width * wall.thickness) / 2 / 1e6;
+      for (const idx of borderingIndices) {
+        const room = appState.rooms[idx];
+        room.area  += halfM2;
+        room.volume = room.area * room.height;
+      }
+    }
+  }
 }
 
-export function getWallResizeHandles(wall) {
-  return ['start', 'end'].map(ep => ({
-    wall, endpoint: ep, point: getWallContourPoint(wall, ep),
-    screen: toScreen(getWallContourPoint(wall, ep).x, getWallContourPoint(wall, ep).y),
-  }));
-}
-
-export function getOpeningScreenBounds(op) {
-  const wall = appState.walls.find(w => w.id === op.wallId); if (!wall) return null;
-  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1); if (wlen < 1) return null;
-  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const halfT = wall.thickness / 2;
-  const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
-  const t1 = Math.max(0, Math.min(1, op.t - op.width / 2 / wlen));
-  const t2 = Math.max(0, Math.min(1, op.t + op.width / 2 / wlen));
-  const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
-  const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
-  const corners = [
-    toScreen(ax1 + sdxW, ay1 + sdyW), toScreen(ax2 + sdxW, ay2 + sdyW),
-    toScreen(ax2 - sdxW, ay2 - sdyW), toScreen(ax1 - sdxW, ay1 - sdyW),
-  ];
-  return { left: Math.min(...corners.map(p => p.x)), top: Math.min(...corners.map(p => p.y)),
-           right: Math.max(...corners.map(p => p.x)), bottom: Math.max(...corners.map(p => p.y)) };
-}
-
-export function boundsIntersect(a, b) {
-  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
-}
-
-export function hitTestWallResizeHandle(sp, tool, selectedItems) {
-  if (tool !== 'select') return null;
-  const wall = selectedItems.length === 1 && selectedItems[0].type === 'wall'
-    ? appState.walls.find(w => w.id === selectedItems[0].id) : null;
-  if (!wall) return null;
-  for (const h of getWallResizeHandles(wall))
-    if (Math.hypot(sp.x - h.screen.x, sp.y - h.screen.y) <= 10) return h;
+// ══════════════════════════════════════════════════════════════════
+// ДЕТЕКЦИЯ ВХОДНОЙ ДВЕРИ
+// ══════════════════════════════════════════════════════════════════
+// Входная дверь = дверь чья стена граничит с exterior регионом
+function detectEntranceDoor(openings, exteriorWallIds) {
+  for (const op of openings) {
+    if (op.type === 'door' && exteriorWallIds.has(op.wallId)) return op.id;
+  }
   return null;
 }
 
-// ── MAIN REDRAW ───────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+// РАСЧЁТ МЕТРИК
+// ══════════════════════════════════════════════════════════════════
+function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
+  const heightM = heightMm / 1000;
 
-export function redraw(ps) {
-  _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-  drawGrid();
-  drawRoomFills(ps.selectedItems);
-  drawWalls(ps.selectedItems);
-  drawWallJoints(ps.selectedItems);
-  drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
-  if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
-  if (ps.tool === 'wall' && ps.currentGuideLine)  drawGuideLine(ps.currentGuideLine);
-  if (ps.tool === 'wall' && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
-  if (ps.tool === 'wall' && ps.currentObjectSnap) drawObjectSnap(ps.currentObjectSnap);
-  drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
-  drawCursorGhost(ps);
-}
+  const orderedWalls = orderBoundaryWalls(walls);
+  const wallSegData  = buildWallSegments(orderedWalls, openings);
 
-function drawHoverHighlight(hoverItem, selectedItems, dh, ds) {
-  const isAlreadySelected = selectedItems.some(i => i.type === hoverItem.type && i.id === hoverItem.id);
-  if (isAlreadySelected) return;
-  _ctx.save();
-  if (hoverItem.type === 'wall') {
-    const wall = appState.walls.find(w => w.id === hoverItem.id);
-    if (!wall) { _ctx.restore(); return; }
-    const g = sg(wall);
-    _ctx.beginPath();
-    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
-    _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y);
-    _ctx.closePath();
-    _ctx.fillStyle = 'rgba(74,111,227,0.07)';
-    _ctx.strokeStyle = 'rgba(74,111,227,0.45)';
-    _ctx.lineWidth = 2; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
-    _ctx.fill(); _ctx.stroke();
-  } else if (hoverItem.type === 'opening') {
-    const op = appState.openings.find(o => o.id === hoverItem.id);
-    if (!op) { _ctx.restore(); return; }
-    const wall = appState.walls.find(w => w.id === op.wallId);
-    if (!wall) { _ctx.restore(); return; }
-    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-    const halfT = wall.thickness / 2;
-    const t1 = Math.max(0, Math.min(1, op.t - op.width / 2 / wlen));
-    const t2 = Math.max(0, Math.min(1, op.t + op.width / 2 / wlen));
-    const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
-    const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
-    const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
-    const c1 = toScreen(ax1 + sdxW, ay1 + sdyW), c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
-    const c3 = toScreen(ax2 - sdxW, ay2 - sdyW), c4 = toScreen(ax1 - sdxW, ay1 - sdyW);
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
-    _ctx.fillStyle = 'rgba(74,111,227,0.10)';
-    _ctx.strokeStyle = 'rgba(74,111,227,0.55)';
-    _ctx.lineWidth = 2; _ctx.fill(); _ctx.stroke();
-    drawOpening(op, wall, false, false, dh, ds);
-  }
-  _ctx.restore();
-}
+  // ── Периметр пола ─────────────────────────────────────────────
+  // Вычитаем ширину дверей И панорамных окон (высота = высота помещения)
+  let perimeterRawMm = 0;
+  for (const w of orderedWalls) perimeterRawMm += wallLengthMm(w);
 
-function drawGrid() {
-  const W = _canvas.width, H = _canvas.height;
-  const stepMin = 100, stepMaj = 1000;
-  const wMin = toWorld(0, 0), wMax = toWorld(W, H);
-  _ctx.save();
-  _ctx.strokeStyle = '#e8eaee'; _ctx.lineWidth = 0.5;
-  for (let x = Math.floor(wMin.x / stepMin) * stepMin; x <= wMax.x + stepMin; x += stepMin) {
-    const sx = toScreen(x, 0).x; _ctx.beginPath(); _ctx.moveTo(sx, 0); _ctx.lineTo(sx, H); _ctx.stroke();
-  }
-  for (let y = Math.floor(wMin.y / stepMin) * stepMin; y <= wMax.y + stepMin; y += stepMin) {
-    const sy = toScreen(0, y).y; _ctx.beginPath(); _ctx.moveTo(0, sy); _ctx.lineTo(W, sy); _ctx.stroke();
-  }
-  _ctx.strokeStyle = '#c8cdd8'; _ctx.lineWidth = 1;
-  for (let x = Math.floor(wMin.x / stepMaj) * stepMaj; x <= wMax.x + stepMaj; x += stepMaj) {
-    const sx = toScreen(x, 0).x; _ctx.beginPath(); _ctx.moveTo(sx, 0); _ctx.lineTo(sx, H); _ctx.stroke();
-  }
-  for (let y = Math.floor(wMin.y / stepMaj) * stepMaj; y <= wMax.y + stepMaj; y += stepMaj) {
-    const sy = toScreen(0, y).y; _ctx.beginPath(); _ctx.moveTo(0, sy); _ctx.lineTo(W, sy); _ctx.stroke();
-  }
-  _ctx.fillStyle = '#a0aab8'; _ctx.font = '10px Onest, Inter, sans-serif'; _ctx.textAlign = 'left';
-  for (let x = Math.floor(wMin.x / stepMaj) * stepMaj; x <= wMax.x + stepMaj; x += stepMaj) {
-    const sx = toScreen(x, 0).x; if (sx > 2 && sx < W - 2) _ctx.fillText((x / 1000).toFixed(0) + 'м', sx + 2, 12);
-  }
-  for (let y = Math.floor(wMin.y / stepMaj) * stepMaj; y <= wMax.y + stepMaj; y += stepMaj) {
-    const sy = toScreen(0, y).y; if (sy > 14 && sy < H - 2) _ctx.fillText((y / 1000).toFixed(0) + 'м', 2, sy - 2);
-  }
-  _ctx.restore();
-}
-
-function drawRoomFills(selectedItems) {
-  const scale = _getScale();
-  // Небольшое перекрытие ячеек устраняет белую полосу у стен.
-  // Ячейки flood fill не доходят до внутренней поверхности стены
-  // из-за inflate bitmap — overlap компенсирует этот зазор.
-  const OVERLAP_MM = 26; // чуть больше inflate (25мм)
-  for (let i = 0; i < appState.rooms.length; i++) {
-    const r = appState.rooms[i]; if (!r.cells?.length) continue;
-    _ctx.save();
-    _ctx.beginPath();
-    for (const c of r.cells) {
-      const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
-      const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
-      const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
-      _ctx.rect(p.x, p.y, w, h);
+  let perimeterDeductMm = 0;
+  for (const op of openings) {
+    if (op.type === 'door') {
+      perimeterDeductMm += op.width;
+    } else if (op.type === 'window' && op.height >= heightMm * 0.95) {
+      // Панорамное окно: высота >= 95% высоты помещения
+      perimeterDeductMm += op.width;
     }
-    _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
-    _ctx.strokeStyle = ROOM_STROKES[i % ROOM_STROKES.length]; _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]);
-    for (const s of r.boundarySegments) {
-      const p1 = toScreen(s.x1, s.y1), p2 = toScreen(s.x2, s.y2);
-      _ctx.beginPath(); _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y); _ctx.stroke();
-    }
-    _ctx.setLineDash([]);
-    if (scale > 0.08) { // Bug #6 fix
-      const sc = toScreen(r.center.x, r.center.y);
-      _ctx.fillStyle = DRAW_COLORS.roomLabel;
-      _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200))}px Onest, Inter, sans-serif`;
-      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
-      _ctx.font = `500 ${Math.max(9, Math.min(12, scale * 160))}px Onest, Inter, sans-serif`;
-      _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
-    }
-    _ctx.restore();
   }
-}
+  const perimeterFloorM = Math.max(0, perimeterRawMm - perimeterDeductMm) / 1000;
 
-function drawWalls(selectedItems) {
-  const scale = _getScale();
-  const jmap = buildWallJointMap();
-  const jrects = getWallJointRects();
+  // ── Площадь стен ──────────────────────────────────────────────
+  let wallAreaGrossM2 = 0;
+  let narrowWallsLm   = 0;  // участки < 50 см (в погонаж)
+  let openingsAreaM2  = 0;
 
-  // Предварительно вычисляем clip-точки для всех стен
-  const wallData = appState.walls.map(w => {
-    const g = sg(w);
-    const isSel = sel('wall', w.id, selectedItems);
-    const style = wallStyle(isSel);
-    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
-    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
-    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
-    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
-    const sp = getWallContourPoint(w, 'start');
-    const ep = getWallContourPoint(w, 'end');
-    const hasStartJR = myJoints.some(jr =>
-      sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
-    const hasEndJR = myJoints.some(jr =>
-      ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
-    const wclipS = (sj && !hasStartJR) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
-    const wclipE = (ej && !hasEndJR)   ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
-    // Screen-координаты 4 углов с учётом clip
-    const ptA = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : g.a;
-    const ptB = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : g.b;
-    const ptC = wclipE?.dc ? toScreen(wclipE.dc.x, wclipE.dc.y) : g.c;
-    const ptD = wclipS?.dc ? toScreen(wclipS.dc.x, wclipS.dc.y) : g.d;
-    return { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD };
-  });
-
-  // Pass 1: fill обрезанным полигоном
-  for (const { style, ptA, ptB, ptC, ptD } of wallData) {
-    fillWall(() => {
-      _ctx.beginPath();
-      _ctx.moveTo(ptA.x, ptA.y); _ctx.lineTo(ptB.x, ptB.y);
-      _ctx.lineTo(ptC.x, ptC.y); _ctx.lineTo(ptD.x, ptD.y);
-      _ctx.closePath();
-    }, style.fill);
-  }
-
-  // Pass 2: fill joint rects (ортогональные углы)
-  for (const jr of jrects) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr-rl, rb-rt); }, style.fill);
-  }
-
-  // Pass 3: stroke outlines
-  for (const { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD } of wallData) {
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
-    _ctx.beginPath();
-    drawClippedFace(ptA, ptB, myJoints); // грань ab
-    drawClippedFace(ptD, ptC, myJoints); // грань dc
-    if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
-    if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
-    _ctx.stroke();
-    if (scale > 0.08) {
-      const len = getWallLength(w), mx = (g.p1.x + g.p2.x) / 2, my = (g.p1.y + g.p2.y) / 2;
-      const side = wallInteriorSide(w), off = g.halfT * scale + 18;
-      drawAlignedTextBox(`${Math.round(len)} мм`,
-        { x: mx + (-Math.sin(g.angle) * off * side), y: my + (Math.cos(g.angle) * off * side) },
-        g.angle, { textColor: isSel ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.roomMeta });
-    }
-    _ctx.restore();
-  }
-}
-
-// Пересечение двух бесконечных линий в 2D.
-// Возвращает точку {x,y} или null если параллельны.
-function lineLineIntersect(a, b, c, d) {
-  const r = { x: b.x - a.x, y: b.y - a.y };
-  const s = { x: d.x - c.x, y: d.y - c.y };
-  const denom = r.x * s.y - r.y * s.x;
-  if (Math.abs(denom) < 0.0001) return null;
-  const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / denom;
-  return { x: a.x + r.x * t, y: a.y + r.y * t };
-}
-
-// Вычисляет clip-точки для диагональных стыков в world-координатах.
-// ab грань нашей стены встречается с ab гранью соседа, dc — с dc.
-// Валидация: clip-точка должна быть в правильной половине стены (не уходить за середину).
-function getWorldFaceClips(wall, neighbors, endpoint) {
-  const wg = getWallWorldGeometry(wall);
-  const result = { ab: null, dc: null };
-
-  for (const n of neighbors) {
-    const ng = getWallWorldGeometry(n);
-
-    const ptAB = lineLineIntersect(wg.a, wg.b, ng.a, ng.b);
-    if (ptAB) {
-      const dx = wg.b.x - wg.a.x, dy = wg.b.y - wg.a.y;
-      const len2 = dx*dx + dy*dy;
-      if (len2 > 0.0001) {
-        const t = ((ptAB.x - wg.a.x)*dx + (ptAB.y - wg.a.y)*dy) / len2;
-        // start: t ∈ [-0.5, 0.5]; end: t ∈ [0.5, 1.5]
-        if (endpoint === 'start' ? (t >= -0.5 && t <= 0.5) : (t >= 0.5 && t <= 1.5))
-          result.ab = ptAB;
+  for (const { wall, segments } of wallSegData) {
+    for (const seg of segments) {
+      if (seg.widthMm < 500) {
+        narrowWallsLm += heightM;
+      } else {
+        wallAreaGrossM2 += (seg.widthMm / 1000) * heightM;
       }
     }
+  }
 
-    const ptDC = lineLineIntersect(wg.d, wg.c, ng.d, ng.c);
-    if (ptDC) {
-      const dx = wg.c.x - wg.d.x, dy = wg.c.y - wg.d.y;
-      const len2 = dx*dx + dy*dy;
-      if (len2 > 0.0001) {
-        const t = ((ptDC.x - wg.d.x)*dx + (ptDC.y - wg.d.y)*dy) / len2;
-        if (endpoint === 'start' ? (t >= -0.5 && t <= 0.5) : (t >= 0.5 && t <= 1.5))
-          result.dc = ptDC;
-      }
+  // Площадь проёмов считаем ОТДЕЛЬНО от сегментов — один раз на проём
+  for (const op of openings) {
+    openingsAreaM2 += (op.width * op.height) / 1e6;
+  }
+
+  const wallAreaNetM2 = Math.max(0, wallAreaGrossM2 - openingsAreaM2);
+
+  // ── Углы ──────────────────────────────────────────────────────
+  const cornerStats = computeCornerStats(orderedWalls);
+
+  // ── Проёмы ────────────────────────────────────────────────────
+  let windowAreaM2 = 0, windowCount = 0;
+  let entranceDoorAreaM2 = 0;
+  let windowRevealsLm = 0;
+
+  // Оконные откосы: ширина + 2×высота (3 стороны, без подоконника)
+  for (const op of openings) {
+    if (op.type === 'window') {
+      windowAreaM2    += (op.width * op.height) / 1e6;
+      windowRevealsLm += (op.width + 2 * op.height) / 1000;
+      windowCount++;
+    } else if (op.type === 'door' && op.id === entranceDoorId) {
+      entranceDoorAreaM2 = (op.width * op.height) / 1e6;
     }
+  }
+
+  // ── Итоговый погонаж (простенки < 50 см + оконные откосы) ────
+  const pogonazLm = round2(narrowWallsLm + windowRevealsLm);
+
+  // ── Внешние углы ──────────────────────────────────────────────
+  // Углы стен: количество внешних углов × высота
+  // Углы откосов: 2 вертикальных ребра на каждый оконный проём × высота проёма
+  const wallOuterCornersLm   = round2(cornerStats.outer * heightM);
+  let   revealCornersLm      = 0;
+  for (const op of openings) {
+    if (op.type === 'window') revealCornersLm += 2 * op.height / 1000;
+  }
+  const outerAnglesLm = round2(wallOuterCornersLm + revealCornersLm);
+
+  return {
+    perimeterFloorM:    round2(perimeterFloorM),
+    wallAreaNetM2:      round2(wallAreaNetM2),
+    wallAreaGrossM2:    round2(wallAreaGrossM2),
+    openingsAreaM2:     round2(openingsAreaM2),
+    narrowWallsLm:      round2(narrowWallsLm),
+    cornersInner:       cornerStats.inner,
+    cornersOuter:       cornerStats.outer,
+    outerAnglesLm,          // внешние углы стен + откосов суммарно
+    windowAreaM2:       round2(windowAreaM2),
+    windowCount,
+    windowRevealsLm:    round2(windowRevealsLm),
+    pogonazLm,              // простенки < 50 см + оконные откосы
+    entranceDoorAreaM2: round2(entranceDoorAreaM2),
+    entranceDoorId,
+    heightM:            round2(heightM),
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// УПОРЯДОЧИВАНИЕ СТЕН В ЦЕПОЧКУ
+// ══════════════════════════════════════════════════════════════════
+const SNAP_TOL_SQ = 200 * 200;
+
+function orderBoundaryWalls(walls) {
+  if (walls.length <= 1) return walls;
+  const used   = new Array(walls.length).fill(false);
+  const result = [walls[0]];
+  used[0] = true;
+  for (let step = 1; step < walls.length; step++) {
+    const lastEnd = wallEnd(result[result.length - 1]);
+    let bestIdx = -1, bestDist = Infinity;
+    for (let i = 0; i < walls.length; i++) {
+      if (used[i]) continue;
+      const d = Math.min(dist2(lastEnd, wallStart(walls[i])), dist2(lastEnd, wallEnd(walls[i])));
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestIdx < 0 || bestDist > SNAP_TOL_SQ) break;
+    const next = walls[bestIdx];
+    result.push(dist2(lastEnd, wallEnd(next)) < dist2(lastEnd, wallStart(next))
+      ? reversedWall(next) : next);
+    used[bestIdx] = true;
   }
   return result;
 }
 
-// Рисует грань от sa до ea, пропуская участки внутри joint rects (ортогональные стыки).
-function drawClippedFace(sa, ea, joints) {
-  const dx = ea.x - sa.x, dy = ea.y - sa.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.5) return;
-
-  if (!joints.length) {
-    _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
-    return;
-  }
-
-  const skip = [];
-  for (const jr of joints) {
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x) - 1, rt = Math.min(tl.y, br.y) - 1;
-    const rr = Math.max(tl.x, br.x) + 1, rb = Math.max(tl.y, br.y) + 1;
-    let tEnter = 0, tExit = 1;
-    const params = [
-      dx !== 0 ? (rl - sa.x) / dx : (sa.x >= rl ? 0 : 1),
-      dx !== 0 ? (rr - sa.x) / dx : (sa.x <= rr ? 1 : 0),
-      dy !== 0 ? (rt - sa.y) / dy : (sa.y >= rt ? 0 : 1),
-      dy !== 0 ? (rb - sa.y) / dy : (sa.y <= rb ? 1 : 0),
-    ];
-    tEnter = Math.max(tEnter, Math.min(params[0], params[1]), Math.min(params[2], params[3]));
-    tExit  = Math.min(tExit,  Math.max(params[0], params[1]), Math.max(params[2], params[3]));
-    if (tEnter < tExit - 0.01) skip.push([tEnter, tExit]);
-  }
-
-  if (!skip.length) {
-    _ctx.moveTo(sa.x, sa.y); _ctx.lineTo(ea.x, ea.y);
-    return;
-  }
-
-  skip.sort((a, b) => a[0] - b[0]);
-  let cur = 0;
-  for (const [t1, t2] of skip) {
-    if (cur < t1 - 0.01) {
-      _ctx.moveTo(sa.x + dx * cur, sa.y + dy * cur);
-      _ctx.lineTo(sa.x + dx * t1,  sa.y + dy * t1);
-    }
-    cur = Math.max(cur, t2);
-  }
-  if (cur < 1 - 0.01) {
-    _ctx.moveTo(sa.x + dx * cur, sa.y + dy * cur);
-    _ctx.lineTo(ea.x, ea.y);
-  }
+function wallStart(w) { return { x: w.cx1 ?? w.x1, y: w.cy1 ?? w.y1 }; }
+function wallEnd(w)   { return { x: w.cx2 ?? w.x2, y: w.cy2 ?? w.y2 }; }
+function wallLengthMm(w) {
+  const s = wallStart(w), e = wallEnd(w);
+  return Math.hypot(e.x - s.x, e.y - s.y);
 }
+function reversedWall(w) {
+  return { ...w,
+    cx1: w.cx2 ?? w.x2, cy1: w.cy2 ?? w.y2,
+    cx2: w.cx1 ?? w.x1, cy2: w.cy1 ?? w.y1,
+    x1: w.x2, y1: w.y2, x2: w.x1, y2: w.y1,
+  };
+}
+function dist2(a, b) { return (a.x - b.x) ** 2 + (a.y - b.y) ** 2; }
 
-function drawWallJoints(selectedItems) {
-  for (const jr of getWallJointRects()) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    // Заливка стыка
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
-    // Контур — только boundary edges (внешние грани стыка)
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke;
-    _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
-    _ctx.beginPath();
-    for (const path of getJointBoundaryPaths(jr)) {
-      if (!path.length) continue;
-      const s = toScreen(path[0].x, path[0].y);
-      _ctx.moveTo(s.x, s.y);
-      for (let i = 1; i < path.length; i++) {
-        const p = toScreen(path[i].x, path[i].y);
-        _ctx.lineTo(p.x, p.y);
+// ══════════════════════════════════════════════════════════════════
+// СЕГМЕНТЫ СТЕНЫ ПО ПРОЁМАМ
+// ══════════════════════════════════════════════════════════════════
+function buildWallSegments(walls, openings) {
+  return walls.map(wall => {
+    // op.t привязан к физической оси (x1/y1 → x2/y2), используем её
+    const lenMm = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (lenMm < 1) return { wall, segments: [] };
+
+    const wallOps = openings
+      .filter(op => op.wallId === wall.id)
+      .map(op => ({
+        startMm: Math.max(0,     (op.t - op.width / 2 / lenMm) * lenMm),
+        endMm:   Math.min(lenMm, (op.t + op.width / 2 / lenMm) * lenMm),
+      }))
+      .filter(op => op.endMm > op.startMm)
+      .sort((a, b) => a.startMm - b.startMm);
+
+    const segments = [];
+    let cursor = 0;
+    for (const op of wallOps) {
+      if (op.startMm > cursor + 0.5) {
+        segments.push({ startMm: cursor, endMm: op.startMm, widthMm: op.startMm - cursor });
       }
+      cursor = Math.max(cursor, op.endMm);
     }
-    _ctx.stroke();
-    _ctx.restore();
-  }
+    if (cursor < lenMm - 0.5) {
+      segments.push({ startMm: cursor, endMm: lenMm, widthMm: lenMm - cursor });
+    }
+    return { wall, segments };
+  });
 }
 
-function drawOpenings(selectedItems, dh, ds) {
-  for (const op of appState.openings) {
-    const wall = appState.walls.find(w => w.id === op.wallId); if (!wall) continue;
-    drawOpening(op, wall, false, sel('opening', op.id, selectedItems), dh, ds);
+// ══════════════════════════════════════════════════════════════════
+// УГЛЫ ПОМЕЩЕНИЯ
+// ══════════════════════════════════════════════════════════════════
+function computeCornerStats(walls) {
+  if (walls.length < 2) return { inner: 0, outer: 0 };
+  const n = walls.length;
+  let inner = 0, outer = 0;
+
+  // Знак обхода через Shoelace
+  let signedArea = 0;
+  for (let i = 0; i < n; i++) {
+    const s = wallStart(walls[i]), e = wallEnd(walls[i]);
+    signedArea += s.x * e.y - e.x * s.y;
   }
+
+  for (let i = 0; i < n; i++) {
+    const dx1 = wallEnd(walls[i]).x   - wallStart(walls[i]).x;
+    const dy1 = wallEnd(walls[i]).y   - wallStart(walls[i]).y;
+    const dx2 = wallEnd(walls[(i+1)%n]).x - wallStart(walls[(i+1)%n]).x;
+    const dy2 = wallEnd(walls[(i+1)%n]).y - wallStart(walls[(i+1)%n]).y;
+    const cross = dx1 * dy2 - dy1 * dx2;
+    if (Math.abs(cross) < 0.001) continue;
+    const isInterior = signedArea < 0 ? cross < 0 : cross > 0;
+    if (isInterior) inner++; else outer++;
+  }
+  return { inner, outer };
 }
 
-function drawOpening(op, wall, isHover, isSel, dh, ds) {
-  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1); if (wlen < 1) return;
+// ══════════════════════════════════════════════════════════════════
+// РАСТЕРИЗАЦИЯ СТЕНЫ
+// ══════════════════════════════════════════════════════════════════
+function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = true) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const halfW = op.width / 2;
-  const t1 = Math.max(0, Math.min(1, op.t - halfW / wlen)), t2 = Math.max(0, Math.min(1, op.t + halfW / wlen));
-  const ax1 = wall.x1 + (wall.x2 - wall.x1) * t1, ay1 = wall.y1 + (wall.y2 - wall.y1) * t1;
-  const ax2 = wall.x1 + (wall.x2 - wall.x1) * t2, ay2 = wall.y1 + (wall.y2 - wall.y1) * t2;
-  const p1 = toScreen(ax1, ay1), p2 = toScreen(ax2, ay2);
-  // sdx/sdy — перпендикуляр ровно на половину толщины стены
-  const scale = _getScale();
-  const halfT = wall.thickness / 2;
-  const sdx = -Math.sin(angle) * halfT * scale, sdy = Math.cos(angle) * halfT * scale;
-  // Правильные экранные smещения от оси
-  const sdxW = -Math.sin(angle) * halfT, sdyW = Math.cos(angle) * halfT;
-  // Экранные координаты 4 углов проёма (строго в пределах толщины стены)
-  const c1 = toScreen(ax1 + sdxW, ay1 + sdyW);
-  const c2 = toScreen(ax2 + sdxW, ay2 + sdyW);
-  const c3 = toScreen(ax2 - sdxW, ay2 - sdyW);
-  const c4 = toScreen(ax1 - sdxW, ay1 - sdyW);
+  // inflate поперёк только для flood fill bitmap — обеспечивает замыкание контура
+  // для area bitmap inflate убран — считаем точную площадь
+  const half  = wall.thickness / 2 + (inflate ? CELL_MM * 0.5 : 0);
+  const sinA  = Math.sin(angle), cosA = Math.cos(angle);
+  const dx = -sinA * half, dy = cosA * half;
 
-  const color = op.type === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke;
-  const fillColor = op.type === 'window' ? (isHover ? DRAW_COLORS.windowHover : DRAW_COLORS.windowFill)
-    : (isHover ? DRAW_COLORS.doorHover : DRAW_COLORS.doorFill);
-  const doorHinge = op.hinge || dh, doorSwing = op.swing ?? ds;
-  _ctx.save();
+  const corners = [
+    { x: wall.x1 + dx, y: wall.y1 + dy },
+    { x: wall.x2 + dx, y: wall.y2 + dy },
+    { x: wall.x2 - dx, y: wall.y2 - dy },
+    { x: wall.x1 - dx, y: wall.y1 - dy },
+  ];
 
-  if (op.type === 'window') {
-    // Заливка проёма
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
-    _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
-    _ctx.fillStyle = fillColor; _ctx.fill();
+  let gxMin = Infinity, gyMin = Infinity, gxMax = -Infinity, gyMax = -Infinity;
+  for (const c of corners) {
+    const gx = (c.x - minX) / CELL_MM, gy = (c.y - minY) / CELL_MM;
+    gxMin = Math.min(gxMin, gx); gyMin = Math.min(gyMin, gy);
+    gxMax = Math.max(gxMax, gx); gyMax = Math.max(gyMax, gy);
+  }
+  gxMin = Math.max(0, Math.floor(gxMin) - 1);
+  gyMin = Math.max(0, Math.floor(gyMin) - 1);
+  gxMax = Math.min(cols - 1, Math.ceil(gxMax) + 1);
+  gyMax = Math.min(rows - 1, Math.ceil(gyMax) + 1);
 
-    // Только две длинные стороны (вдоль стены) — рама окна
-    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5;
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y); // внешняя грань
-    _ctx.moveTo(c4.x, c4.y); _ctx.lineTo(c3.x, c3.y); // внутренняя грань
-    // Торцы рамы
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c4.x, c4.y);
-    _ctx.moveTo(c2.x, c2.y); _ctx.lineTo(c3.x, c3.y);
-    _ctx.stroke();
-
-    // Одна средняя линия — стеклопакет (одна линия посередине вдоль стены)
-    const mx1 = (c1.x + c4.x) / 2, my1 = (c1.y + c4.y) / 2;
-    const mx2 = (c2.x + c3.x) / 2, my2 = (c2.y + c3.y) / 2;
-    _ctx.beginPath(); _ctx.moveTo(mx1, my1); _ctx.lineTo(mx2, my2);
-    _ctx.lineWidth = 1; _ctx.stroke();
-
-  } else {
-    // Дверь: только белая заливка проёма (без обводки прямоугольника)
-    _ctx.beginPath();
-    _ctx.moveTo(c1.x, c1.y); _ctx.lineTo(c2.x, c2.y);
-    _ctx.lineTo(c3.x, c3.y); _ctx.lineTo(c4.x, c4.y); _ctx.closePath();
-    _ctx.fillStyle = '#fcfcfd'; _ctx.fill();
-
-    const hp = doorHinge === 'start' ? p1 : p2;
-    const leafEnd = doorHinge === 'start' ? p2 : p1;
-    const leafLen = Math.hypot(leafEnd.x - hp.x, leafEnd.y - hp.y);
-    const baseAngle = doorHinge === 'start' ? angle : angle + Math.PI;
-    const openAngle = baseAngle + doorSwing * Math.PI / 2;
-    const arcEnd = { x: hp.x + Math.cos(openAngle) * leafLen, y: hp.y + Math.sin(openAngle) * leafLen };
-
-    // Линия петли через толщину стены
-    const hc1 = doorHinge === 'start' ? c1 : c2;
-    const hc2 = doorHinge === 'start' ? c4 : c3;
-    _ctx.strokeStyle = color; _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.setLineDash([]);
-    _ctx.beginPath();
-    _ctx.moveTo(hc1.x, hc1.y); _ctx.lineTo(hc2.x, hc2.y);
-    // Полотно двери в закрытом положении
-    _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(leafEnd.x, leafEnd.y);
-    _ctx.stroke();
-    // Дуга траектории
-    _ctx.beginPath(); _ctx.arc(hp.x, hp.y, leafLen, baseAngle, openAngle, doorSwing < 0);
-    _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]); _ctx.stroke(); _ctx.setLineDash([]);
-    // Полотно в открытом положении
-    _ctx.beginPath(); _ctx.moveTo(hp.x, hp.y); _ctx.lineTo(arcEnd.x, arcEnd.y);
-    _ctx.lineWidth = isSel ? 2 : 1.5; _ctx.stroke();
+  const edges = [];
+  for (let i = 0; i < 4; i++) {
+    const a = corners[i], b = corners[(i + 1) % 4];
+    edges.push({ ax: a.x, ay: a.y, nx: -(b.y - a.y), ny: b.x - a.x });
   }
 
-  if (isHover) drawOpeningDimensions(op, wall, angle, { x1: ax1, y1: ay1, x2: ax2, y2: ay2 });
-  _ctx.restore();
-}
-
-function drawOpeningDimensions(op, wall, angle, seg) {
-  const ws = toScreen(wall.x1, wall.y1), we = toScreen(wall.x2, wall.y2);
-  const os = toScreen(seg.x1, seg.y1), oe = toScreen(seg.x2, seg.y2);
-  const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
-  const side = wallInteriorSide(wall, 1), off = wall.thickness / 2 + 18;
-  const oP = p => ({ x: p.x + normal.x * off * side, y: p.y + normal.y * off * side });
-  const dim = (from, to, label, color) => {
-    if (Math.hypot(to.x - from.x, to.y - from.y) < 8) return;
-    const fo = oP(from), to2 = oP(to);
-    _ctx.save(); _ctx.strokeStyle = color; _ctx.lineWidth = 1;
-    _ctx.beginPath(); _ctx.moveTo(from.x, from.y); _ctx.lineTo(fo.x, fo.y);
-    _ctx.moveTo(to.x, to.y); _ctx.lineTo(to2.x, to2.y); _ctx.moveTo(fo.x, fo.y); _ctx.lineTo(to2.x, to2.y); _ctx.stroke(); _ctx.restore();
-    drawAlignedTextBox(label, { x: (fo.x + to2.x) / 2, y: (fo.y + to2.y) / 2 }, angle);
-  };
-  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-  dim(ws, os, `${Math.round(op.t * wlen - op.width / 2)} мм`, DRAW_COLORS.dimension);
-  dim(os, oe, `${op.width} мм`, op.type === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke);
-  dim(oe, we, `${Math.round(wlen - (op.t * wlen + op.width / 2))} мм`, DRAW_COLORS.dimension);
-}
-
-function drawSelectedHandles(tool, selectedItems, wallResizeState) {
-  if (tool !== 'select') return;
-  const wall = selectedItems.length === 1 && selectedItems[0].type === 'wall'
-    ? appState.walls.find(w => w.id === selectedItems[0].id) : null;
-  if (!wall) return;
-  for (const h of getWallResizeHandles(wall)) {
-    const active = wallResizeState?.wallId === wall.id && wallResizeState?.endpoint === h.endpoint;
-    _ctx.save(); _ctx.beginPath(); _ctx.arc(h.screen.x, h.screen.y, active ? 7.5 : 6.5, 0, Math.PI * 2);
-    _ctx.fillStyle = DRAW_COLORS.handleFill; _ctx.fill();
-    _ctx.strokeStyle = active ? DRAW_COLORS.handleActive : DRAW_COLORS.handleStroke;
-    _ctx.lineWidth = active ? 2.5 : 1.8; _ctx.stroke();
-    _ctx.beginPath(); _ctx.arc(h.screen.x, h.screen.y, 2, 0, Math.PI * 2);
-    _ctx.fillStyle = active ? DRAW_COLORS.handleActive : DRAW_COLORS.handleStroke; _ctx.fill(); _ctx.restore();
+  for (let gy = gyMin; gy <= gyMax; gy++) {
+    for (let gx = gxMin; gx <= gxMax; gx++) {
+      const wx = minX + (gx + 0.5) * CELL_MM, wy = minY + (gy + 0.5) * CELL_MM;
+      let inside = true;
+      for (const e of edges) {
+        if ((wx - e.ax) * e.nx + (wy - e.ay) * e.ny > 0) { inside = false; break; }
+      }
+      if (inside) bitmap[gy * cols + gx] = 1;
+    }
   }
 }
 
-function drawTempWall(ps) {
-  const { drawStart: ds, drawEnd: de, chainMode, lengthMode, lengthInput, wallOffset, inpWallThick, lengthOverlay, lengthLabel, lblLen, lblLenVal } = ps;
-  if (!ds || !de) return;
-  const scale = _getScale(), thick = parseFloat(inpWallThick?.value) || 200;
-  const angle = Math.atan2(de.y - ds.y, de.x - ds.x);
-  const ao = (cx, cy, off) => {
-    if (off === 'center') return { x: cx, y: cy };
-    const px = -Math.sin(angle), py = Math.cos(angle), sign = off === 'right' ? 1 : -1;
-    return { x: cx + sign * px * thick / 2, y: cy + sign * py * thick / 2 };
-  };
-  const s = ao(ds.x, ds.y, wallOffset), e2 = ao(de.x, de.y, wallOffset);
-  const p1 = toScreen(s.x, s.y), p2 = toScreen(e2.x, e2.y);
-  const ps1 = toScreen(ds.x, ds.y), ps2 = toScreen(de.x, de.y);
-  const halfT = (thick / 2) * scale;
-  const ndx = -Math.sin(angle) * halfT, ndy = Math.cos(angle) * halfT;
-  const len = Math.hypot(de.x - ds.x, de.y - ds.y);
-  _ctx.save();
-  _ctx.beginPath(); _ctx.moveTo(p1.x + ndx, p1.y + ndy); _ctx.lineTo(p2.x + ndx, p2.y + ndy);
-  _ctx.lineTo(p2.x - ndx, p2.y - ndy); _ctx.lineTo(p1.x - ndx, p1.y - ndy); _ctx.closePath();
-  _ctx.fillStyle = DRAW_COLORS.previewFill; _ctx.fill();
-  _ctx.strokeStyle = DRAW_COLORS.previewStroke; _ctx.lineWidth = 1.5; _ctx.setLineDash([6, 4]); _ctx.stroke(); _ctx.setLineDash([]);
-  _ctx.beginPath(); _ctx.moveTo(ps1.x, ps1.y); _ctx.lineTo(ps2.x, ps2.y);
-  _ctx.strokeStyle = DRAW_COLORS.previewCenterLine; _ctx.lineWidth = 0.8; _ctx.setLineDash([3, 4]); _ctx.stroke(); _ctx.setLineDash([]);
-  _ctx.beginPath(); _ctx.arc(ps1.x, ps1.y, chainMode ? 6 : 4, 0, Math.PI * 2);
-  _ctx.fillStyle = chainMode ? DRAW_COLORS.handleActive : DRAW_COLORS.previewStroke; _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke();
-  const snapType = de.snapType, endSnap = !!snapType || de.snappedToEndpoint;
-  const scm = { corner: DRAW_COLORS.corner, endpoint: DRAW_COLORS.endpoint, midpoint: DRAW_COLORS.midpoint,
-    intersection: DRAW_COLORS.intersection, perpendicular: DRAW_COLORS.perpendicular, wallFace: DRAW_COLORS.wallFace, wallAxis: DRAW_COLORS.wallAxis };
-  _ctx.beginPath(); _ctx.arc(ps2.x, ps2.y, endSnap ? 8 : 4, 0, Math.PI * 2);
-  _ctx.fillStyle = scm[snapType] || (endSnap ? DRAW_COLORS.endpoint : DRAW_COLORS.previewStroke);
-  _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke();
-  if (endSnap) { _ctx.beginPath(); _ctx.arc(ps2.x, ps2.y, 14, 0, Math.PI * 2); _ctx.strokeStyle = 'rgba(55,65,81,0.35)'; _ctx.lineWidth = 2; _ctx.stroke(); }
-  if (chainMode) {
-    _ctx.fillStyle = 'rgba(55,65,81,0.92)'; _ctx.beginPath();
-    if (_ctx.roundRect) _ctx.roundRect(8, 32, 130, 20, 4); else _ctx.rect(8, 32, 130, 20); _ctx.fill();
-    _ctx.fillStyle = '#fff'; _ctx.font = '600 11px Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'middle';
-    _ctx.fillText('⛓ Цепочка стен · Esc — стоп', 14, 42);
+// ── Площадь по формуле Гаусса (Shoelace) по внутренней грани стен ─
+// Используем внутреннюю грань: сдвигаем каждую стену на thickness/2
+// внутрь помещения (к центроиду). Это даёт чистую площадь пола.
+function shoelaceInnerArea(walls) {
+  if (walls.length < 3) return 0;
+  const pts = walls.map(w => wallStart(w));
+  pts.push(wallEnd(walls[walls.length - 1]));
+  let area = 0;
+  const n = pts.length;
+  for (let i = 0; i < n - 1; i++) {
+    area += pts[i].x * pts[i + 1].y;
+    area -= pts[i + 1].x * pts[i].y;
   }
-  _ctx.restore();
-  const midX = (ps1.x + ps2.x) / 2, midY = (ps1.y + ps2.y) / 2;
-  if (lengthOverlay) lengthOverlay.style.display = 'block';
-  if (lengthLabel) { lengthLabel.style.left = midX + 'px'; lengthLabel.style.top = (midY - 8) + 'px';
-    lengthLabel.textContent = (lengthMode && lengthInput) ? `${lengthInput}_ мм` : `${Math.round(len)} мм`; }
-  if (lblLen) lblLen.style.display = 'inline';
-  if (lblLenVal) lblLenVal.textContent = Math.round(len);
+  return Math.abs(area) / 2;
 }
 
-function drawGuideLine(guide) {
-  const anchor = toScreen(guide.anchor.x, guide.anchor.y); _ctx.save();
-  for (const axis of getGuideAxes(guide)) {
-    const { start, end } = getGuideLineScreenEndpoints({ anchor: guide.anchor, dir: axis.dir });
-    _ctx.strokeStyle = axis.color; _ctx.lineWidth = 2; _ctx.setLineDash([5, 8]);
-    _ctx.beginPath(); _ctx.moveTo(start.x, start.y); _ctx.lineTo(end.x, end.y); _ctx.stroke();
+function findWallAtPoint(wx, wy) {
+  for (const w of appState.walls) {
+    const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    if (len < 0.001) continue;
+    const ux = (w.x2 - w.x1) / len, uy = (w.y2 - w.y1) / len;
+    const rx = wx - w.x1, ry = wy - w.y1;
+    const along  = rx * ux + ry * uy;
+    const normal = rx * (-uy) + ry * ux;
+    if (along >= -CELL_MM && along <= len + CELL_MM &&
+        Math.abs(normal) <= w.thickness / 2 + CELL_MM) return w;
   }
-  _ctx.setLineDash([]); _ctx.fillStyle = DRAW_COLORS.guidePrimary;
-  _ctx.beginPath(); _ctx.arc(anchor.x, anchor.y, 4.5, 0, Math.PI * 2); _ctx.fill();
-  _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke(); _ctx.restore();
+  return null;
 }
 
-function drawCornerHotspots(snap) {
-  const pts = new Map();
-  if (Array.isArray(snap.highlightPoints) && snap.highlightPoints.length)
-    snap.highlightPoints.forEach(p => { const k = `${Math.round(p.x)},${Math.round(p.y)}`; if (!pts.has(k)) pts.set(k, p); });
-  else {
-    const ids = snap.wallIds?.length ? snap.wallIds : snap.wallId ? [snap.wallId] : [];
-    for (const id of ids) { const w = appState.walls.find(v => v.id === id); if (!w) continue;
-      for (const p of getWallCornerPoints(w)) { const k = `${Math.round(p.x)},${Math.round(p.y)}`; if (!pts.has(k)) pts.set(k, p); } }
+function round2(v) { return Math.round(v * 100) / 100; }
+
+// ══════════════════════════════════════════════════════════════════
+// DOM — ЭКСПЛИКАЦИЯ
+// Структура колонок:
+//   ОСНОВНЫЕ (для сметы):
+//     1. Помещение
+//     2. Пол м²
+//     3. Стены м²  (нетто: минус проёмы, минус участки < 50 см)
+//     4. Периметр м.п. (без дверей и панорамных окон)
+//   СПРАВОЧНЫЕ:
+//     5. Окна м²
+//     6. Вх. дверь м²  (жирным если найдена входная)
+//     7. Погонаж м.п.  (простенки < 50 см + оконные откосы)
+//     8. Углы м.п.     (внешние углы стен + внешние углы откосов)
+// ══════════════════════════════════════════════════════════════════
+export function updateExpl(explBody, roomCountEl) {
+  if (!explBody) return;
+  if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
+
+  if (!appState.rooms.length) {
+    explBody.innerHTML = `<tr class="empty-row"><td colspan="8">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
+    return;
   }
-  _ctx.save();
-  for (const p of pts.values()) { const s = toScreen(p.x, p.y), active = Math.hypot(p.x - snap.x, p.y - snap.y) < 1;
-    _ctx.beginPath(); _ctx.arc(s.x, s.y, active ? 5 : 4, 0, Math.PI * 2);
-    _ctx.fillStyle = '#fff'; _ctx.fill(); _ctx.strokeStyle = active ? DRAW_COLORS.corner : 'rgba(17,24,39,0.35)';
-    _ctx.lineWidth = active ? 2 : 1.5; _ctx.stroke(); }
-  _ctx.restore();
+
+  explBody.innerHTML = appState.rooms.map((r, i) => {
+    const m     = r.metrics || {};
+    const color = ROOM_STROKES[i % ROOM_STROKES.length].replace('0.4', '0.8');
+    const fmt   = v => (v != null && v > 0) ? v.toFixed(2) : '—';
+
+    const entranceCell = m.entranceDoorAreaM2 > 0
+      ? `<td class="expl-entrance">${m.entranceDoorAreaM2.toFixed(2)}</td>`
+      : `<td>—</td>`;
+
+    return `<tr>
+      <td><div class="room-name-cell">
+        <span class="room-dot" style="background:${color}"></span>
+        <input class="room-name-input" type="text" value="${escHtml(r.name)}"
+          data-room-key="${escHtml(r.key)}" data-room-default="${escHtml(r.defaultName)}">
+      </div></td>
+      <td>${r.area.toFixed(2)}</td>
+      <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
+      <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
+      <td>${fmt(m.windowAreaM2)}</td>
+      ${entranceCell}
+      <td>${fmt(m.pogonazLm)}</td>
+      <td>${fmt(m.outerAnglesLm)}</td>
+    </tr>`;
+  }).join('');
 }
 
-function drawObjectSnap(snap) {
-  const p = toScreen(snap.x, snap.y);
-  const cm = { corner: DRAW_COLORS.corner, endpoint: DRAW_COLORS.endpoint, midpoint: DRAW_COLORS.midpoint,
-    intersection: DRAW_COLORS.intersection, perpendicular: DRAW_COLORS.perpendicular, wallFace: DRAW_COLORS.wallFace, wallAxis: DRAW_COLORS.wallAxis };
-  const color = cm[snap.type] || DRAW_COLORS.previewStroke;
-  _ctx.save(); _ctx.strokeStyle = color; _ctx.fillStyle = '#fff'; _ctx.lineWidth = 2;
-  if (snap.type === 'corner' || snap.type === 'endpoint') { _ctx.beginPath(); _ctx.rect(p.x - 4.5, p.y - 4.5, 9, 9); _ctx.fill(); _ctx.stroke(); }
-  else if (snap.type === 'midpoint') { _ctx.beginPath(); _ctx.moveTo(p.x, p.y - 6); _ctx.lineTo(p.x + 6, p.y); _ctx.lineTo(p.x, p.y + 6); _ctx.lineTo(p.x - 6, p.y); _ctx.closePath(); _ctx.fill(); _ctx.stroke(); }
-  else if (snap.type === 'intersection') { _ctx.beginPath(); _ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); _ctx.fill(); _ctx.stroke(); }
-  else if (snap.type === 'wallFace' || snap.type === 'wallAxis') {
-    const wa = snap.wallAngle || 0, ux = Math.cos(wa), uy = Math.sin(wa), nx = -uy, ny = ux;
-    _ctx.beginPath(); _ctx.moveTo(p.x - ux * 7, p.y - uy * 7); _ctx.lineTo(p.x + ux * 7, p.y + uy * 7);
-    _ctx.moveTo(p.x - nx * 4, p.y - ny * 4); _ctx.lineTo(p.x + nx * 4, p.y + ny * 4); _ctx.stroke();
-    _ctx.beginPath(); _ctx.arc(p.x, p.y, snap.type === 'wallFace' ? 4.5 : 3.5, 0, Math.PI * 2); _ctx.fill(); _ctx.stroke();
-  }
-  drawAlignedTextBox(snap.label, { x: p.x, y: p.y - 18 }, 0, { textColor: color, background: 'rgba(255,255,255,0.96)' });
-  _ctx.restore();
+function escHtml(s) {
+  return String(s || '')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
-function drawSelectionBox(start, current) {
-  if (!start || !current) return;
-  const box = { left: Math.min(start.x, current.x), top: Math.min(start.y, current.y), right: Math.max(start.x, current.x), bottom: Math.max(start.y, current.y) };
-  if ((box.right - box.left) <= 5 && (box.bottom - box.top) <= 5) return;
-  _ctx.save(); _ctx.fillStyle = DRAW_COLORS.selectionFill; _ctx.strokeStyle = DRAW_COLORS.selectionStroke;
-  _ctx.lineWidth = 1; _ctx.setLineDash([6, 4]);
-  _ctx.fillRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
-  _ctx.strokeRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
-  _ctx.setLineDash([]); _ctx.restore();
-}
-
-function drawCursorGhost(ps) {
-  const { tool, mouseScreen, isPanning, inpWallThick } = ps;
-  if (!mouseScreen || isPanning || (tool !== 'window' && tool !== 'door')) return;
-  const scale = _getScale(), thick = parseFloat(inpWallThick?.value) || 200;
-  const w = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowWidth' : 'inpDoorWidth')?.value) || (tool === 'window' ? 1200 : 900);
-  const h = parseFloat(document.getElementById(tool === 'window' ? 'inpWindowHeight' : 'inpDoorHeight')?.value) || (tool === 'window' ? 1500 : 2100);
-  const gw = Math.max(36, Math.min(220, w * scale)), gd = Math.max(12, Math.min(40, thick * scale));
-  const ox = Math.min(_canvas.width - gw - 84, mouseScreen.x + 18), oy = Math.min(_canvas.height - 62, mouseScreen.y + 18);
-  _ctx.save(); _ctx.translate(ox, oy);
-  _ctx.fillStyle = 'rgba(255,255,255,0.92)'; _ctx.strokeStyle = tool === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke; _ctx.lineWidth = 1.2;
-  _ctx.beginPath(); if (_ctx.roundRect) _ctx.roundRect(-8, -8, gw + 16, gd + 34, 10); else _ctx.rect(-8, -8, gw + 16, gd + 34); _ctx.fill(); _ctx.stroke();
-  _ctx.beginPath(); _ctx.rect(0, 0, gw, gd);
-  _ctx.fillStyle = tool === 'window' ? DRAW_COLORS.windowHover : DRAW_COLORS.doorHover; _ctx.fill();
-  _ctx.strokeStyle = tool === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke; _ctx.stroke();
-  _ctx.fillStyle = DRAW_COLORS.roomLabel; _ctx.font = '600 10px Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'top';
-  _ctx.fillText(`${w} × ${h} мм`, 0, gd + 8); _ctx.restore();
+// ══════════════════════════════════════════════════════════════════
+// ЭКСПОРТ В СМЕТУ
+// ══════════════════════════════════════════════════════════════════
+export function getComputedRooms() {
+  return appState.rooms.map(r => {
+    const m = r.metrics || {};
+    return {
+      name:               r.name,
+      floorArea:          r.area,
+      wallsArea:          m.wallAreaNetM2      ?? r.wallArea,
+      perimeter:          m.perimeterFloorM    ?? r.perimeter,
+      height:             r.height             ?? 0,
+      windowAreaM2:       m.windowAreaM2       ?? 0,
+      windowCount:        m.windowCount        ?? 0,
+      entranceDoorAreaM2: m.entranceDoorAreaM2 ?? 0,
+      pogonazLm:          m.pogonazLm          ?? 0,
+      outerAnglesLm:      m.outerAnglesLm      ?? 0,
+      cornersOuter:       m.cornersOuter       ?? 0,
+      narrowWallsLm:      m.narrowWallsLm      ?? 0,
+      windowRevealsLm:    m.windowRevealsLm    ?? 0,
+    };
+  });
 }
