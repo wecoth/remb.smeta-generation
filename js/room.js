@@ -53,51 +53,10 @@ export function computeRooms(wallHeightFallback = 2700) {
   if (cols > 2000 || rows > 2000) return;
 
   // ── 2. Растеризация стен ───────────────────────────────────────
-  // bitmap_flood: с inflate поперёк — гарантирует замыкание контура
-  // bitmap_area:  без inflate — точная площадь; дверные проёмы пробиты
-  const bitmap_flood = new Uint8Array(cols * rows);
-  const bitmap_area  = new Uint8Array(cols * rows);
-  for (const w of appState.walls) {
-    rasterizeWall(w, bitmap_flood, cols, rows, minX, minY, true);
-    rasterizeWall(w, bitmap_area,  cols, rows, minX, minY, false);
-  }
-  // Пробиваем дверные проёмы в bitmap_area:
-  // убираем пиксели стены в зоне каждого дверного проёма.
-  // Тогда flood fill захватит площадь под проёмом и честно разделит
-  // её между смежными помещениями.
-  for (const op of appState.openings) {
-    if (op.type !== 'door') continue;
-    const wall = appState.walls.find(w => w.id === op.wallId);
-    if (!wall) continue;
-    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (wlen < 1) continue;
-    const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-    const ux = Math.cos(angle), uy = Math.sin(angle);
-    const nx = -uy, ny = ux; // нормаль
-    const half = wall.thickness / 2;
-    // Центр проёма
-    const cx = wall.x1 + (wall.x2 - wall.x1) * op.t;
-    const cy = wall.y1 + (wall.y2 - wall.y1) * op.t;
-    const hw = op.width / 2; // полуширина проёма
-    // Bbox зоны проёма с небольшим запасом
-    const pad = CELL_MM;
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        if (bitmap_area[gy * cols + gx] === 0) continue; // уже свободно
-        const wx = minX + (gx + 0.5) * CELL_MM;
-        const wy = minY + (gy + 0.5) * CELL_MM;
-        const rx = wx - cx, ry = wy - cy;
-        const along  = rx * ux + ry * uy;   // вдоль стены
-        const normal = rx * nx + ry * ny;   // поперёк стены
-        if (Math.abs(along) <= hw + pad * 0.5 &&
-            Math.abs(normal) <= half + pad * 0.5) {
-          bitmap_area[gy * cols + gx] = 0; // пробиваем проём
-        }
-      }
-    }
-  }
-  // Для flood fill используем bitmap_flood
-  const bitmap = bitmap_flood;
+  // Inflate минимальный (1мм < CELL_MM) — только для замыкания диагональных стен.
+  // Flood fill пиксели = внутренний контур помещения, площадь считается по ним.
+  const bitmap = new Uint8Array(cols * rows);
+  for (const w of appState.walls) rasterizeWall(w, bitmap, cols, rows, minX, minY);
 
   // ── 3. BFS flood fill ──────────────────────────────────────────
   const regionId          = new Int32Array(cols * rows);
@@ -234,12 +193,9 @@ export function computeRooms(wallHeightFallback = 2700) {
       roomHeightMm, centerWorld, entranceDoorId
     );
 
-    // Площадь пола — Shoelace по внутреннему контуру стен.
-    // Точная геометрия, не зависит от разрешения bitmap.
-    // Fallback на flood fill если контур не замкнут.
-    const orderedForArea = orderBoundaryWalls([...boundaryWalls.values()]);
-    const geoAreaMm2     = shoelaceInnerArea(orderedForArea);
-    const areaMm2Final   = geoAreaMm2 > 10000 ? geoAreaMm2 : pixels.length * CELL_MM * CELL_MM;
+    // Площадь пола = пиксели flood fill × размер пикселя.
+    // Flood fill захватывает всё пространство внутри стен — это и есть внутренний контур.
+    const areaMm2Final = pixels.length * CELL_MM * CELL_MM;
 
     // cells для render.js
     const cells = pixels.map(([gx, gy]) => ({
@@ -516,11 +472,12 @@ function computeCornerStats(walls) {
 // ══════════════════════════════════════════════════════════════════
 // РАСТЕРИЗАЦИЯ СТЕНЫ
 // ══════════════════════════════════════════════════════════════════
-function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = true) {
+function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  // inflate поперёк только для flood fill bitmap — обеспечивает замыкание контура
-  // для area bitmap inflate убран — считаем точную площадь
-  const half  = wall.thickness / 2 + (inflate ? CELL_MM * 0.5 : 0);
+  // Inflate 1мм — минимальный для надёжного замыкания диагональных стен.
+  // Меньше CELL_MM/50 = 1мм, почти не влияет на площадь.
+  const INFLATE = 1; // мм
+  const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
 
@@ -560,21 +517,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = true) {
   }
 }
 
-// ── Площадь по формуле Гаусса (Shoelace) по внутренней грани стен ─
-// Используем внутреннюю грань: сдвигаем каждую стену на thickness/2
-// внутрь помещения (к центроиду). Это даёт чистую площадь пола.
-function shoelaceInnerArea(walls) {
-  if (walls.length < 3) return 0;
-  const pts = walls.map(w => wallStart(w));
-  pts.push(wallEnd(walls[walls.length - 1]));
-  let area = 0;
-  const n = pts.length;
-  for (let i = 0; i < n - 1; i++) {
-    area += pts[i].x * pts[i + 1].y;
-    area -= pts[i + 1].x * pts[i].y;
-  }
-  return Math.abs(area) / 2;
-}
+
 
 function findWallAtPoint(wx, wy) {
   for (const w of appState.walls) {
@@ -611,7 +554,7 @@ export function updateExpl(explBody, roomCountEl) {
   if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
 
   if (!appState.rooms.length) {
-    explBody.innerHTML = `<tr class="empty-row"><td colspan="8">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
+    explBody.innerHTML = `<tr class="empty-row"><td colspan="7">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
     return;
   }
 
@@ -619,10 +562,6 @@ export function updateExpl(explBody, roomCountEl) {
     const m     = r.metrics || {};
     const color = ROOM_STROKES[i % ROOM_STROKES.length].replace('0.4', '0.8');
     const fmt   = v => (v != null && v > 0) ? v.toFixed(2) : '—';
-
-    const entranceCell = m.entranceDoorAreaM2 > 0
-      ? `<td class="expl-entrance">${m.entranceDoorAreaM2.toFixed(2)}</td>`
-      : `<td>—</td>`;
 
     return `<tr>
       <td><div class="room-name-cell">
@@ -634,7 +573,6 @@ export function updateExpl(explBody, roomCountEl) {
       <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
       <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
       <td>${fmt(m.windowAreaM2)}</td>
-      ${entranceCell}
       <td>${fmt(m.pogonazLm)}</td>
       <td>${fmt(m.outerAnglesLm)}</td>
     </tr>`;
@@ -661,7 +599,6 @@ export function getComputedRooms() {
       height:             r.height             ?? 0,
       windowAreaM2:       m.windowAreaM2       ?? 0,
       windowCount:        m.windowCount        ?? 0,
-      entranceDoorAreaM2: m.entranceDoorAreaM2 ?? 0,
       pogonazLm:          m.pogonazLm          ?? 0,
       outerAnglesLm:      m.outerAnglesLm      ?? 0,
       cornersOuter:       m.cornersOuter       ?? 0,
