@@ -6,6 +6,16 @@
 <title>REMB — Планировщик + Смета/КП</title>
 <link rel="stylesheet" href="css/main.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  .btn-use-drawing {
+    display:block;width:100%;margin-top:8px;
+    padding:9px 16px;border-radius:8px;
+    background:#f0f4ff;border:1.5px dashed #4a6fe3;
+    color:#4a6fe3;font:600 13px/1 Onest,Inter,sans-serif;
+    cursor:pointer;transition:background .15s;
+  }
+  .btn-use-drawing:hover{background:#e0e9ff;}
+</style>
 </head>
 <body>
 
@@ -323,6 +333,9 @@
           <div class="up-text">Перетащите или выберите чертёж / фото плана</div>
         </div>
       </div>
+      <button class="btn-use-drawing" onclick="window._smetaModule.captureCanvas()" title="Захватить текущий чертёж из вкладки Чертёж">
+        ⊕ Использовать чертёж
+      </button>
     </div>
 
     <!-- ROOMS -->
@@ -629,5 +642,25 @@
 })();
 </script>
 <script type="module" src="js/main.js"></script>
+<script type="module">
+  // Expose appState and viewport globally for captureCanvas in smeta.js
+  import { appState } from './js/state.js';
+  window._appState = appState;
+
+  // Poll for viewport — ui-planner updates scale/panX/panY continuously
+  // We read them via a getter exposed by ui-planner or directly from the planner
+  // For now, try to import getViewport if exported
+  try {
+    const up = await import('./js/ui-planner.js');
+    if (up.getViewport) {
+      Object.defineProperty(window, '_plannerViewport', {
+        get: () => up.getViewport(),
+      });
+    }
+  } catch(e) {
+    // fallback: default viewport
+    window._plannerViewport = { scale: 0.12, panX: 200, panY: 150 };
+  }
+</script>
 </body>
 </html>
