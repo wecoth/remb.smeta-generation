@@ -53,29 +53,26 @@ export function computeRooms(wallHeightFallback = 2700) {
   if (cols > 2000 || rows > 2000) return;
 
   // ── 2. Растеризация стен ───────────────────────────────────────
-  // Тонкий bitmap (inflate=1мм) — площадь и заливка пола точные.
+  // Тело стены — тонко (inflate=1мм), точная площадь.
+  // Caps на концах — закрывают торцевые зазоры в вершинах.
+  // Диагональные щели вдоль тела — закрываются отдельным проходом.
   const bitmap = new Uint8Array(cols * rows);
   for (const w of appState.walls) {
     rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
-  // ── 3. Закрываем диагональные щели ────────────────────────────
-  // При диагональных стенах два пикселя стены могут соединяться
-  // только по диагонали — между ними щель, через которую 4-связный
-  // BFS вытекает наружу. Паттерн:
+  // ── 3. Закрываем диагональные щели вдоль тел стен ─────────────
+  // Два пикселя стены, касающихся только по диагонали:
   //   ██░   ░██
   //   ░██   ██░
-  // Заполняем один из свободных пикселей стеной, закрывая проход.
-  // Это гарантирует 4-связную непрерывность барьера без inflate.
+  // Заполняем один из свободных — щель закрыта.
   for (let gy = 0; gy < rows - 1; gy++) {
     for (let gx = 0; gx < cols - 1; gx++) {
       const tl = bitmap[ gy      * cols + gx    ];
       const tr = bitmap[ gy      * cols + gx + 1];
       const bl = bitmap[(gy + 1) * cols + gx    ];
       const br = bitmap[(gy + 1) * cols + gx + 1];
-      // Паттерн ╲: TL+BR стена, TR+BL свободны → заполняем TR
       if (tl && br && !tr && !bl) bitmap[gy * cols + gx + 1] = 1;
-      // Паттерн ╱: TR+BL стена, TL+BR свободны → заполняем TL
       if (tr && bl && !tl && !br) bitmap[gy * cols + gx    ] = 1;
     }
   }
@@ -465,8 +462,8 @@ function computeCornerStats(walls) {
 
 // ══════════════════════════════════════════════════════════════════
 // РАСТЕРИЗАЦИЯ СТЕНЫ
-// inflate=1мм — не влияет на площадь.
-// Диагональные щели закрываются отдельным проходом после растеризации.
+// Тело: inflate=1мм (площадь точная).
+// Caps: radius=thickness/2+2мм — закрывают торцевые зазоры в вершинах.
 // ══════════════════════════════════════════════════════════════════
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const INFLATE = 1;
@@ -507,6 +504,29 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
         if ((wx - e.ax) * e.nx + (wy - e.ay) * e.ny > 0) { inside = false; break; }
       }
       if (inside) bitmap[gy * cols + gx] = 1;
+    }
+  }
+
+  // Круглые caps на концах — закрывают торцевые зазоры в вершинах
+  const capRadius = wall.thickness / 2 + 2;
+  rasterizeCap(wall.x1, wall.y1, capRadius, bitmap, cols, rows, minX, minY);
+  rasterizeCap(wall.x2, wall.y2, capRadius, bitmap, cols, rows, minX, minY);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// КРУГЛАЯ ЗАГЛУШКА НА КОНЦЕ СТЕНЫ
+// ══════════════════════════════════════════════════════════════════
+function rasterizeCap(wx, wy, radius, bitmap, cols, rows, minX, minY) {
+  const r2 = radius * radius;
+  const gxMin = Math.max(0, Math.floor((wx - radius - minX) / CELL_MM) - 1);
+  const gyMin = Math.max(0, Math.floor((wy - radius - minY) / CELL_MM) - 1);
+  const gxMax = Math.min(cols - 1, Math.ceil((wx + radius - minX) / CELL_MM) + 1);
+  const gyMax = Math.min(rows - 1, Math.ceil((wy + radius - minY) / CELL_MM) + 1);
+  for (let gy = gyMin; gy <= gyMax; gy++) {
+    for (let gx = gxMin; gx <= gxMax; gx++) {
+      const px = minX + (gx + 0.5) * CELL_MM;
+      const py = minY + (gy + 0.5) * CELL_MM;
+      if ((px - wx) ** 2 + (py - wy) ** 2 <= r2) bitmap[gy * cols + gx] = 1;
     }
   }
 }
