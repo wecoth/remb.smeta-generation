@@ -212,15 +212,18 @@ function drawGrid() {
 
 function drawRoomFills(selectedItems) {
   const scale = _getScale();
+  // Небольшое перекрытие ячеек устраняет белую полосу у стен.
+  // Ячейки flood fill не доходят до внутренней поверхности стены
+  // из-за inflate bitmap — overlap компенсирует этот зазор.
+  const OVERLAP_MM = 26; // чуть больше inflate (25мм)
   for (let i = 0; i < appState.rooms.length; i++) {
     const r = appState.rooms[i]; if (!r.cells?.length) continue;
     _ctx.save();
     _ctx.beginPath();
-    // +1px overlap между ячейками убирает щели при любом масштабе
     for (const c of r.cells) {
-      const p = toScreen(c.x1, c.y1);
-      const w = (c.x2 - c.x1) * scale + 1;
-      const h = (c.y2 - c.y1) * scale + 1;
+      const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
+      const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
+      const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
       _ctx.rect(p.x, p.y, w, h);
     }
     _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
