@@ -903,3 +903,108 @@ function drawCursorGhost(ps) {
   _ctx.fillStyle = DRAW_COLORS.roomLabel; _ctx.font = '600 10px Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'top';
   _ctx.fillText(`${w} × ${h} мм`, 0, gd + 8); _ctx.restore();
 }
+
+
+// ══════════════════════════════════════════════════════════════════
+// OFFSCREEN РЕНДЕР ДЛЯ PDF
+// ══════════════════════════════════════════════════════════════════
+
+// Вычисляет bbox всех стен и возвращает {minX,minY,maxX,maxY} в мировых координатах
+function getWallsBboxWorld() {
+  const walls = appState.walls;
+  if (!walls.length) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const w of walls) {
+    const half = w.thickness / 2 + 5;
+    minX = Math.min(minX, w.x1 - half, w.x2 - half);
+    minY = Math.min(minY, w.y1 - half, w.y2 - half);
+    maxX = Math.max(maxX, w.x1 + half, w.x2 + half);
+    maxY = Math.max(maxY, w.y1 + half, w.y2 + half);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+// Рендерит план в offscreen canvas нужного размера.
+// withDimensions=false → только стены + заливка комнат, белый фон, без сетки
+// withDimensions=true  → полный план: сетка, стены, размеры, выноски
+export function renderToImage(outW, outH, withDimensions = false) {
+  const bbox = getWallsBboxWorld();
+  if (!bbox) return null;
+
+  const PAD_MM = withDimensions ? 400 : 200; // отступ вокруг плана в мм
+  const bx = { minX: bbox.minX - PAD_MM, minY: bbox.minY - PAD_MM,
+                maxX: bbox.maxX + PAD_MM, maxY: bbox.maxY + PAD_MM };
+
+  const worldW = bx.maxX - bx.minX, worldH = bx.maxY - bx.minY;
+  const scaleX = outW / worldW, scaleY = outH / worldH;
+  const scale  = Math.min(scaleX, scaleY) * 0.92; // небольшой отступ
+  const renderW = worldW * scale, renderH = worldH * scale;
+  const panX = (outW - renderW) / 2 - bx.minX * scale;
+  const panY = (outH - renderH) / 2 - bx.minY * scale;
+
+  // Создаём offscreen canvas
+  const oc   = document.createElement('canvas');
+  oc.width   = outW; oc.height = outH;
+  const octx = oc.getContext('2d');
+
+  // Сохраняем текущий рендер-контекст
+  const savedCanvas   = _canvas;
+  const savedCtx      = _ctx;
+  const savedGetScale = _getScale;
+  const savedHatch    = _hatchPat;
+
+  // Переключаем рендер на offscreen
+  _canvas   = oc;
+  _ctx      = octx;
+  _getScale = () => scale;
+  _hatchPat = null; // сбрасываем паттерн — он привязан к контексту
+
+  // Импортируем setViewport
+  import('./snapping.js').then(({ setViewport }) => setViewport(scale, panX, panY)).catch(() => {});
+  // Синхронный вариант через window если доступен
+  if (window._snappingModule?.setViewport) window._snappingModule.setViewport(scale, panX, panY);
+
+  // Белый фон
+  octx.fillStyle = '#ffffff';
+  octx.fillRect(0, 0, outW, outH);
+
+  if (withDimensions) {
+    // Лёгкая сетка (только крупные линии)
+    const stepMaj = 1000;
+    const wMin = { x: (0 - panX) / scale, y: (0 - panY) / scale };
+    const wMax = { x: (outW - panX) / scale, y: (outH - panY) / scale };
+    octx.strokeStyle = '#e8eaee'; octx.lineWidth = 0.5;
+    for (let x = Math.floor(wMin.x / stepMaj) * stepMaj; x <= wMax.x + stepMaj; x += stepMaj) {
+      const sx = x * scale + panX;
+      octx.beginPath(); octx.moveTo(sx, 0); octx.lineTo(sx, outH); octx.stroke();
+    }
+    for (let y = Math.floor(wMin.y / stepMaj) * stepMaj; y <= wMax.y + stepMaj; y += stepMaj) {
+      const sy = y * scale + panY;
+      octx.beginPath(); octx.moveTo(0, sy); octx.lineTo(outW, sy); octx.stroke();
+    }
+  }
+
+  // Рисуем план
+  const emptyItems = [];
+  drawRoomFills(emptyItems);
+  drawWalls(emptyItems);
+  drawWallJoints(emptyItems);
+  drawOpenings(emptyItems, 'start', 1);
+
+  if (withDimensions) {
+    drawWallDimensions();
+    drawOpeningLeaders(exteriorWallIds);
+  }
+
+  // Восстанавливаем контекст
+  _canvas   = savedCanvas;
+  _ctx      = savedCtx;
+  _getScale = savedGetScale;
+  _hatchPat = savedHatch;
+
+  // Восстанавливаем viewport основного рендера
+  const vp = window._plannerViewport;
+  if (vp && window._snappingModule?.setViewport) window._snappingModule.setViewport(vp.scale, vp.panX, vp.panY);
+
+  return oc.toDataURL('image/png');
+}
