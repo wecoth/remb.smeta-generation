@@ -32,6 +32,9 @@ export function renameRoom(roomKey, nextName) {
 // ══════════════════════════════════════════════════════════════════
 const CELL_MM = 50;
 
+// Экспортируется для render.js (выноски входной двери)
+export let exteriorWallIds = new Set();
+
 export function computeRooms(wallHeightFallback = 2700) {
   appState.rooms = [];
   if (appState.walls.length < 3) return;
@@ -128,7 +131,7 @@ export function computeRooms(wallHeightFallback = 2700) {
   }
 
   // ── Определяем стены граничащие с exterior ────────────────────
-  const exteriorWallIds = new Set();
+  exteriorWallIds = new Set();
   for (const wall of appState.walls) {
     const mx = (wall.x1 + wall.x2) / 2;
     const my = (wall.y1 + wall.y2) / 2;
