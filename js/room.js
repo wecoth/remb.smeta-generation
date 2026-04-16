@@ -53,14 +53,10 @@ export function computeRooms(wallHeightFallback = 2700) {
   if (cols > 2000 || rows > 2000) return;
 
   // ── 2. Растеризация стен ───────────────────────────────────────
-  // bitmap:       inflate 25мм — гарантирует замыкание любых диагональных стен
-  // bitmap_exact: inflate 0    — точная геометрия стен для расчёта площади
-  const bitmap       = new Uint8Array(cols * rows);
-  const bitmap_exact = new Uint8Array(cols * rows);
-  for (const w of appState.walls) {
-    rasterizeWall(w, bitmap,       cols, rows, minX, minY, 25);
-    rasterizeWall(w, bitmap_exact, cols, rows, minX, minY, 0);
-  }
+  // Inflate минимальный (1мм < CELL_MM) — только для замыкания диагональных стен.
+  // Flood fill пиксели = внутренний контур помещения, площадь считается по ним.
+  const bitmap = new Uint8Array(cols * rows);
+  for (const w of appState.walls) rasterizeWall(w, bitmap, cols, rows, minX, minY);
 
   // ── 3. BFS flood fill ──────────────────────────────────────────
   const regionId          = new Int32Array(cols * rows);
@@ -197,18 +193,11 @@ export function computeRooms(wallHeightFallback = 2700) {
       roomHeightMm, centerWorld, entranceDoorId
     );
 
-    // Площадь пола — пиксели flood fill региона которые НЕ помечены в bitmap_exact.
-    // bitmap использует inflate 25мм для замыкания → некоторые пиксели у стены
-    // попадают в регион но реально являются зоной стены → исключаем их.
-    // Это даёт точный внутренний контур независимо от привязки и формы комнаты.
-    let areaPx = 0;
-    for (const [gx, gy] of pixels) {
-      if (bitmap_exact[gy * cols + gx] === 0) areaPx++;
-    }
-    const areaMm2Final = areaPx * CELL_MM * CELL_MM;
+    // Площадь пола = пиксели flood fill × размер пикселя.
+    // Flood fill захватывает всё пространство внутри стен — это и есть внутренний контур.
+    const areaMm2Final = pixels.length * CELL_MM * CELL_MM;
 
-    // cells для render.js — все пиксели flood fill региона.
-    // bitmap inflate=25мм гарантирует что заливка доходит до внутренней поверхности стены.
+    // cells для render.js
     const cells = pixels.map(([gx, gy]) => ({
       x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
       x2: minX + (gx + 1) * CELL_MM, y2: minY + (gy + 1) * CELL_MM,
@@ -483,12 +472,12 @@ function computeCornerStats(walls) {
 // ══════════════════════════════════════════════════════════════════
 // РАСТЕРИЗАЦИЯ СТЕНЫ
 // ══════════════════════════════════════════════════════════════════
-function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflateMm = 25) {
+function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  // inflateMm: поперечное расширение стены в мм
-  //   25мм (default) — гарантирует замыкание диагональных углов для flood fill
-  //   0мм            — точная геометрия для расчёта площади
-  const half  = wall.thickness / 2 + inflateMm;
+  // Inflate 1мм — минимальный для надёжного замыкания диагональных стен.
+  // Меньше CELL_MM/50 = 1мм, почти не влияет на площадь.
+  const INFLATE = 1; // мм
+  const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
 
