@@ -68,24 +68,32 @@ function wallInteriorSide(wall, fallback = 1) {
 
 // ── Exported helpers ──────────────────────────────────────────────
 
+// BASE_FONT_MM: фиксированный размер шрифта в мировых единицах (мм).
+// При scale=0.12 → 10px на экране. При scale=0.5 → 42px (приближение).
+// Текст физически растёт вместе с чертежом — читается одинаково на любом масштабе.
+const BASE_FONT_MM    = 84;  // ~10px при стандартном масштабе
+const BASE_FONT_SM_MM = 75;  // ~9px  для вторичных подписей
+
 export function drawAlignedTextBox(text, pos, angle, opts = {}) {
   let a = angle;
   if (a > Math.PI / 2 || a < -Math.PI / 2) a += Math.PI;
   _ctx.save(); _ctx.translate(pos.x, pos.y); _ctx.rotate(a);
-  // Масштабируем шрифт для offscreen рендера
-  const baseFont = opts.font || '600 10px Onest, Inter, sans-serif';
-  const scaledFont = _fontScale !== 1
-    ? baseFont.replace(/(\d+(?:\.\d+)?)px/, (_, n) => (parseFloat(n) * _fontScale).toFixed(1) + 'px')
-    : baseFont;
-  _ctx.font = scaledFont;
-  // Без подложки — только текст с лёгкой тенью для читаемости
-  _ctx.shadowColor = 'rgba(255,255,255,0.95)';
-  _ctx.shadowBlur  = 3 * _fontScale;
-  _ctx.fillStyle   = opts.textColor || '#0f172a';
-  _ctx.textAlign   = 'center';
-  _ctx.textBaseline = 'middle';
+
+  // Размер шрифта в пикселях = BASE_MM * scale — статичен в мировых координатах
+  const scale    = _getScale();
+  const basePx   = BASE_FONT_MM * scale;
+  // Из opts.font извлекаем weight и используем basePx как размер
+  const weight   = opts.font ? (opts.font.match(/^(\d+)/) || ['','600'])[1] : '600';
+  _ctx.font      = `${weight} ${basePx.toFixed(1)}px Onest, Inter, sans-serif`;
+
+  // Тень для читаемости без подложки
+  _ctx.shadowColor   = 'rgba(255,255,255,0.9)';
+  _ctx.shadowBlur    = basePx * 0.4;
+  _ctx.fillStyle     = opts.textColor || '#0f172a';
+  _ctx.textAlign     = 'center';
+  _ctx.textBaseline  = 'middle';
   _ctx.fillText(text, 0, 0);
-  _ctx.shadowBlur = 0;
+  _ctx.shadowBlur    = 0;
   _ctx.restore();
 }
 
@@ -242,9 +250,9 @@ function drawRoomFills(selectedItems) {
     if (scale > 0.08) { // Bug #6 fix
       const sc = toScreen(r.center.x, r.center.y);
       _ctx.fillStyle = DRAW_COLORS.roomLabel;
-      _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200)) * _fontScale}px Onest, Inter, sans-serif`;
+      _ctx.font = `600 ${(scale * 200).toFixed(1)}px Onest, Inter, sans-serif`; // статичный в мировых ед.
       _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
-      _ctx.font = `500 ${Math.max(9, Math.min(12, scale * 160)) * _fontScale}px Onest, Inter, sans-serif`;
+      _ctx.font = `500 ${(scale * 160).toFixed(1)}px Onest, Inter, sans-serif`;
       _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
     }
     _ctx.restore();
@@ -679,7 +687,7 @@ function drawWallDimensions() {
       const p1 = sp(sorted[0] + GAP, normalOff);
       const p2 = sp(sorted[sorted.length-1] - GAP, normalOff);
       _ctx.strokeStyle = lineColor;
-      _ctx.lineWidth = 0.7 * _fontScale;
+      _ctx.lineWidth = 0.7;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
@@ -779,8 +787,8 @@ function drawOpeningLeaders(extWallIds) {
     // Вектор от центра стены к краю canvas — определяет куда "вправо"
     const toDirX = sCenter.x < canvasCX ? -1 : 1;
 
-    const DIAG_PX = 28 * Math.min(scale * 6, 1.2) * _fontScale;
-    const SHELF_PX = 32 * Math.min(scale * 6, 1.2) * _fontScale;
+    const DIAG_PX = 28 * Math.min(scale * 6, 1.2); // длина диагонали в px
+    const SHELF_PX = 32 * Math.min(scale * 6, 1.2); // длина полочки в px
 
     // Направление диагонали: наружу от стены + немного вправо
     // Вычисляем в screen-пространстве
@@ -802,7 +810,7 @@ function drawOpeningLeaders(extWallIds) {
 
     // Рисуем изломанную линию
     _ctx.strokeStyle = '#6b7280';
-    _ctx.lineWidth = 0.8 * _fontScale;
+    _ctx.lineWidth = 0.8;
     _ctx.setLineDash([]);
     _ctx.beginPath();
     _ctx.moveTo(sStart.x, sStart.y);
@@ -821,12 +829,12 @@ function drawOpeningLeaders(extWallIds) {
     const typeLabel = op.type === 'window' ? 'Окно' : 'Вх. дверь';
     const textX = sEnd.x + toDirX * 3;
 
-    _ctx.font = `500 ${11 * _fontScale}px Onest, Inter, sans-serif`;
+    _ctx.font = `500 ${(BASE_FONT_MM * _getScale()).toFixed(1)}px Onest, Inter, sans-serif`;
     _ctx.fillStyle = '#374151';
     _ctx.textAlign = toDirX > 0 ? 'left' : 'right';
     _ctx.textBaseline = 'bottom';
     _ctx.fillText(label, textX, sEnd.y);
-    _ctx.font = `400 ${9 * _fontScale}px Onest, Inter, sans-serif`;
+    _ctx.font = `400 ${(BASE_FONT_SM_MM * _getScale()).toFixed(1)}px Onest, Inter, sans-serif`;
     _ctx.fillStyle = '#9ca3af';
     _ctx.textBaseline = 'top';
     _ctx.fillText(typeLabel, textX, sEnd.y + 1);
