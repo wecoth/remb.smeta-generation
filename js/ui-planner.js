@@ -397,13 +397,23 @@ function getWallPreviewEnd(world) {
   const screenPt = mouseScreen ? { ...mouseScreen } : toScreen(world.x, world.y);
   const snappedBase = snap(world.x, world.y, { screenPoint: screenPt, includePerpendicular: !!drawStart, startPoint: drawStart });
   let rawEnd = { ...snappedBase };
-  if (!snappedBase.snapType && !shiftDown && drawStart) {
+  // Угловая привязка к 0°/90°/180°/270° — пропускаем только точные снэпы (endpoint/corner/intersection)
+  const hardSnap = snappedBase.snapType === 'endpoint' || snappedBase.snapType === 'corner' || snappedBase.snapType === 'intersection';
+  if (!hardSnap && !shiftDown && drawStart) {
     const dx = rawEnd.x - drawStart.x, dy = rawEnd.y - drawStart.y, len = Math.hypot(dx, dy);
     if (len > 20) {
       let angle = Math.atan2(dy, dx);
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
         const diff = Math.abs(angle - sa);
-        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) { angle = sa; rawEnd = { x: drawStart.x + Math.cos(angle) * len, y: drawStart.y + Math.sin(angle) * len }; break; }
+        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
+          angle = sa;
+          rawEnd = { x: drawStart.x + Math.cos(angle) * len, y: drawStart.y + Math.sin(angle) * len };
+          // Сбрасываем слабый снэп — угловая привязка важнее
+          if (snappedBase.snapType === 'wallFace' || snappedBase.snapType === 'wallAxis') {
+            rawEnd.snapType = null;
+          }
+          break;
+        }
       }
     }
   }
