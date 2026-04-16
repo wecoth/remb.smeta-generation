@@ -814,3 +814,4 @@ function onKeyUp(e) {
 }
 
 export function forceRedraw() { doRedraw(); }
+export function getViewport() { return { scale, panX, panY }; }
