@@ -32,6 +32,12 @@ export function renameRoom(roomKey, nextName) {
 // ══════════════════════════════════════════════════════════════════
 const CELL_MM = 50;
 
+// 8 направлений для BFS.
+// При 8-связности два пикселя стены, касающихся только по диагонали,
+// блокируют проход flood fill — это закрывает диагональные щели
+// в стыках без какого-либо inflate стен.
+const NEIGHBORS_8 = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+
 export function computeRooms(wallHeightFallback = 2700) {
   appState.rooms = [];
   if (appState.walls.length < 3) return;
@@ -52,19 +58,16 @@ export function computeRooms(wallHeightFallback = 2700) {
   const rows = Math.ceil((maxY - minY) / CELL_MM) + 1;
   if (cols > 2000 || rows > 2000) return;
 
-  // ── 2. Двойная растеризация стен ──────────────────────────────
-  // barrierBitmap — раздутый (CELL_MM/2 + круглые caps):
-  //   используется ТОЛЬКО для BFS, чтобы диагональные стыки не давали щели
-  // displayBitmap — тонкий (inflate=1мм):
-  //   используется для площади и cells заливки пола (пиксель до стенки)
-  const barrierBitmap = new Uint8Array(cols * rows);
-  const displayBitmap = new Uint8Array(cols * rows);
+  // ── 2. Растеризация стен ───────────────────────────────────────
+  // Один тонкий bitmap (inflate=1мм).
+  // Площадь и заливка пола точные — вплотную до внутренней грани стены.
+  // Диагональные щели в стыках закрываются 8-связностью BFS, не inflate.
+  const bitmap = new Uint8Array(cols * rows);
   for (const w of appState.walls) {
-    rasterizeWall(w, barrierBitmap, cols, rows, minX, minY, CELL_MM / 2); // широкий + caps
-    rasterizeWall(w, displayBitmap, cols, rows, minX, minY, 1);            // тонкий
+    rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
-  // ── 3. BFS flood fill по barrierBitmap ────────────────────────
+  // ── 3. BFS flood fill, 8-связность ────────────────────────────
   const regionId          = new Int32Array(cols * rows);
   let nextId = 1;
   const regionPixels      = new Map();
@@ -73,7 +76,7 @@ export function computeRooms(wallHeightFallback = 2700) {
   for (let gy = 0; gy < rows; gy++) {
     for (let gx = 0; gx < cols; gx++) {
       const idx = gy * cols + gx;
-      if (barrierBitmap[idx] !== 0 || regionId[idx] !== 0) continue;
+      if (bitmap[idx] !== 0 || regionId[idx] !== 0) continue;
 
       const id = nextId++;
       const pixels = [];
@@ -86,10 +89,11 @@ export function computeRooms(wallHeightFallback = 2700) {
         const cx = ci % cols, cy = (ci / cols) | 0;
         pixels.push([cx, cy]);
         if (cx === 0 || cy === 0 || cx === cols - 1 || cy === rows - 1) touchesEdge = true;
-        for (const [nx, ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]) {
+        for (const [dx, dy] of NEIGHBORS_8) {
+          const nx = cx + dx, ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
           const ni = ny * cols + nx;
-          if (barrierBitmap[ni] !== 0 || regionId[ni] !== 0) continue;
+          if (bitmap[ni] !== 0 || regionId[ni] !== 0) continue;
           regionId[ni] = id;
           queue.push(ni);
         }
@@ -121,17 +125,16 @@ export function computeRooms(wallHeightFallback = 2700) {
     const my = (wall.y1 + wall.y2) / 2;
     const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (len < 1) continue;
-    const nx = -(wall.y2 - wall.y1) / len;
-    const ny =  (wall.x2 - wall.x1) / len;
+    const wnx = -(wall.y2 - wall.y1) / len;
+    const wny =  (wall.x2 - wall.x1) / len;
     const checkDist = wall.thickness / 2 + CELL_MM * 1.5;
     for (const sign of [1, -1]) {
-      const px = mx + nx * sign * checkDist;
-      const py = my + ny * sign * checkDist;
+      const px = mx + wnx * sign * checkDist;
+      const py = my + wny * sign * checkDist;
       const gx = Math.round((px - minX) / CELL_MM - 0.5);
       const gy = Math.round((py - minY) / CELL_MM - 0.5);
       if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
-      const pidx = gy * cols + gx;
-      if (exteriorPixelSet.has(pidx)) {
+      if (exteriorPixelSet.has(gy * cols + gx)) {
         exteriorWallIds.add(wall.id);
         break;
       }
@@ -141,32 +144,27 @@ export function computeRooms(wallHeightFallback = 2700) {
   // ── 4. Метрики ─────────────────────────────────────────────────
   const minRoomArea = 100000; // 0.1 м²
 
-  for (const [id, allPixels] of regionPixels) {
+  for (const [id, pixels] of regionPixels) {
     if (regionTouchesEdge.has(id)) continue;
 
-    // Пиксели пола = только те что НЕ под стеной (displayBitmap = 0)
-    // Это даёт точную площадь и заливку вплотную до стенки
-    const floorPixels = allPixels.filter(([gx, gy]) => displayBitmap[gy * cols + gx] === 0);
-    if (!floorPixels.length) continue;
-
-    const areaMm2 = floorPixels.length * CELL_MM * CELL_MM;
+    const areaMm2 = pixels.length * CELL_MM * CELL_MM;
     if (areaMm2 < minRoomArea) continue;
 
-    // Центроид по пикселям пола
+    // Центроид
     let sumX = 0, sumY = 0;
-    for (const [gx, gy] of floorPixels) { sumX += gx; sumY += gy; }
+    for (const [gx, gy] of pixels) { sumX += gx; sumY += gy; }
     const centerWorld = {
-      x: minX + (sumX / floorPixels.length + 0.5) * CELL_MM,
-      y: minY + (sumY / floorPixels.length + 0.5) * CELL_MM,
+      x: minX + (sumX / pixels.length + 0.5) * CELL_MM,
+      y: minY + (sumY / pixels.length + 0.5) * CELL_MM,
     };
 
-    // Граничные стены — ищем по всем пикселям региона (включая под barrierBitmap)
-    // чтобы гарантированно найти все стены даже в диагональных стыках
+    // Граничные стены — ищем пиксели стены рядом с пикселями пола (8 направлений)
     const boundaryWalls = new Map();
-    for (const [gx, gy] of allPixels) {
-      for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
+    for (const [gx, gy] of pixels) {
+      for (const [dx, dy] of NEIGHBORS_8) {
+        const nx = gx + dx, ny = gy + dy;
         if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-        if (barrierBitmap[ny * cols + nx] === 1) {
+        if (bitmap[ny * cols + nx] === 1) {
           const wx = minX + (nx + 0.5) * CELL_MM, wy = minY + (ny + 0.5) * CELL_MM;
           const wall = findWallAtPoint(wx, wy);
           if (wall && !boundaryWalls.has(wall.id)) boundaryWalls.set(wall.id, wall);
@@ -192,8 +190,8 @@ export function computeRooms(wallHeightFallback = 2700) {
       roomHeightMm, centerWorld, entranceDoorId
     );
 
-    // cells для render.js — строго из floorPixels (заливка до стенки)
-    const cells = floorPixels.map(([gx, gy]) => ({
+    // cells для render.js — пиксели пола вплотную до стенки
+    const cells = pixels.map(([gx, gy]) => ({
       x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
       x2: minX + (gx + 1) * CELL_MM, y2: minY + (gy + 1) * CELL_MM,
     }));
@@ -210,8 +208,7 @@ export function computeRooms(wallHeightFallback = 2700) {
       });
     }
 
-    // Ключ комнаты по пикселям пола
-    const key         = getRoomKey(floorPixels, CELL_MM);
+    const key         = getRoomKey(pixels, CELL_MM);
     const defaultName = roomDefaultName(appState.rooms.length);
 
     appState.rooms.push({
@@ -457,12 +454,13 @@ function computeCornerStats(walls) {
 
 // ══════════════════════════════════════════════════════════════════
 // РАСТЕРИЗАЦИЯ СТЕНЫ
-// inflate=1    → тонкий bitmap (displayBitmap): точная площадь и заливка
-// inflate=CELL_MM/2 → широкий bitmap (barrierBitmap): закрывает щели в стыках
+// inflate=1мм — минимальный, не влияет на площадь.
+// Диагональные стыки закрываются 8-связностью BFS, не inflate.
 // ══════════════════════════════════════════════════════════════════
-function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = 1) {
+function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
+  const INFLATE = 1;
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  const half  = wall.thickness / 2 + inflate;
+  const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
 
@@ -500,28 +498,6 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = 1) {
       if (inside) bitmap[gy * cols + gx] = 1;
     }
   }
-
-  // Круглые заглушки на концах — только для barrierBitmap
-  // Заполняют угловые щели при любом угле стыка (45°, 60° и т.д.)
-  if (inflate > 1) {
-    rasterizeCap(wall.x1, wall.y1, half, bitmap, cols, rows, minX, minY);
-    rasterizeCap(wall.x2, wall.y2, half, bitmap, cols, rows, minX, minY);
-  }
-}
-
-function rasterizeCap(cx, cy, radius, bitmap, cols, rows, minX, minY) {
-  const r2 = radius * radius;
-  const gxMin = Math.max(0, Math.floor((cx - radius - minX) / CELL_MM) - 1);
-  const gyMin = Math.max(0, Math.floor((cy - radius - minY) / CELL_MM) - 1);
-  const gxMax = Math.min(cols - 1, Math.ceil((cx + radius - minX) / CELL_MM) + 1);
-  const gyMax = Math.min(rows - 1, Math.ceil((cy + radius - minY) / CELL_MM) + 1);
-  for (let gy = gyMin; gy <= gyMax; gy++) {
-    for (let gx = gxMin; gx <= gxMax; gx++) {
-      const wx = minX + (gx + 0.5) * CELL_MM;
-      const wy = minY + (gy + 0.5) * CELL_MM;
-      if ((wx - cx) ** 2 + (wy - cy) ** 2 <= r2) bitmap[gy * cols + gx] = 1;
-    }
-  }
 }
 
 function findWallAtPoint(wx, wy) {
@@ -542,17 +518,8 @@ function round2(v) { return Math.round(v * 100) / 100; }
 
 // ══════════════════════════════════════════════════════════════════
 // DOM — ЭКСПЛИКАЦИЯ
-// Структура колонок:
-//   ОСНОВНЫЕ (для сметы):
-//     1. Помещение
-//     2. Пол м²
-//     3. Стены м²  (нетто: минус проёмы, минус участки < 50 см)
-//     4. Периметр м.п. (без дверей и панорамных окон)
-//   СПРАВОЧНЫЕ:
-//     5. Окна м²
-//     6. Вх. дверь м²  (жирным если найдена входная)
-//     7. Погонаж м.п.  (простенки < 50 см + оконные откосы)
-//     8. Углы м.п.     (внешние углы стен + внешние углы откосов)
+// Колонки: Помещение | Пол м² | Стены м² | Периметр м.п. |
+//          Окна м² | Погонаж м.п. | Углы м.п.
 // ══════════════════════════════════════════════════════════════════
 export function updateExpl(explBody, roomCountEl) {
   if (!explBody) return;
