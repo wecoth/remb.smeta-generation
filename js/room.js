@@ -541,37 +541,15 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = true) {
 // внутрь помещения (к центроиду). Это даёт чистую площадь пола.
 function shoelaceInnerArea(walls) {
   if (walls.length < 3) return 0;
-
-  // Берём контурные точки (cx/cy) — они образуют замкнутый полигон
-  // Площадь по Shoelace = |Σ(x_i * y_{i+1} - x_{i+1} * y_i)| / 2
   const pts = walls.map(w => wallStart(w));
-  // Добавляем последнюю точку (конец последней стены) для замыкания
   pts.push(wallEnd(walls[walls.length - 1]));
-
   let area = 0;
   const n = pts.length;
   for (let i = 0; i < n - 1; i++) {
     area += pts[i].x * pts[i + 1].y;
     area -= pts[i + 1].x * pts[i].y;
   }
-  area = Math.abs(area) / 2;
-
-  // Вычитаем площадь "оболочки" толщины стен (периметр × thickness / 2)
-  // Приближение: для прямоугольной комнаты это точно, для сложных — приближённо
-  // Периметр = сумма длин контурных стен
-  let perimMm = 0;
-  for (const w of walls) perimMm += wallLengthMm(w);
-
-  // Средняя толщина стен помещения
-  let totalThick = 0;
-  for (const w of walls) totalThick += w.thickness;
-  const avgThick = walls.length > 0 ? totalThick / walls.length : 200;
-
-  // Площадь за вычетом зоны стен: A_inner = A_outer - P * t/2 + corners * (t/2)²
-  // Упрощение: A_inner ≈ A_outer - P * t/2
-  const innerArea = Math.max(0, area - perimMm * (avgThick / 2));
-
-  return innerArea;
+  return Math.abs(area) / 2;
 }
 
 function findWallAtPoint(wx, wy) {
