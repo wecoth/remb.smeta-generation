@@ -275,6 +275,30 @@ export function computeRooms(wallHeightFallback = 2700) {
       metrics,
     });
   }
+
+  // ── 5. Делим площадь пола под дверными проёмами пополам ───────
+  // Внутренняя дверь = стена граничит ровно с двумя комнатами
+  for (const op of appState.openings) {
+    if (op.type !== 'door') continue;
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall || wall.thickness < 1) continue;
+
+    const borderingIndices = [];
+    for (let i = 0; i < appState.rooms.length; i++) {
+      if (appState.rooms[i].boundarySegments.some(bs => bs.wall.id === op.wallId)) {
+        borderingIndices.push(i);
+      }
+    }
+
+    if (borderingIndices.length === 2) {
+      const halfM2 = (op.width * wall.thickness) / 2 / 1e6;
+      for (const idx of borderingIndices) {
+        const room = appState.rooms[idx];
+        room.area  += halfM2;
+        room.volume = room.area * room.height;
+      }
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
