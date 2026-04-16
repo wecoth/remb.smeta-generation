@@ -51,75 +51,33 @@ export function handlePlan(e) {
 // координатах, кропает и масштабирует на offscreen canvas.
 // Результат: PNG dataURL сохраняется как planData.
 export function captureCanvas() {
-  // Ищем canvas планировщика
-  const canvas = document.getElementById('planCanvas');
-  if (!canvas) { alert('Чертёж не найден. Убедитесь что вкладка Чертёж загружена.'); return; }
-
-  // Получаем стены из appState (доступен глобально через window._appState)
   const walls = window._appState?.walls ?? appState?.walls ?? [];
   if (!walls.length) { alert('Нарисуйте план перед захватом'); return; }
 
-  // Viewport текущего планировщика
-  const vp = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
-  const sc = vp.scale, px = vp.panX, py = vp.panY;
+  const renderFn = window._renderModule?.renderToImage;
+  if (!renderFn) { alert('Рендер недоступен. Перезагрузите страницу.'); return; }
 
-  // toScreen в мировых координатах → экранные
-  const toSc = (wx, wy) => ({ x: wx * sc + px, y: wy * sc + py });
+  // planData — чистый чертёж (без сетки и размеров) для страницы "Планирование работ"
+  const cleanImg = renderFn(800, 600, false);
+  // planDataFull — полный обмерный план (со всеми размерами) для отдельной страницы
+  const fullImg  = renderFn(2480, 1754, true); // A4 landscape @300dpi
 
-  // Bbox всех стен в экранных координатах
-  let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-  for (const w of walls) {
-    const half = ((w.thickness || 200) / 2 + 30) * sc;
-    for (const [wx, wy] of [[w.x1, w.y1], [w.x2, w.y2]]) {
-      const s = toSc(wx, wy);
-      sMinX = Math.min(sMinX, s.x - half); sMinY = Math.min(sMinY, s.y - half);
-      sMaxX = Math.max(sMaxX, s.x + half); sMaxY = Math.max(sMaxY, s.y + half);
-    }
+  if (!cleanImg) { alert('Не удалось захватить чертёж'); return; }
+
+  appState.planData     = cleanImg;
+  appState.planDataFull = fullImg;
+  if (window._appState) {
+    window._appState.planData     = cleanImg;
+    window._appState.planDataFull = fullImg;
   }
 
-  // Добавляем отступ в экранных пикселях
-  const PAD = 40;
-  sMinX -= PAD; sMinY -= PAD; sMaxX += PAD; sMaxY += PAD;
-
-  // Клипуем по границам canvas
-  sMinX = Math.max(0, sMinX); sMinY = Math.max(0, sMinY);
-  sMaxX = Math.min(canvas.width, sMaxX); sMaxY = Math.min(canvas.height, sMaxY);
-
-  const srcW = sMaxX - sMinX, srcH = sMaxY - sMinY;
-  if (srcW < 10 || srcH < 10) { alert('Чертёж вне видимой области. Нажмите сброс масштаба и попробуйте снова.'); return; }
-
-  // Offscreen canvas с белым фоном
-  const OUT_W = 1200, OUT_H = 900;
-  const fitScale = Math.min(OUT_W / srcW, OUT_H / srcH);
-  const dstW = Math.round(srcW * fitScale), dstH = Math.round(srcH * fitScale);
-  const offX = Math.round((OUT_W - dstW) / 2), offY = Math.round((OUT_H - dstH) / 2);
-
-  const oc = document.createElement('canvas');
-  oc.width = OUT_W; oc.height = OUT_H;
-  const octx = oc.getContext('2d');
-  octx.fillStyle = '#f8f8f7';
-  octx.fillRect(0, 0, OUT_W, OUT_H);
-
-  // Кропаем нужный регион и масштабируем в центр
-  octx.drawImage(canvas, sMinX, sMinY, srcW, srcH, offX, offY, dstW, dstH);
-
-  const dataUrl = oc.toDataURL('image/png');
-
-  // Сохраняем в appState
-  if (window._appState) window._appState.planData = dataUrl;
-  appState.planData = dataUrl;
-
-  // Обновляем UI
+  // Обновляем превью в форме
   const planPreview = document.getElementById('planPreview');
   const planPlaceholder = document.getElementById('planPlaceholder');
-  if (planPreview) { planPreview.src = dataUrl; planPreview.style.display = 'block'; }
+  if (planPreview) { planPreview.src = cleanImg; planPreview.style.display = 'block'; }
   if (planPlaceholder) planPlaceholder.style.display = 'none';
 
   liveUpdate();
-
-  // Переключаемся на вкладку Смета если есть
-  const smetaTab = document.querySelector('[data-tab="smeta"], #tabSmeta, [onclick*="smeta"]');
-  // не переключаем автоматически — пользователь сам перейдёт
   alert('Чертёж захвачен ✓');
 }
 
@@ -530,6 +488,19 @@ export async function generatePDF() {
   }
   const ft = document.getElementById('finTotal'); if (ft) ft.textContent = fmt(smrTot + matTot);
   syncEditorToDoc();
+
+  // Страница "Обмерный план" — полный чертёж со всеми размерами
+  const fullPlanPage = document.getElementById('fullPlanPage');
+  if (fullPlanPage) {
+    const fullImg = appState.planDataFull || appState.planData;
+    if (fullImg) {
+      fullPlanPage.style.display = 'block';
+      const fpi = document.getElementById('fullPlanImg');
+      if (fpi) { fpi.src = fullImg; fpi.style.display = 'block'; }
+    } else {
+      fullPlanPage.style.display = 'none';
+    }
+  }
 
   const btns = document.querySelectorAll('.btn-generate');
   btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
