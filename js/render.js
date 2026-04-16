@@ -11,6 +11,7 @@ import { exteriorWallIds } from './room.js';
 
 let _canvas, _ctx, _hatchPat = null;
 let _getScale = () => 0.12;
+let _fontScale = 1; // множитель шрифта для offscreen рендера (PDF)
 
 export function initRenderer(canvas, ctx, getScaleFn) {
   _canvas = canvas; _ctx = ctx;
@@ -71,11 +72,18 @@ export function drawAlignedTextBox(text, pos, angle, opts = {}) {
   let a = angle;
   if (a > Math.PI / 2 || a < -Math.PI / 2) a += Math.PI;
   _ctx.save(); _ctx.translate(pos.x, pos.y); _ctx.rotate(a);
-  _ctx.font = opts.font || '600 10px Onest, Inter, sans-serif';
-  const tw = _ctx.measureText(text).width, bw = tw + 12, bh = 16;
+  // Масштабируем шрифт для offscreen рендера
+  const baseFont = opts.font || '600 10px Onest, Inter, sans-serif';
+  const scaledFont = _fontScale !== 1
+    ? baseFont.replace(/(\d+(?:\.\d+)?)px/, (_, n) => (parseFloat(n) * _fontScale).toFixed(1) + 'px')
+    : baseFont;
+  _ctx.font = scaledFont;
+  const pad = 6 * _fontScale;
+  const tw = _ctx.measureText(text).width, bw = tw + pad * 2, bh = 16 * _fontScale;
   _ctx.fillStyle = opts.background || 'rgba(255,255,255,0.95)';
   _ctx.beginPath();
-  if (_ctx.roundRect) _ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 5);
+  const r = 4 * _fontScale;
+  if (_ctx.roundRect) _ctx.roundRect(-bw / 2, -bh / 2, bw, bh, r);
   else _ctx.rect(-bw / 2, -bh / 2, bw, bh);
   _ctx.fill(); _ctx.fillStyle = opts.textColor || '#0f172a';
   _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(text, 0, 0); _ctx.restore();
@@ -234,9 +242,9 @@ function drawRoomFills(selectedItems) {
     if (scale > 0.08) { // Bug #6 fix
       const sc = toScreen(r.center.x, r.center.y);
       _ctx.fillStyle = DRAW_COLORS.roomLabel;
-      _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200))}px Onest, Inter, sans-serif`;
+      _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200)) * _fontScale}px Onest, Inter, sans-serif`;
       _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
-      _ctx.font = `500 ${Math.max(9, Math.min(12, scale * 160))}px Onest, Inter, sans-serif`;
+      _ctx.font = `500 ${Math.max(9, Math.min(12, scale * 160)) * _fontScale}px Onest, Inter, sans-serif`;
       _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
     }
     _ctx.restore();
@@ -620,7 +628,7 @@ function drawTempWall(ps) {
 // ЗАСЕЧКА 45° (архитектурный стиль)
 // ══════════════════════════════════════════════════════════════════
 function drawTick45(screenPt, angle) {
-  const TICK = 5;
+  const TICK = 5 * _fontScale;
   const a = angle + Math.PI / 4;
   _ctx.moveTo(screenPt.x - Math.cos(a) * TICK, screenPt.y - Math.sin(a) * TICK);
   _ctx.lineTo(screenPt.x + Math.cos(a) * TICK, screenPt.y + Math.sin(a) * TICK);
@@ -950,10 +958,12 @@ export function renderToImage(outW, outH, withDimensions = false) {
   const savedHatch    = _hatchPat;
 
   // Переключаем на offscreen
-  _canvas   = oc;
-  _ctx      = octx;
-  _getScale = () => scale;
-  _hatchPat = null;
+  _canvas    = oc;
+  _ctx       = octx;
+  _getScale  = () => scale;
+  _hatchPat  = null;
+  // Масштабируем шрифты пропорционально ширине output (базовый = 800px)
+  _fontScale = Math.max(1, outW / 800);
 
   // Устанавливаем viewport — _setViewportFn это setViewport из snapping.js
   _setViewportFn(scale, panX, panY);
@@ -986,11 +996,12 @@ export function renderToImage(outW, outH, withDimensions = false) {
   }
 
   // Восстанавливаем состояние
-  _canvas   = savedCanvas;
-  _ctx      = savedCtx;
-  _getScale = savedGetScale;
-  _hatchPat = savedHatch;
-  const vp  = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
+  _canvas    = savedCanvas;
+  _ctx       = savedCtx;
+  _getScale  = savedGetScale;
+  _hatchPat  = savedHatch;
+  _fontScale = 1;
+  const vp   = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
   _setViewportFn(vp.scale, vp.panX, vp.panY);
 
   return oc.toDataURL('image/png');
