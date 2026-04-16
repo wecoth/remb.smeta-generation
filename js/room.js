@@ -408,23 +408,23 @@ function traceContour(pixels, bitmap, cols, rows) {
 }
 
 // ── Растеризация стены в bitmap ───────────────────────────────────
+// Растеризуем стену как повёрнутый прямоугольник.
+// Небольшой inflate только поперёк стены (не вдоль!) гарантирует что
+// даже тонкая диагональная стена занимает хотя бы 1 пиксель по ширине.
+// Inflate вдоль оси намеренно убран — он заполнял вершины треугольников.
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  // ИСПРАВЛЕНИЕ: добавляем inflate на 0.5 клетки чтобы диагональные стены
-  // гарантированно замыкали контур даже при тонких стенах
-  const half = wall.thickness / 2;
+  // Небольшой inflate поперёк (half-cell) чтобы тонкие стены не пропускались
+  const INFLATE_PERP = CELL_MM * 0.5;
+  const half = wall.thickness / 2 + INFLATE_PERP;
   const sinA = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
 
-  // Слегка расширяем вдоль оси чтобы заполнить пробелы на концах
-  const INFLATE_ALONG = CELL_MM * 0.6;
-  const ux = cosA * INFLATE_ALONG, uy = sinA * INFLATE_ALONG;
-
   const corners = [
-    { x: wall.x1 + dx - ux, y: wall.y1 + dy - uy },
-    { x: wall.x2 + dx + ux, y: wall.y2 + dy + uy },
-    { x: wall.x2 - dx + ux, y: wall.y2 - dy + uy },
-    { x: wall.x1 - dx - ux, y: wall.y1 - dy - uy },
+    { x: wall.x1 + dx, y: wall.y1 + dy },
+    { x: wall.x2 + dx, y: wall.y2 + dy },
+    { x: wall.x2 - dx, y: wall.y2 - dy },
+    { x: wall.x1 - dx, y: wall.y1 - dy },
   ];
 
   let gxMin = Infinity, gyMin = Infinity, gxMax = -Infinity, gyMax = -Infinity;
@@ -439,8 +439,8 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   gxMax = Math.min(cols - 1, Math.ceil(gxMax) + 1);
   gyMax = Math.min(rows - 1, Math.ceil(gyMax) + 1);
 
-  // Edge normals для convex polygon test
-  // ИСПРАВЛЕНИЕ: порог > 0 вместо > 1 для надёжного захвата граничных пикселей
+  // Convex polygon test через edge normals
+  // Порог > 0 (вместо > 1) — надёжно захватываем граничные пиксели
   const edges = [];
   for (let i = 0; i < 4; i++) {
     const a = corners[i], b = corners[(i + 1) % 4];
