@@ -15,6 +15,130 @@
     cursor:pointer;transition:background .15s;
   }
   .btn-use-drawing:hover{background:#e0e9ff;}
+
+  /* ── TOPBAR PILL SWITCHER ─────────────────────────────── */
+  .topbar-pill-wrap {
+    position:absolute;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;
+  }
+  .topbar-pill {
+    position:relative;
+    display:flex;
+    background:#f0f2f5;
+    border-radius:10px;
+    padding:3px;
+    gap:0;
+  }
+  .pill-btn {
+    position:relative;z-index:1;
+    display:flex;align-items:center;gap:6px;
+    padding:6px 18px;
+    border:none;background:transparent;
+    font:500 13px/1 Onest,Inter,sans-serif;
+    color:#777;
+    border-radius:8px;
+    cursor:pointer;
+    transition:color .18s;
+    white-space:nowrap;
+  }
+  .pill-btn.active { color:#1a1a2e; }
+  .pill-slider {
+    position:absolute;top:3px;left:3px;bottom:3px;
+    background:#fff;
+    border-radius:8px;
+    box-shadow:0 1px 4px rgba(0,0,0,.12);
+    transition:transform .22s cubic-bezier(.4,0,.2,1), width .22s cubic-bezier(.4,0,.2,1);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  /* ── SMETA DESKTOP LAYOUT ─────────────────────────────── */
+  .smeta-shell {
+    display:flex !important;
+    flex-direction:row !important;
+    height:100%;
+    overflow:hidden;
+  }
+  .sidebar {
+    width:400px;
+    min-width:340px;
+    max-width:440px;
+    flex-shrink:0;
+    display:flex;
+    flex-direction:column;
+    border-right:1px solid var(--line2,#e8e8e8);
+    background:#fff;
+    height:100%;
+    overflow:hidden;
+  }
+  .sidebar-head {
+    padding:18px 20px 14px;
+    border-bottom:1px solid var(--line2,#e8e8e8);
+    flex-shrink:0;
+  }
+  .sidebar-head h1 { font-size:15px;font-weight:600;margin:0 0 2px; }
+  .sidebar-head p  { font-size:11.5px;color:#888;margin:0; }
+  .sidebar-head-actions { margin-top:10px; }
+  .sidebar-scroll {
+    flex:1;overflow-y:auto;overflow-x:hidden;
+    padding:16px 20px 24px;
+  }
+  .btn-generate {
+    display:flex;align-items:center;gap:6px;
+    padding:7px 16px;border-radius:8px;
+    background:#1a1a2e;color:#fff;
+    border:none;font:600 12px/1 Onest,Inter,sans-serif;
+    cursor:pointer;transition:background .15s;
+  }
+  .btn-generate:hover{background:#2d2d4e;}
+
+  /* ── RIGHT PREVIEW PANEL ─────────────────────────────── */
+  .smeta-preview-panel {
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    background:#f0f2f5;
+    overflow:hidden;
+  }
+  .spp-header {
+    background:#fff;
+    border-bottom:1px solid var(--line2,#e8e8e8);
+    padding:0 24px;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    height:44px;
+  }
+  .spp-tabs {
+    display:flex;gap:2px;
+  }
+  .spp-tab {
+    padding:6px 14px;
+    border:none;background:transparent;
+    font:500 12px/1 Onest,Inter,sans-serif;
+    color:#888;border-radius:6px;
+    cursor:pointer;transition:background .15s,color .15s;
+  }
+  .spp-tab:hover { background:#f5f5f5;color:#333; }
+  .spp-tab.active { background:#f0f4ff;color:#4a6fe3;font-weight:600; }
+  .spp-body {
+    flex:1;overflow-y:auto;
+    display:flex;align-items:flex-start;justify-content:center;
+    padding:24px;
+  }
+  .spp-page { display:none;width:100%; }
+  .spp-page.active { display:block; }
+  .spp-a4 {
+    width:100%;
+    max-width:680px;
+    min-height:500px;
+    margin:0 auto;
+    background:#fff;
+    box-shadow:0 2px 16px rgba(0,0,0,.10);
+    border-radius:3px;
+  }
+  /* Hide old modal preview button */
+  .btn-preview { display:none !important; }
 </style>
 </head>
 <body>
@@ -28,9 +152,19 @@
     <div class="app-logo-icon">R</div>
     REMB
   </div>
-  <div class="tab-sep"></div>
-  <button class="tab-btn" id="tabSmeta">📋 Смета / КП</button>
-  <button class="tab-btn" id="tabPlanner">📐 Чертёж</button>
+  <div class="topbar-pill-wrap">
+    <div class="topbar-pill" id="topbarPill">
+      <button class="pill-btn active" id="tabSmeta" data-view="smeta">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Смета / КП
+      </button>
+      <button class="pill-btn" id="tabPlanner" data-view="planner">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+        Чертёж
+      </button>
+      <div class="pill-slider" id="pillSlider"></div>
+    </div>
+  </div>
   <div class="topbar-actions">
     <label class="tb-action-btn" title="Загрузить проект">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -259,6 +393,8 @@
 ════════════════════════════════════ -->
 <div id="smetaView" style="height:100%;overflow:hidden">
 <div class="smeta-shell">
+
+<!-- LEFT: form sidebar -->
 <div class="sidebar">
   <div class="sidebar-head">
     <div class="sidebar-head-left">
@@ -266,8 +402,7 @@
       <p>Заполните поля — получите PDF по шаблону</p>
     </div>
     <div class="sidebar-head-actions">
-      <button class="btn-preview" onclick="window._smetaModule.openPreview()">Предпросмотр</button>
-      <button class="btn-generate" onclick="window._smetaModule.generatePDF()">Сформировать PDF →</button>
+      <button class="btn-generate" onclick="window._smetaModule.generatePDF()">⬇ Скачать PDF</button>
     </div>
   </div>
   <div class="sidebar-scroll">
@@ -412,6 +547,135 @@
 
   </div><!-- /sidebar-scroll -->
 </div><!-- /sidebar -->
+
+<!-- RIGHT: live preview panel -->
+<div class="smeta-preview-panel" id="smetaPreviewPanel">
+  <div class="spp-header">
+    <div class="spp-tabs" id="sppTabs">
+      <button class="spp-tab active" data-page="cover">Обложка</button>
+      <button class="spp-tab" data-page="plan">Планировка</button>
+      <button class="spp-tab" data-page="smr">СМР</button>
+      <button class="spp-tab" data-page="mat">Материалы</button>
+      <button class="spp-tab" data-page="final">Итоговая</button>
+    </div>
+  </div>
+  <div class="spp-body" id="sppBody">
+
+    <!-- Cover page -->
+    <div class="spp-page active" data-page="cover">
+      <div class="preview-page cover-pg spp-a4" id="prevCover2" style="position:relative;overflow:hidden">
+        <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
+          <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
+          <div id="prevCircle2" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
+        </div>
+        <div id="prevCovName2" style="position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);font-size:20px;font-weight:400;letter-spacing:5px;text-transform:uppercase;white-space:nowrap">КОМПАНИЯ</div>
+        <div id="prevCovSlogan2" style="position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);font-size:10px;letter-spacing:4px;color:#888;text-transform:uppercase;white-space:nowrap">КАЧЕСТВО ПОД КЛЮЧ</div>
+        <div id="prevCovType2" style="position:absolute;left:50%;top:72%;transform:translate(-50%,-50%);font-size:14px;font-weight:300;color:#555;letter-spacing:2px;white-space:nowrap">Проектно-сметная документация</div>
+        <div style="position:absolute;bottom:40px;right:40px;display:flex;align-items:center;gap:6px">
+          <div id="prevFootCircle2" style="width:22px;height:22px;border:1.5px solid #aaa;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;color:#aaa">К</div>
+          <div id="prevFootName2" style="font-size:9px;font-weight:600;letter-spacing:2px;color:#aaa">КОМПАНИЯ</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Planning page -->
+    <div class="spp-page" data-page="plan">
+      <div class="preview-page spp-a4" id="prevPlanning2">
+        <div style="padding:40px 52px 40px;min-height:100%;display:flex;flex-direction:column">
+          <div style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px;letter-spacing:.5px">Планирование работ:</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex:1">
+            <div>
+              <div id="prevPlanBox2" style="min-height:220px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff">
+                <img id="prevPlanImg2" alt="" style="width:100%;height:100%;object-fit:contain;display:none;background:#fff">
+                <div id="prevPlanPh2" style="color:#ccc;font-size:36px">⬚</div>
+              </div>
+            </div>
+            <div>
+              <div id="prevObjInfo2" style="font-size:11px;line-height:2;color:#333;margin-bottom:16px"></div>
+              <div style="font-size:10.5px;color:#555;line-height:1.85;margin-bottom:14px">На основании осмотра объекта подготовлены следующие документы:<br>– Смета СМР.<br>– Смета на материалы.<br>– Календарный график.</div>
+              <div style="font-size:12px;font-weight:500;text-align:center;margin-bottom:8px">Экспликация помещений</div>
+              <table style="width:100%;border-collapse:collapse;font-size:10.5px">
+                <thead><tr>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Помещение</th>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Пол м²</th>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Стены м²</th>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Периметр</th>
+                </tr></thead>
+                <tbody id="prevRoomsBody2"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SMR page -->
+    <div class="spp-page" data-page="smr">
+      <div class="preview-page spp-a4" id="prevSmr2">
+        <div style="padding:40px 52px;display:flex;flex-direction:column">
+          <div style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета строительно-монтажных работ</div>
+          <table style="width:100%;border-collapse:collapse;font-size:10px">
+            <thead><tr>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:24px">№</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:left;font-weight:500;font-size:9.5px;background:#f5f5f2">Наименование</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:46px">Ед.</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:52px">Кол</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-weight:500;font-size:9.5px;background:#f5f5f2;width:98px">Всего ₽</th>
+            </tr></thead>
+            <tbody id="prevSmrBody2"></tbody>
+          </table>
+          <div id="prevSmrEmpty2" style="padding:60px 0;text-align:center;color:#ccc;font-size:13px">Загрузите файл СМР или введите вручную</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mat page -->
+    <div class="spp-page" data-page="mat">
+      <div class="preview-page spp-a4" id="prevMat2">
+        <div style="padding:40px 52px;display:flex;flex-direction:column">
+          <div style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета на строительные и отделочные материалы</div>
+          <table style="width:100%;border-collapse:collapse;font-size:10px">
+            <thead><tr>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:24px">№</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:left;font-weight:500;font-size:9.5px;background:#f5f5f2">Наименование</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:46px">Ед.</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:52px">Кол</th>
+              <th style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-weight:500;font-size:9.5px;background:#f5f5f2;width:98px">Всего ₽</th>
+            </tr></thead>
+            <tbody id="prevMatBody2"></tbody>
+          </table>
+          <div id="prevMatEmpty2" style="padding:60px 0;text-align:center;color:#ccc;font-size:13px">Загрузите файл материалов или введите вручную</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final page -->
+    <div class="spp-page" data-page="final">
+      <div class="preview-page spp-a4" id="prevFinal2">
+        <div style="padding:40px 52px;display:flex;flex-direction:column">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:20px">
+            <thead><tr>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:28px">№</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px">Разделы</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:50px">Ед.</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:60px">Кол-во</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:right;width:110px">За ед. ₽</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:right;width:120px">Всего ₽</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;width:80px">Примечание</th>
+            </tr></thead>
+            <tbody id="prevFinBody2"></tbody>
+          </table>
+          <div style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:24px;font-size:14px">
+            <span style="font-size:12px;color:#666">Итого по разделам:</span>
+            <strong id="prevFinVal2" style="font-size:20px;font-weight:500">0 ₽</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /spp-body -->
+</div><!-- /smeta-preview-panel -->
+
 </div><!-- /smeta-shell -->
 </div><!-- /smetaView -->
 
@@ -644,6 +908,76 @@
 
   // Экспортируем для вызова из tools.js
   window._syncCtxPanel = syncCtxPanel;
+})();
+</script>
+<script>
+// ── PILL SWITCHER ────────────────────────────────────────
+(function() {
+  function initPill() {
+    var pill    = document.getElementById('topbarPill');
+    var slider  = document.getElementById('pillSlider');
+    var btns    = pill ? pill.querySelectorAll('.pill-btn') : [];
+    var smeta   = document.getElementById('smetaView');
+    var planner = document.getElementById('plannerView');
+
+    function moveTo(btn) {
+      var pillRect = pill.getBoundingClientRect();
+      var btnRect  = btn.getBoundingClientRect();
+      slider.style.width     = btnRect.width + 'px';
+      slider.style.transform = 'translateX(' + (btnRect.left - pillRect.left - 3) + 'px)';
+    }
+
+    btns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        btns.forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        moveTo(btn);
+        var view = btn.dataset.view;
+        if (smeta)   smeta.style.display   = view === 'smeta'   ? 'block' : 'none';
+        if (planner) planner.style.display = view === 'planner' ? 'flex'  : 'none';
+        // Trigger resize for canvas
+        if (view === 'planner') window.dispatchEvent(new Event('resize'));
+      });
+    });
+
+    requestAnimationFrame(function() {
+      var active = pill ? pill.querySelector('.pill-btn.active') : null;
+      if (active) {
+        slider.style.transition = 'none';
+        moveTo(active);
+        requestAnimationFrame(function(){ slider.style.transition = ''; });
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPill);
+  } else {
+    initPill();
+  }
+})();
+
+// ── SPP TABS ─────────────────────────────────────────────
+(function() {
+  function initSppTabs() {
+    var tabs  = document.querySelectorAll('.spp-tab');
+    var pages = document.querySelectorAll('.spp-page');
+    tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var p = tab.dataset.page;
+        tabs.forEach(function(t){ t.classList.remove('active'); });
+        pages.forEach(function(pg){ pg.classList.remove('active'); });
+        tab.classList.add('active');
+        var target = document.querySelector('.spp-page[data-page="' + p + '"]');
+        if (target) target.classList.add('active');
+      });
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSppTabs);
+  } else {
+    initSppTabs();
+  }
 })();
 </script>
 <script type="module" src="js/main.js"></script>
