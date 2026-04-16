@@ -207,15 +207,12 @@ export function computeRooms(wallHeightFallback = 2700) {
     }
     const areaMm2Final = areaPx * CELL_MM * CELL_MM;
 
-    // cells для render.js — берём пиксели из bitmap_exact (inflate=0).
-    // Это точный внутренний контур: заливка доходит до стены без зазора
-    // и не вылезает наружу даже для диагональных стен.
-    const cells = pixels
-      .filter(([gx, gy]) => bitmap_exact[gy * cols + gx] === 0)
-      .map(([gx, gy]) => ({
-        x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
-        x2: minX + (gx + 1) * CELL_MM, y2: minY + (gy + 1) * CELL_MM,
-      }));
+    // cells для render.js — все пиксели flood fill региона.
+    // bitmap inflate=25мм гарантирует что заливка доходит до внутренней поверхности стены.
+    const cells = pixels.map(([gx, gy]) => ({
+      x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
+      x2: minX + (gx + 1) * CELL_MM, y2: minY + (gy + 1) * CELL_MM,
+    }));
 
     // boundarySegments для render.js
     const boundarySegments = [];
