@@ -1,5 +1,6 @@
 // ─── SMETA.JS ─────────────────────────────────────────────────────
 import { appState } from './state.js';
+import { renderToImage } from './render.js';
 
 // ── Utils ─────────────────────────────────────────────────────────
 
@@ -54,13 +55,10 @@ export function captureCanvas() {
   const walls = window._appState?.walls ?? appState?.walls ?? [];
   if (!walls.length) { alert('Нарисуйте план перед захватом'); return; }
 
-  const renderFn = window._renderModule?.renderToImage;
-  if (!renderFn) { alert('Рендер недоступен. Перезагрузите страницу.'); return; }
-
   // planData — чистый чертёж (без сетки и размеров) для страницы "Планирование работ"
-  const cleanImg = renderFn(800, 600, false);
+  const cleanImg = renderToImage(800, 600, false);
   // planDataFull — полный обмерный план (со всеми размерами) для отдельной страницы
-  const fullImg  = renderFn(2480, 1754, true); // A4 landscape @300dpi
+  const fullImg  = renderToImage(2480, 1754, true); // A4 landscape @300dpi
 
   if (!cleanImg) { alert('Не удалось захватить чертёж'); return; }
 
