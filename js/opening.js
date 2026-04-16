@@ -19,6 +19,29 @@ export function addOpening(wall, t, width, height, type, options = {}) {
 }
 
 export function findClosestOpening(wx, wy, threshold = 80) {
+  // Сначала проверяем точное попадание в прямоугольник проёма
+  for (const op of appState.openings) {
+    const wall = appState.walls.find(w => w.id === op.wallId);
+    if (!wall) continue;
+    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (wlen < 1) continue;
+    // Вектор вдоль стены и нормаль
+    const ux = (wall.x2 - wall.x1) / wlen, uy = (wall.y2 - wall.y1) / wlen;
+    const nx = -uy, ny = ux;
+    // Проецируем курсор на локальные оси стены
+    const rx = wx - wall.x1, ry = wy - wall.y1;
+    const along  = rx * ux + ry * uy; // позиция вдоль стены в мм
+    const normal = rx * nx + ry * ny; // отступ от оси стены в мм
+    // Границы проёма вдоль стены
+    const centerAlong = op.t * wlen;
+    const halfW = op.width / 2;
+    const halfT = wall.thickness / 2 + 20; // +20мм допуск
+    if (along >= centerAlong - halfW && along <= centerAlong + halfW &&
+        Math.abs(normal) <= halfT) {
+      return op;
+    }
+  }
+  // Fallback: расстояние до центра (для маленьких проёмов)
   for (const op of appState.openings) {
     const wall = appState.walls.find(w => w.id === op.wallId);
     if (!wall) continue;
