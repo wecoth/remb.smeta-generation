@@ -294,18 +294,27 @@ function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
   const perimeterFloorM = Math.max(0, perimeterRawMm - perimeterDeductMm) / 1000;
 
   // ── Площадь стен ──────────────────────────────────────────────
+  // wallAreaGross = полная площадь по длине стены × высоту (включая зоны под проёмами).
+  // Узкие участки < 500мм идут в погонаж, но считаем их как часть gross тоже.
+  // Потом вычитаем только фактическую площадь проёмов (ширина × высота проёма).
+  // Это исключает двойное вычитание которое было раньше (сегменты без проёма + вычет проёма).
   let wallAreaGrossM2 = 0;
   let narrowWallsLm   = 0;
   let openingsAreaM2  = 0;
 
   for (const { wall, segments } of wallSegData) {
+    // Суммируем полную длину стены (все сегменты включая проёмы)
+    // через segments мы получаем только куски между проёмами —
+    // поэтому добавляем полную длину стены напрямую
+    const wallLenM = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) / 1000;
+    // Узкие участки (< 500мм) — в погонаж, остальное в площадь
+    // Считаем узкие участки только по сегментам (стена без проёмов)
     for (const seg of segments) {
       if (seg.widthMm < 500) {
         narrowWallsLm += heightM;
-      } else {
-        wallAreaGrossM2 += (seg.widthMm / 1000) * heightM;
       }
     }
+    wallAreaGrossM2 += wallLenM * heightM;
   }
 
   for (const op of openings) {
