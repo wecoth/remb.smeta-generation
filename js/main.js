@@ -2,6 +2,7 @@
 import { appState } from './state.js';
 import { computeRooms, updateExpl } from './room.js';
 import { initPlanner, setTool, forceRedraw, getViewport } from './ui-planner.js';
+import { renderToImage } from './render.js';
 import { setViewport } from './snapping.js';
 import {
   initSmeta, addRoom, recalcRooms, getRooms, handleLogo, handlePlan,
@@ -27,6 +28,7 @@ window._smetaModule = {
 // Expose appState and viewport for captureCanvas
 window._appState = appState;
 Object.defineProperty(window, '_plannerViewport', { get: () => getViewport() });
+window._renderModule = { renderToImage };
 
 // main.js initializes modules and wires up tabs
 
