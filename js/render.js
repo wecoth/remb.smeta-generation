@@ -212,11 +212,20 @@ function drawGrid() {
 
 function drawRoomFills(selectedItems) {
   const scale = _getScale();
+  // Небольшое перекрытие ячеек устраняет белую полосу у стен.
+  // Ячейки flood fill не доходят до внутренней поверхности стены
+  // из-за inflate bitmap — overlap компенсирует этот зазор.
+  const OVERLAP_MM = 26; // чуть больше inflate (25мм)
   for (let i = 0; i < appState.rooms.length; i++) {
     const r = appState.rooms[i]; if (!r.cells?.length) continue;
     _ctx.save();
     _ctx.beginPath();
-    for (const c of r.cells) { const p = toScreen(c.x1, c.y1); _ctx.rect(p.x, p.y, (c.x2 - c.x1) * scale, (c.y2 - c.y1) * scale); }
+    for (const c of r.cells) {
+      const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
+      const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
+      const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
+      _ctx.rect(p.x, p.y, w, h);
+    }
     _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
     _ctx.strokeStyle = ROOM_STROKES[i % ROOM_STROKES.length]; _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]);
     for (const s of r.boundarySegments) {
@@ -230,7 +239,7 @@ function drawRoomFills(selectedItems) {
       _ctx.font = `600 ${Math.max(10, Math.min(14, scale * 200))}px Onest, Inter, sans-serif`;
       _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
       _ctx.font = `500 ${Math.max(9, Math.min(12, scale * 160))}px Onest, Inter, sans-serif`;
-      _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(1)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
+      _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
     }
     _ctx.restore();
   }
