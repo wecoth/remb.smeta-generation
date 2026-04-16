@@ -195,10 +195,7 @@ export function computeRooms(wallHeightFallback = 2700) {
 
     // Площадь пола = пиксели flood fill × размер пикселя.
     // Flood fill захватывает всё пространство внутри стен — это и есть внутренний контур.
-    // Площадь — геометрически по центрам стен (точно, без погрешности bitmap)
-    const orderedForArea = orderBoundaryWalls([...boundaryWalls.values()]);
-    const geoAreaMm2     = shoelaceInnerArea(orderedForArea);
-    const areaMm2Final   = geoAreaMm2 > 10000 ? geoAreaMm2 : pixels.length * CELL_MM * CELL_MM;
+    const areaMm2Final = pixels.length * CELL_MM * CELL_MM;
 
     // cells для render.js
     const cells = pixels.map(([gx, gy]) => ({
@@ -479,7 +476,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   // Inflate 1мм — минимальный для надёжного замыкания диагональных стен.
   // Меньше CELL_MM/50 = 1мм, почти не влияет на площадь.
-  const INFLATE = 25; // мм — замыкает все углы включая диагонали и треугольники
+  const INFLATE = 1; // мм
   const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
@@ -521,20 +518,6 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
 }
 
 
-
-// Площадь по Shoelace по осям стен
-function shoelaceInnerArea(walls) {
-  if (walls.length < 3) return 0;
-  const pts = walls.map(w => wallStart(w));
-  pts.push(wallEnd(walls[walls.length - 1]));
-  let area = 0;
-  const n = pts.length;
-  for (let i = 0; i < n - 1; i++) {
-    area += pts[i].x * pts[i + 1].y;
-    area -= pts[i + 1].x * pts[i].y;
-  }
-  return Math.abs(area) / 2;
-}
 
 function findWallAtPoint(wx, wy) {
   for (const w of appState.walls) {
