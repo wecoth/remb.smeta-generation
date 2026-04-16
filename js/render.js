@@ -215,7 +215,7 @@ function drawRoomFills(selectedItems) {
   // Небольшое перекрытие ячеек устраняет белую полосу у стен.
   // Ячейки flood fill не доходят до внутренней поверхности стены
   // из-за inflate bitmap — overlap компенсирует этот зазор.
-  const OVERLAP_MM = 26; // чуть больше inflate (25мм)
+  const OVERLAP_MM = 32; // больше inflate 25мм — убирает зазоры на диагоналях
   for (let i = 0; i < appState.rooms.length; i++) {
     const r = appState.rooms[i]; if (!r.cells?.length) continue;
     _ctx.save();
