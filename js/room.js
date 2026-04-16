@@ -109,16 +109,32 @@ export function computeRooms(wallHeightFallback = 2700) {
   }
 
   // ── Определяем стены граничащие с exterior ────────────────────
-  // Стена exteriorBoundary — её пиксели смежны с exterior регионом
+  // Внешняя стена = стена у которой exterior регион находится
+  // С ОБЕИХ сторон ИЛИ хотя бы с одной стороны НО не граничит
+  // ни с одним внутренним помещением.
+  // Упрощённый надёжный подход: стена внешняя если её серединная
+  // точка + смещение наружу попадает в exterior пиксель.
   const exteriorWallIds = new Set();
-  for (const idx of exteriorPixelSet) {
-    const gx = idx % cols, gy = (idx / cols) | 0;
-    for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-      if (bitmap[ny * cols + nx] === 1) {
-        const wx = minX + (nx + 0.5) * CELL_MM, wy = minY + (ny + 0.5) * CELL_MM;
-        const wall = findWallAtPoint(wx, wy);
-        if (wall) exteriorWallIds.add(wall.id);
+  for (const wall of appState.walls) {
+    const mx = (wall.x1 + wall.x2) / 2;
+    const my = (wall.y1 + wall.y2) / 2;
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (len < 1) continue;
+    // Нормаль к стене (оба направления)
+    const nx = -(wall.y2 - wall.y1) / len;
+    const ny =  (wall.x2 - wall.x1) / len;
+    // Проверяем обе стороны стены на расстоянии thickness/2 + 1 клетка
+    const checkDist = wall.thickness / 2 + CELL_MM * 1.5;
+    for (const sign of [1, -1]) {
+      const px = mx + nx * sign * checkDist;
+      const py = my + ny * sign * checkDist;
+      const gx = Math.round((px - minX) / CELL_MM - 0.5);
+      const gy = Math.round((py - minY) / CELL_MM - 0.5);
+      if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+      const pidx = gy * cols + gx;
+      if (exteriorPixelSet.has(pidx)) {
+        exteriorWallIds.add(wall.id);
+        break;
       }
     }
   }
@@ -257,10 +273,13 @@ function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
         wallAreaGrossM2 += (seg.widthMm / 1000) * heightM;
       }
     }
-    for (const op of openings.filter(op => op.wallId === wall.id)) {
-      openingsAreaM2 += (op.width * op.height) / 1e6;
-    }
   }
+
+  // Площадь проёмов считаем ОТДЕЛЬНО от сегментов — один раз на проём
+  for (const op of openings) {
+    openingsAreaM2 += (op.width * op.height) / 1e6;
+  }
+
   const wallAreaNetM2 = Math.max(0, wallAreaGrossM2 - openingsAreaM2);
 
   // ── Углы ──────────────────────────────────────────────────────
@@ -361,26 +380,26 @@ function dist2(a, b) { return (a.x - b.x) ** 2 + (a.y - b.y) ** 2; }
 // ══════════════════════════════════════════════════════════════════
 function buildWallSegments(walls, openings) {
   return walls.map(wall => {
+    // op.t привязан к физической оси (x1/y1 → x2/y2), используем её
     const lenMm = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (lenMm < 1) return { wall, segments: [] };
 
     const wallOps = openings
       .filter(op => op.wallId === wall.id)
       .map(op => ({
-        startMm: (op.t - op.width / 2 / lenMm) * lenMm,
-        endMm:   (op.t + op.width / 2 / lenMm) * lenMm,
+        startMm: Math.max(0,     (op.t - op.width / 2 / lenMm) * lenMm),
+        endMm:   Math.min(lenMm, (op.t + op.width / 2 / lenMm) * lenMm),
       }))
+      .filter(op => op.endMm > op.startMm)
       .sort((a, b) => a.startMm - b.startMm);
 
     const segments = [];
     let cursor = 0;
     for (const op of wallOps) {
-      const start = Math.max(0, op.startMm);
-      const end   = Math.min(lenMm, op.endMm);
-      if (start > cursor + 0.5) {
-        segments.push({ startMm: cursor, endMm: start, widthMm: start - cursor });
+      if (op.startMm > cursor + 0.5) {
+        segments.push({ startMm: cursor, endMm: op.startMm, widthMm: op.startMm - cursor });
       }
-      cursor = end;
+      cursor = Math.max(cursor, op.endMm);
     }
     if (cursor < lenMm - 0.5) {
       segments.push({ startMm: cursor, endMm: lenMm, widthMm: lenMm - cursor });
