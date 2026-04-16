@@ -1,6 +1,4 @@
 // ─── ROOM.JS ──────────────────────────────────────────────────────
-// Расчёт помещений: flood fill + полные метрики по ТЗ
-// ──────────────────────────────────────────────────────────────────
 import { appState, ROOM_STROKES } from './state.js';
 
 // ── Room key ──────────────────────────────────────────────────────
@@ -93,9 +91,41 @@ export function computeRooms(wallHeightFallback = 2700) {
     }
   }
 
+  // ── Определяем exterior регион (самый большой touchesEdge) ────
+  // Нужен для детекции входной двери
+  let exteriorRegionId = -1;
+  let exteriorMaxSize  = 0;
+  for (const id of regionTouchesEdge) {
+    const sz = regionPixels.get(id)?.length ?? 0;
+    if (sz > exteriorMaxSize) { exteriorMaxSize = sz; exteriorRegionId = id; }
+  }
+
+  // Строим набор пикселей exterior для быстрой проверки
+  const exteriorPixelSet = new Set();
+  if (exteriorRegionId > 0) {
+    for (const [gx, gy] of (regionPixels.get(exteriorRegionId) || [])) {
+      exteriorPixelSet.add(gy * cols + gx);
+    }
+  }
+
+  // ── Определяем стены граничащие с exterior ────────────────────
+  // Стена exteriorBoundary — её пиксели смежны с exterior регионом
+  const exteriorWallIds = new Set();
+  for (const idx of exteriorPixelSet) {
+    const gx = idx % cols, gy = (idx / cols) | 0;
+    for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      if (bitmap[ny * cols + nx] === 1) {
+        const wx = minX + (nx + 0.5) * CELL_MM, wy = minY + (ny + 0.5) * CELL_MM;
+        const wall = findWallAtPoint(wx, wy);
+        if (wall) exteriorWallIds.add(wall.id);
+      }
+    }
+  }
+
   // ── 4. Метрики ─────────────────────────────────────────────────
   const cellArea    = CELL_MM * CELL_MM;
-  const minRoomArea = 100000; // 0.1 м²
+  const minRoomArea = 100000;
 
   for (const [id, pixels] of regionPixels) {
     if (regionTouchesEdge.has(id)) continue;
@@ -132,9 +162,13 @@ export function computeRooms(wallHeightFallback = 2700) {
     // Проёмы
     const roomOpenings = appState.openings.filter(op => boundaryWalls.has(op.wallId));
 
-    // Полные метрики
+    // Входная дверь — дверь на стене граничащей с exterior
+    const entranceDoorId = detectEntranceDoor(roomOpenings, exteriorWallIds);
+
+    // Метрики
     const metrics = computeRoomMetrics(
-      [...boundaryWalls.values()], roomOpenings, roomHeightMm, centerWorld
+      [...boundaryWalls.values()], roomOpenings,
+      roomHeightMm, centerWorld, entranceDoorId
     );
 
     // cells для render.js
@@ -162,163 +196,148 @@ export function computeRooms(wallHeightFallback = 2700) {
       key, cells, boundarySegments, center: centerWorld,
       defaultName,
       name: appState.roomNameOverrides[key] || defaultName,
-
-      // Базовые поля (обратная совместимость с render.js / smeta.js)
+      // Базовые поля (обратная совместимость render.js / smeta.js)
       area:         areaMm2 / 1e6,
       volume:       areaMm2 * roomHeightMm / 1e9,
       height:       roomHeightMm / 1000,
       perimeter:    metrics.perimeterFloorM,
       wallArea:     metrics.wallAreaNetM2,
       openingsArea: metrics.openingsAreaM2,
-
-      // Все метрики по ТЗ
       metrics,
     });
   }
 }
 
 // ══════════════════════════════════════════════════════════════════
-// РАСЧЁТ МЕТРИК ПОМЕЩЕНИЯ
+// ДЕТЕКЦИЯ ВХОДНОЙ ДВЕРИ
 // ══════════════════════════════════════════════════════════════════
-function computeRoomMetrics(walls, openings, heightMm, center) {
+// Входная дверь = дверь чья стена граничит с exterior регионом
+function detectEntranceDoor(openings, exteriorWallIds) {
+  for (const op of openings) {
+    if (op.type === 'door' && exteriorWallIds.has(op.wallId)) return op.id;
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// РАСЧЁТ МЕТРИК
+// ══════════════════════════════════════════════════════════════════
+function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
   const heightM = heightMm / 1000;
 
-  // Упорядоченный контур стен
   const orderedWalls = orderBoundaryWalls(walls);
+  const wallSegData  = buildWallSegments(orderedWalls, openings);
 
-  // Сегменты стен (разбитые по проёмам)
-  const wallSegData = buildWallSegments(orderedWalls, openings);
-
-  // ── Площадь пола ───────────────────────────────────────────────
-  // Считается flood fill-ом (areaMm2) — передаём из caller
-  // Здесь пересчитаем из периметра для консистентности не нужно —
-  // площадь пола уже есть в appState.rooms[i].area
-  // Просто пробрасываем нужные поля.
-
-  // ── Периметр пола (за вычетом дверей) ─────────────────────────
+  // ── Периметр пола ─────────────────────────────────────────────
+  // Вычитаем ширину дверей И панорамных окон (высота = высота помещения)
   let perimeterRawMm = 0;
   for (const w of orderedWalls) perimeterRawMm += wallLengthMm(w);
-  let doorWidthsMm = 0;
-  for (const op of openings) {
-    if (op.type === 'door') doorWidthsMm += op.width;
-  }
-  const perimeterFloorM = Math.max(0, perimeterRawMm - doorWidthsMm) / 1000;
 
-  // ── Площадь стен (чистовая) ────────────────────────────────────
+  let perimeterDeductMm = 0;
+  for (const op of openings) {
+    if (op.type === 'door') {
+      perimeterDeductMm += op.width;
+    } else if (op.type === 'window' && op.height >= heightMm * 0.95) {
+      // Панорамное окно: высота >= 95% высоты помещения
+      perimeterDeductMm += op.width;
+    }
+  }
+  const perimeterFloorM = Math.max(0, perimeterRawMm - perimeterDeductMm) / 1000;
+
+  // ── Площадь стен ──────────────────────────────────────────────
   let wallAreaGrossM2 = 0;
-  let narrowWallsLm   = 0;  // простенки < 50 см
+  let narrowWallsLm   = 0;  // участки < 50 см (в погонаж)
   let openingsAreaM2  = 0;
 
   for (const { wall, segments } of wallSegData) {
     for (const seg of segments) {
       if (seg.widthMm < 500) {
-        // Узкий участок — идёт в погонаж, не в площадь
         narrowWallsLm += heightM;
       } else {
         wallAreaGrossM2 += (seg.widthMm / 1000) * heightM;
       }
     }
-    // Площадь проёмов на этой стене
     for (const op of openings.filter(op => op.wallId === wall.id)) {
       openingsAreaM2 += (op.width * op.height) / 1e6;
     }
   }
   const wallAreaNetM2 = Math.max(0, wallAreaGrossM2 - openingsAreaM2);
 
-  // ── Углы помещения ─────────────────────────────────────────────
-  const cornerStats = computeCornerStats(orderedWalls, center);
+  // ── Углы ──────────────────────────────────────────────────────
+  const cornerStats = computeCornerStats(orderedWalls);
 
-  // ── Откосы ─────────────────────────────────────────────────────
-  // Оконные: верх + 2 боковины (подоконная сторона не считается)
-  // Дверные:  верх + 2 боковины (порог не считается)
-  let windowRevealsLm = 0, doorRevealsLm = 0;
-  let windowCount = 0, doorCount = 0;
-  let windowAreaM2 = 0, doorAreaM2 = 0;
+  // ── Проёмы ────────────────────────────────────────────────────
+  let windowAreaM2 = 0, windowCount = 0;
+  let entranceDoorAreaM2 = 0;
+  let windowRevealsLm = 0;
 
+  // Оконные откосы: ширина + 2×высота (3 стороны, без подоконника)
   for (const op of openings) {
     if (op.type === 'window') {
-      windowRevealsLm += (op.width + 2 * op.height) / 1000;
       windowAreaM2    += (op.width * op.height) / 1e6;
+      windowRevealsLm += (op.width + 2 * op.height) / 1000;
       windowCount++;
-    } else if (op.type === 'door') {
-      doorRevealsLm += (op.width + 2 * op.height) / 1000;
-      doorAreaM2    += (op.width * op.height) / 1e6;
-      doorCount++;
+    } else if (op.type === 'door' && op.id === entranceDoorId) {
+      entranceDoorAreaM2 = (op.width * op.height) / 1e6;
     }
   }
 
-  // ── Внешние углы на откосах ────────────────────────────────────
-  // На каждый проём: 2 вертикальных ребра (стык откоса со стеной)
-  let revealOuterCornersLm = 0;
+  // ── Итоговый погонаж (простенки < 50 см + оконные откосы) ────
+  const pogonazLm = round2(narrowWallsLm + windowRevealsLm);
+
+  // ── Внешние углы ──────────────────────────────────────────────
+  // Углы стен: количество внешних углов × высота
+  // Углы откосов: 2 вертикальных ребра на каждый оконный проём × высота проёма
+  const wallOuterCornersLm   = round2(cornerStats.outer * heightM);
+  let   revealCornersLm      = 0;
   for (const op of openings) {
-    revealOuterCornersLm += 2 * op.height / 1000;
+    if (op.type === 'window') revealCornersLm += 2 * op.height / 1000;
   }
+  const outerAnglesLm = round2(wallOuterCornersLm + revealCornersLm);
 
   return {
-    // Площадь пола — будет заполнена из areaMm2 в caller, здесь плейсхолдер
-    floorAreaM2:          0, // overridden below
-
-    // Периметр пола (без дверей)
-    perimeterFloorM:      round2(perimeterFloorM),
-
-    // Площадь стен
-    wallAreaNetM2:        round2(wallAreaNetM2),
-    wallAreaGrossM2:      round2(wallAreaGrossM2),
-    openingsAreaM2:       round2(openingsAreaM2),
-
-    // Узкие простенки < 50 см
-    narrowWallsLm:        round2(narrowWallsLm),
-
-    // Углы
-    cornersInner:         cornerStats.inner,
-    cornersOuter:         cornerStats.outer,
-    outerCornersLm:       round2(cornerStats.outer * heightM),
-
-    // Откосы
-    windowRevealsLm:      round2(windowRevealsLm),
-    doorRevealsLm:        round2(doorRevealsLm),
-    revealOuterCornersLm: round2(revealOuterCornersLm),
-
-    // Проёмы
-    windowCount, doorCount,
-    windowAreaM2:         round2(windowAreaM2),
-    doorAreaM2:           round2(doorAreaM2),
-
-    heightM:              round2(heightM),
+    perimeterFloorM:    round2(perimeterFloorM),
+    wallAreaNetM2:      round2(wallAreaNetM2),
+    wallAreaGrossM2:    round2(wallAreaGrossM2),
+    openingsAreaM2:     round2(openingsAreaM2),
+    narrowWallsLm:      round2(narrowWallsLm),
+    cornersInner:       cornerStats.inner,
+    cornersOuter:       cornerStats.outer,
+    outerAnglesLm,          // внешние углы стен + откосов суммарно
+    windowAreaM2:       round2(windowAreaM2),
+    windowCount,
+    windowRevealsLm:    round2(windowRevealsLm),
+    pogonazLm,              // простенки < 50 см + оконные откосы
+    entranceDoorAreaM2: round2(entranceDoorAreaM2),
+    entranceDoorId,
+    heightM:            round2(heightM),
   };
 }
 
 // ══════════════════════════════════════════════════════════════════
-// УПОРЯДОЧИВАНИЕ ГРАНИЧНЫХ СТЕН В ЦЕПОЧКУ
+// УПОРЯДОЧИВАНИЕ СТЕН В ЦЕПОЧКУ
 // ══════════════════════════════════════════════════════════════════
-const SNAP_TOL_SQ = 200 * 200; // 200 мм допуск
+const SNAP_TOL_SQ = 200 * 200;
 
 function orderBoundaryWalls(walls) {
   if (walls.length <= 1) return walls;
-
   const used   = new Array(walls.length).fill(false);
   const result = [walls[0]];
   used[0] = true;
-
   for (let step = 1; step < walls.length; step++) {
-    const last    = result[result.length - 1];
-    const lastEnd = wallEnd(last);
+    const lastEnd = wallEnd(result[result.length - 1]);
     let bestIdx = -1, bestDist = Infinity;
-
     for (let i = 0; i < walls.length; i++) {
       if (used[i]) continue;
       const d = Math.min(dist2(lastEnd, wallStart(walls[i])), dist2(lastEnd, wallEnd(walls[i])));
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
-
     if (bestIdx < 0 || bestDist > SNAP_TOL_SQ) break;
-
     const next = walls[bestIdx];
     result.push(dist2(lastEnd, wallEnd(next)) < dist2(lastEnd, wallStart(next))
       ? reversedWall(next) : next);
     used[bestIdx] = true;
   }
-
   return result;
 }
 
@@ -338,7 +357,7 @@ function reversedWall(w) {
 function dist2(a, b) { return (a.x - b.x) ** 2 + (a.y - b.y) ** 2; }
 
 // ══════════════════════════════════════════════════════════════════
-// СЕГМЕНТЫ СТЕНЫ (разбивка по проёмам)
+// СЕГМЕНТЫ СТЕНЫ ПО ПРОЁМАМ
 // ══════════════════════════════════════════════════════════════════
 function buildWallSegments(walls, openings) {
   return walls.map(wall => {
@@ -355,7 +374,6 @@ function buildWallSegments(walls, openings) {
 
     const segments = [];
     let cursor = 0;
-
     for (const op of wallOps) {
       const start = Math.max(0, op.startMm);
       const end   = Math.min(lenMm, op.endMm);
@@ -367,7 +385,6 @@ function buildWallSegments(walls, openings) {
     if (cursor < lenMm - 0.5) {
       segments.push({ startMm: cursor, endMm: lenMm, widthMm: lenMm - cursor });
     }
-
     return { wall, segments };
   });
 }
@@ -375,12 +392,8 @@ function buildWallSegments(walls, openings) {
 // ══════════════════════════════════════════════════════════════════
 // УГЛЫ ПОМЕЩЕНИЯ
 // ══════════════════════════════════════════════════════════════════
-// Cross product соседних стен при обходе контура.
-// Знак нормируется по знаку площади (Shoelace formula) чтобы
-// правильно работать и для CW и для CCW обхода.
-function computeCornerStats(walls, center) {
+function computeCornerStats(walls) {
   if (walls.length < 2) return { inner: 0, outer: 0 };
-
   const n = walls.length;
   let inner = 0, outer = 0;
 
@@ -390,42 +403,27 @@ function computeCornerStats(walls, center) {
     const s = wallStart(walls[i]), e = wallEnd(walls[i]);
     signedArea += s.x * e.y - e.x * s.y;
   }
-  // signedArea > 0 = CCW (математич.), < 0 = CW (экран Y-вниз)
 
   for (let i = 0; i < n; i++) {
-    const curr = walls[i];
-    const next = walls[(i + 1) % n];
-
-    const dx1 = wallEnd(curr).x - wallStart(curr).x;
-    const dy1 = wallEnd(curr).y - wallStart(curr).y;
-    const dx2 = wallEnd(next).x - wallStart(next).x;
-    const dy2 = wallEnd(next).y - wallStart(next).y;
-
+    const dx1 = wallEnd(walls[i]).x   - wallStart(walls[i]).x;
+    const dy1 = wallEnd(walls[i]).y   - wallStart(walls[i]).y;
+    const dx2 = wallEnd(walls[(i+1)%n]).x - wallStart(walls[(i+1)%n]).x;
+    const dy2 = wallEnd(walls[(i+1)%n]).y - wallStart(walls[(i+1)%n]).y;
     const cross = dx1 * dy2 - dy1 * dx2;
-    if (Math.abs(cross) < 0.001) continue; // коллинеарные — не угол
-
-    // При CW обходе (Y-вниз, signedArea < 0):
-    //   cross > 0 → CCW поворот → выступ наружу → внешний угол помещения
-    //   cross < 0 → CW поворот  → вгиб → внутренний угол
-    // При CCW обходе — наоборот
+    if (Math.abs(cross) < 0.001) continue;
     const isInterior = signedArea < 0 ? cross < 0 : cross > 0;
-
-    if (isInterior) inner++;
-    else outer++;
+    if (isInterior) inner++; else outer++;
   }
-
   return { inner, outer };
 }
 
 // ══════════════════════════════════════════════════════════════════
-// РАСТЕРИЗАЦИЯ СТЕНЫ В BITMAP
+// РАСТЕРИЗАЦИЯ СТЕНЫ
 // ══════════════════════════════════════════════════════════════════
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-  // inflate только поперёк — НЕ вдоль (вдоль inflate убит: он ломал треугольники)
-  const INFLATE_PERP = CELL_MM * 0.5;
-  const half = wall.thickness / 2 + INFLATE_PERP;
-  const sinA = Math.sin(angle), cosA = Math.cos(angle);
+  const half  = wall.thickness / 2 + CELL_MM * 0.5; // inflate только поперёк
+  const sinA  = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
 
   const corners = [
@@ -464,16 +462,14 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   }
 }
 
-// ── Найти стену в мировой точке ───────────────────────────────────
 function findWallAtPoint(wx, wy) {
   for (const w of appState.walls) {
     const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
     if (len < 0.001) continue;
     const ux = (w.x2 - w.x1) / len, uy = (w.y2 - w.y1) / len;
-    const nx = -uy, ny = ux;
     const rx = wx - w.x1, ry = wy - w.y1;
     const along  = rx * ux + ry * uy;
-    const normal = rx * nx + ry * ny;
+    const normal = rx * (-uy) + ry * ux;
     if (along >= -CELL_MM && along <= len + CELL_MM &&
         Math.abs(normal) <= w.thickness / 2 + CELL_MM) return w;
   }
@@ -484,25 +480,35 @@ function round2(v) { return Math.round(v * 100) / 100; }
 
 // ══════════════════════════════════════════════════════════════════
 // DOM — ЭКСПЛИКАЦИЯ
+// Структура колонок:
+//   ОСНОВНЫЕ (для сметы):
+//     1. Помещение
+//     2. Пол м²
+//     3. Стены м²  (нетто: минус проёмы, минус участки < 50 см)
+//     4. Периметр м.п. (без дверей и панорамных окон)
+//   СПРАВОЧНЫЕ:
+//     5. Окна м²
+//     6. Вх. дверь м²  (жирным если найдена входная)
+//     7. Погонаж м.п.  (простенки < 50 см + оконные откосы)
+//     8. Углы м.п.     (внешние углы стен + внешние углы откосов)
 // ══════════════════════════════════════════════════════════════════
 export function updateExpl(explBody, roomCountEl) {
   if (!explBody) return;
   if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
 
   if (!appState.rooms.length) {
-    explBody.innerHTML = `<tr class="empty-row"><td colspan="9">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
+    explBody.innerHTML = `<tr class="empty-row"><td colspan="8">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
     return;
   }
 
   explBody.innerHTML = appState.rooms.map((r, i) => {
     const m     = r.metrics || {};
     const color = ROOM_STROKES[i % ROOM_STROKES.length].replace('0.4', '0.8');
+    const fmt   = v => (v != null && v > 0) ? v.toFixed(2) : '—';
 
-    const fmt = (v, def = '—') => (v != null && v > 0) ? v.toFixed(2) : def;
-
-    const cornersStr = (m.cornersInner != null)
-      ? `${m.cornersInner} / ${m.cornersOuter}`
-      : '—';
+    const entranceCell = m.entranceDoorAreaM2 > 0
+      ? `<td class="expl-entrance">${m.entranceDoorAreaM2.toFixed(2)}</td>`
+      : `<td>—</td>`;
 
     return `<tr>
       <td><div class="room-name-cell">
@@ -511,13 +517,12 @@ export function updateExpl(explBody, roomCountEl) {
           data-room-key="${escHtml(r.key)}" data-room-default="${escHtml(r.defaultName)}">
       </div></td>
       <td>${r.area.toFixed(2)}</td>
-      <td>${fmt(m.wallAreaNetM2, r.wallArea.toFixed(2))}</td>
-      <td>${fmt(m.perimeterFloorM, r.perimeter.toFixed(2))}</td>
-      <td>${(r.height || 0).toFixed(2)}</td>
-      <td title="вн / нар">${cornersStr}</td>
-      <td title="Внешние углы стен, м.п.">${fmt(m.outerCornersLm)}</td>
-      <td title="Откосы окон / дверей, м.п.">${fmt(m.windowRevealsLm)} / ${fmt(m.doorRevealsLm)}</td>
-      <td title="Простенки < 50 см, м.п.">${fmt(m.narrowWallsLm)}</td>
+      <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
+      <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
+      <td>${fmt(m.windowAreaM2)}</td>
+      ${entranceCell}
+      <td>${fmt(m.pogonazLm)}</td>
+      <td>${fmt(m.outerAnglesLm)}</td>
     </tr>`;
   }).join('');
 }
@@ -535,22 +540,19 @@ export function getComputedRooms() {
   return appState.rooms.map(r => {
     const m = r.metrics || {};
     return {
-      name:                 r.name,
-      floorArea:            r.area,
-      wallsArea:            m.wallAreaNetM2        ?? r.wallArea,
-      perimeter:            m.perimeterFloorM      ?? r.perimeter,
-      height:               r.height               ?? 0,
-      cornersInner:         m.cornersInner         ?? 0,
-      cornersOuter:         m.cornersOuter         ?? 0,
-      outerCornersLm:       m.outerCornersLm       ?? 0,
-      windowRevealsLm:      m.windowRevealsLm      ?? 0,
-      doorRevealsLm:        m.doorRevealsLm        ?? 0,
-      revealOuterCornersLm: m.revealOuterCornersLm ?? 0,
-      narrowWallsLm:        m.narrowWallsLm        ?? 0,
-      windowCount:          m.windowCount          ?? 0,
-      doorCount:            m.doorCount            ?? 0,
-      windowAreaM2:         m.windowAreaM2         ?? 0,
-      doorAreaM2:           m.doorAreaM2           ?? 0,
+      name:               r.name,
+      floorArea:          r.area,
+      wallsArea:          m.wallAreaNetM2      ?? r.wallArea,
+      perimeter:          m.perimeterFloorM    ?? r.perimeter,
+      height:             r.height             ?? 0,
+      windowAreaM2:       m.windowAreaM2       ?? 0,
+      windowCount:        m.windowCount        ?? 0,
+      entranceDoorAreaM2: m.entranceDoorAreaM2 ?? 0,
+      pogonazLm:          m.pogonazLm          ?? 0,
+      outerAnglesLm:      m.outerAnglesLm      ?? 0,
+      cornersOuter:       m.cornersOuter       ?? 0,
+      narrowWallsLm:      m.narrowWallsLm      ?? 0,
+      windowRevealsLm:    m.windowRevealsLm    ?? 0,
     };
   });
 }
