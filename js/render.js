@@ -212,22 +212,23 @@ function drawGrid() {
 
 function drawRoomFills(selectedItems) {
   const scale = _getScale();
+  // Небольшое перекрытие ячеек устраняет белую полосу у стен.
+  // Ячейки flood fill не доходят до внутренней поверхности стены
+  // из-за inflate bitmap — overlap компенсирует этот зазор.
+  const OVERLAP_MM = 32; // больше inflate 25мм — убирает зазоры на диагоналях
   for (let i = 0; i < appState.rooms.length; i++) {
     const r = appState.rooms[i]; if (!r.cells?.length) continue;
     _ctx.save();
     _ctx.beginPath();
     for (const c of r.cells) {
-      const p = toScreen(c.x1, c.y1);
-      const w = (c.x2 - c.x1) * scale;
-      const h = (c.y2 - c.y1) * scale;
+      const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
+      const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
+      const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
       _ctx.rect(p.x, p.y, w, h);
     }
     _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
-    // Пунктир только для прямоугольных стен (h/v) — диагональные пропускаем,
-    // иначе линии вылезают за пределы стены и создают артефакты.
     _ctx.strokeStyle = ROOM_STROKES[i % ROOM_STROKES.length]; _ctx.lineWidth = 1; _ctx.setLineDash([4, 3]);
     for (const s of r.boundarySegments) {
-      if (s.orientation !== 'h' && s.orientation !== 'v') continue;
       const p1 = toScreen(s.x1, s.y1), p2 = toScreen(s.x2, s.y2);
       _ctx.beginPath(); _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y); _ctx.stroke();
     }
