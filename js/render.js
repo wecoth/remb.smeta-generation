@@ -610,39 +610,49 @@ function drawTempWall(ps) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// РАЗМЕРНЫЕ ЦЕПОЧКИ + ВЫНОСКИ ПРОЁМОВ
 // ══════════════════════════════════════════════════════════════════
-
-// Вспомогательная функция: засечка-диагональ 45° в экранных координатах
+// РАЗМЕРНЫЕ ЦЕПОЧКИ
+// Снаружи стены: общий размер угол-угол
+// Внутри помещения: цепочка от угла до проёма / проём / от проёма до угла
+// Если проёмов нет — только внешний общий размер
+// ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// ЗАСЕЧКА 45° (архитектурный стиль)
+// ══════════════════════════════════════════════════════════════════
 function drawTick45(screenPt, angle) {
-  const TICK = 5; // px
-  const a = angle + Math.PI / 4; // 45° к линии размера
+  const TICK = 5;
+  const a = angle + Math.PI / 4;
   _ctx.moveTo(screenPt.x - Math.cos(a) * TICK, screenPt.y - Math.sin(a) * TICK);
   _ctx.lineTo(screenPt.x + Math.cos(a) * TICK, screenPt.y + Math.sin(a) * TICK);
 }
 
+// ══════════════════════════════════════════════════════════════════
+// РАЗМЕРНЫЕ ЦЕПОЧКИ
+// Снаружи: общий размер угол-угол с засечками 45°
+// Внутри:  цепочка угол→проём→угол (только если есть проёмы)
+// ══════════════════════════════════════════════════════════════════
 function drawWallDimensions() {
   const scale = _getScale();
   if (scale < 0.07) return;
-
   _ctx.save();
 
   for (const wall of appState.walls) {
     const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (wlen < 100) continue;
 
-    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
     const nx = -uy, ny = ux;
-    const interiorSign = wallInteriorSide(wall, 1); // +1 внутрь, -1 наружу
+    const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
     const worldPt = (along, normalOff) => ({
       x: wall.x1 + ux * along + nx * normalOff,
       y: wall.y1 + uy * along + ny * normalOff,
     });
+    const sp = (along, normalOff) => toScreen(worldPt(along, normalOff).x, worldPt(along, normalOff).y);
 
-    // Проёмы на стене
+    // Проёмы
     const wallOpenings = appState.openings
       .filter(op => op.wallId === wall.id)
       .map(op => ({
@@ -651,42 +661,35 @@ function drawWallDimensions() {
         end:   Math.min(wlen, op.t * wlen + op.width / 2),
       }))
       .sort((a, b) => a.start - b.start);
-
     const hasOpenings = wallOpenings.length > 0;
 
-    // ── Рисует линию размера + засечки-диагонали ──────────────
-    const drawDimChain = (ticks, normalOff, color) => {
-      if (ticks.length < 2) return;
+    // Рисует одну размерную линию по набору tick-позиций
+    const drawChain = (ticks, normalOff, lineColor) => {
       const sorted = [...new Set(ticks)].sort((a, b) => a - b);
+      if (sorted.length < 2) return;
       const GAP = 15;
-
-      // Основная линия
-      const p1 = toScreen(worldPt(sorted[0] + GAP, normalOff).x, worldPt(sorted[0] + GAP, normalOff).y);
-      const p2 = toScreen(worldPt(sorted[sorted.length-1] - GAP, normalOff).x, worldPt(sorted[sorted.length-1] - GAP, normalOff).y);
-      _ctx.strokeStyle = color;
+      const p1 = sp(sorted[0] + GAP, normalOff);
+      const p2 = sp(sorted[sorted.length-1] - GAP, normalOff);
+      _ctx.strokeStyle = lineColor;
       _ctx.lineWidth = 0.7;
       _ctx.setLineDash([]);
-      _ctx.beginPath(); _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
-
-      // Засечки 45° на внутренних точках
+      _ctx.beginPath();
+      _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
+      // Засечки на всех точках кроме самых крайних
       for (const pos of sorted) {
-        if (pos <= sorted[0] + GAP * 0.4 || pos >= sorted[sorted.length-1] - GAP * 0.4) continue;
-        const sp = toScreen(worldPt(pos, normalOff).x, worldPt(pos, normalOff).y);
-        drawTick45(sp, angle);
+        if (pos < sorted[0] + GAP * 0.3 || pos > sorted[sorted.length-1] - GAP * 0.3) continue;
+        drawTick45(sp(pos, normalOff), angle);
       }
-      // Засечки на крайних точках
-      const spFirst = toScreen(worldPt(sorted[0] + GAP, normalOff).x, worldPt(sorted[0] + GAP, normalOff).y);
-      const spLast  = toScreen(worldPt(sorted[sorted.length-1] - GAP, normalOff).x, worldPt(sorted[sorted.length-1] - GAP, normalOff).y);
-      drawTick45(spFirst, angle);
-      drawTick45(spLast, angle);
+      drawTick45(p1, angle);
+      drawTick45(p2, angle);
       _ctx.stroke();
     };
 
-    // ══ СНАРУЖИ: общий размер угол-угол ════════════════════════
+    // ── СНАРУЖИ: общий размер ─────────────────────────────────
     const OUT_OFF = (halfT + 100) * (-interiorSign);
-    drawDimChain([0, wlen], OUT_OFF, '#9ca3af');
+    drawChain([0, wlen], OUT_OFF, '#9ca3af');
     {
-      const pt = toScreen(worldPt(wlen / 2, OUT_OFF).x, worldPt(wlen / 2, OUT_OFF).y);
+      const pt = sp(wlen / 2, OUT_OFF);
       drawAlignedTextBox(`${Math.round(wlen)} мм`, pt, angle, {
         font: '500 9px Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
@@ -696,15 +699,13 @@ function drawWallDimensions() {
 
     if (!hasOpenings) continue;
 
-    // ══ ВНУТРИ: цепочка с проёмами ═════════════════════════════
+    // ── ВНУТРИ: цепочка с проёмами ────────────────────────────
     const IN_OFF = (halfT + 80) * interiorSign;
-
-    // Все точки разбивки: 0, start/end каждого проёма, wlen
     const chainTicks = [0, wlen];
     for (const { start, end } of wallOpenings) { chainTicks.push(start); chainTicks.push(end); }
-    drawDimChain(chainTicks, IN_OFF, '#9ca3af');
+    drawChain(chainTicks, IN_OFF, '#9ca3af');
 
-    // Сегменты для подписей
+    // Подписи сегментов
     const segs = [];
     let cursor = 0;
     for (const { start, end } of wallOpenings) {
@@ -715,61 +716,53 @@ function drawWallDimensions() {
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
     for (const seg of segs) {
-      const len = seg.to - seg.from;
       const mid = (seg.from + seg.to) / 2;
-      const pt  = toScreen(worldPt(mid, IN_OFF).x, worldPt(mid, IN_OFF).y);
-      drawAlignedTextBox(`${Math.round(len)} мм`, pt, angle, {
+      const pt  = sp(mid, IN_OFF);
+      drawAlignedTextBox(`${Math.round(seg.to - seg.from)} мм`, pt, angle, {
         font: `${seg.isOpening ? '700' : '500'} 9px Onest, Inter, sans-serif`,
         background: seg.isOpening ? 'rgba(239,246,255,0.97)' : 'rgba(255,255,255,0.97)',
         textColor:  seg.isOpening ? '#2563eb' : '#374151',
       });
     }
   }
-
   _ctx.restore();
 }
 
 // ══════════════════════════════════════════════════════════════════
-// ВЫНОСКИ ОКОН И ВХОДНОЙ ДВЕРИ (носочки наружу)
+// ВЫНОСКИ ОКОН И ВХОДНОЙ ДВЕРИ
 // ══════════════════════════════════════════════════════════════════
-function drawOpeningLeaders(exteriorWallIds) {
+function drawOpeningLeaders(extWallIds) {
   const scale = _getScale();
   if (scale < 0.07) return;
-
   _ctx.save();
-  _ctx.font = '500 9px Onest, Inter, sans-serif';
 
   for (const op of appState.openings) {
     const wall = appState.walls.find(w => w.id === op.wallId);
     if (!wall) continue;
 
-    // Выноски только для окон и входной двери
-    const isEntrance = op.type === 'door' && exteriorWallIds.has(op.wallId);
+    const isEntrance = op.type === 'door' && extWallIds && extWallIds.has(op.wallId);
     if (op.type !== 'window' && !isEntrance) continue;
 
-    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const wlen  = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
     const nx = -uy, ny = ux;
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
-    // Центр проёма в мировых координатах
+    // Центр проёма
     const cx = wall.x1 + ux * op.t * wlen;
     const cy = wall.y1 + uy * op.t * wlen;
 
-    // Направление выноски — наружу от комнаты
-    const outSign = -interiorSign;
-    const LEADER_MM = halfT + 250; // длина выноски от оси стены
-
-    // Точки выноски
-    const baseX = cx + nx * (halfT + 5) * outSign;
-    const baseY = cy + ny * (halfT + 5) * outSign;
+    const outSign   = -interiorSign;
+    const LEADER_MM = halfT + 220;
+    const baseX = cx + nx * (halfT + 10) * outSign;
+    const baseY = cy + ny * (halfT + 10) * outSign;
     const tipX  = cx + nx * LEADER_MM * outSign;
     const tipY  = cy + ny * LEADER_MM * outSign;
 
     const sBase = toScreen(baseX, baseY);
-    const sTip  = toScreen(tipX, tipY);
+    const sTip  = toScreen(tipX,  tipY);
 
     // Линия выноски
     _ctx.strokeStyle = '#6b7280';
@@ -777,37 +770,37 @@ function drawOpeningLeaders(exteriorWallIds) {
     _ctx.setLineDash([]);
     _ctx.beginPath(); _ctx.moveTo(sBase.x, sBase.y); _ctx.lineTo(sTip.x, sTip.y); _ctx.stroke();
 
-    // Засечка на основании (у стены)
-    const TICK = 5;
-    const ta = angle + Math.PI / 2;
+    // Засечка у стены
+    const TICK = 5, ta = angle + Math.PI / 2;
     _ctx.beginPath();
-    _ctx.moveTo(sBase.x - Math.cos(ta) * TICK, sBase.y - Math.sin(ta) * TICK);
-    _ctx.lineTo(sBase.x + Math.cos(ta) * TICK, sBase.y + Math.sin(ta) * TICK);
+    _ctx.moveTo(sBase.x - Math.cos(ta)*TICK, sBase.y - Math.sin(ta)*TICK);
+    _ctx.lineTo(sBase.x + Math.cos(ta)*TICK, sBase.y + Math.sin(ta)*TICK);
     _ctx.stroke();
 
-    // Подпись: ШxВ мм
-    const label = `${Math.round(op.width)}×${Math.round(op.height)} мм`;
-    const typeLabel = op.type === 'window' ? 'Окно' : 'Вх. дверь';
-
-    // Горизонтальная полочка от конца выноски
-    const SHELF = 40 * scale; // px
-    const shelfDir = (sTip.x > sBase.x || (Math.abs(sTip.x - sBase.x) < 2 && sTip.y < sBase.y)) ? 1 : -1;
+    // Полочка + подпись
+    const SHELF = 35 * Math.min(scale * 8, 1); // px, адаптивная
+    // Направление полочки — по направлению угла стены
+    const shelfDirX = Math.cos(angle), shelfDirY = Math.sin(angle);
+    // Всегда вправо по ориентации (или от центра canvas)
+    const shelfSign = (sTip.x + shelfDirX * 10) > sTip.x ? 1 : 1;
 
     _ctx.beginPath();
     _ctx.moveTo(sTip.x, sTip.y);
-    _ctx.lineTo(sTip.x + SHELF * shelfDir, sTip.y);
+    _ctx.lineTo(sTip.x + SHELF, sTip.y);
     _ctx.stroke();
 
-    // Текст
+    const label     = `${Math.round(op.width)}×${Math.round(op.height)} мм`;
+    const typeLabel = op.type === 'window' ? 'Окно' : 'Вх. дверь';
+
+    _ctx.font = '500 9px Onest, Inter, sans-serif';
     _ctx.fillStyle = '#374151';
-    _ctx.textAlign = shelfDir > 0 ? 'left' : 'right';
+    _ctx.textAlign = 'left';
     _ctx.textBaseline = 'bottom';
-    _ctx.fillText(label, sTip.x + (SHELF + 2) * shelfDir, sTip.y);
+    _ctx.fillText(label, sTip.x + SHELF + 3, sTip.y);
     _ctx.font = '400 8px Onest, Inter, sans-serif';
     _ctx.fillStyle = '#9ca3af';
     _ctx.textBaseline = 'top';
-    _ctx.fillText(typeLabel, sTip.x + (SHELF + 2) * shelfDir, sTip.y + 1);
-    _ctx.font = '500 9px Onest, Inter, sans-serif';
+    _ctx.fillText(typeLabel, sTip.x + SHELF + 3, sTip.y + 1);
   }
 
   _ctx.restore();
