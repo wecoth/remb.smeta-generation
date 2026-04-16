@@ -1,7 +1,7 @@
 // ─── MAIN.JS ──────────────────────────────────────────────────────
 import { appState } from './state.js';
 import { computeRooms, updateExpl } from './room.js';
-import { initPlanner, setTool, forceRedraw } from './ui-planner.js';
+import { initPlanner, setTool, forceRedraw, getViewport } from './ui-planner.js';
 import { setViewport } from './snapping.js';
 import {
   initSmeta, addRoom, recalcRooms, getRooms, handleLogo, handlePlan,
@@ -9,6 +9,7 @@ import {
   handleMat, initMatManual, addMatRow, recalcMat, renumRows,
   openPreview, closePreview, closePreviewOnBg, generatePDF,
   liveUpdate, updateSummary, syncEditorToDoc, importRoomsFromPlanner,
+  captureCanvas,
 } from './smeta.js';
 import { autosaveToLocalStorage, loadFromLocalStorage, downloadProject, uploadProject } from './storage.js';
 import { recordHistory, clearHistory } from './history.js';
@@ -20,7 +21,12 @@ window._smetaModule = {
   handleMat, initMatManual, addMatRow, recalcMat, renumRows,
   liveUpdate, updateSummary, importRoomsFromPlanner,
   openPreview, closePreview, closePreviewOnBg, generatePDF,
+  captureCanvas,
 };
+
+// Expose appState and viewport for captureCanvas
+window._appState = appState;
+Object.defineProperty(window, '_plannerViewport', { get: () => getViewport() });
 
 // main.js initializes modules and wires up tabs
 
