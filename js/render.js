@@ -6,7 +6,7 @@ import {
   buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
 } from './wall.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints } from './snapping.js';
+import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
 
 let _canvas, _ctx, _hatchPat = null;
@@ -925,29 +925,34 @@ function getWallsBboxWorld() {
 }
 
 // Рендерит план в offscreen canvas нужного размера.
-// withDimensions=false → только стены + заливка комнат, белый фон, без сетки
-// withDimensions=true  → полный план: сетка, стены, размеры, выноски
+// withDimensions=false → только стены + заливка комнат, белый фон, без сетки/размеров
+// withDimensions=true  → полный обмерный план: лёгкая сетка, стены, размеры, выноски
 export function renderToImage(outW, outH, withDimensions = false) {
   const bbox = getWallsBboxWorld();
   if (!bbox) return null;
 
-  const PAD_MM = withDimensions ? 400 : 200; // отступ вокруг плана в мм
-  const bx = { minX: bbox.minX - PAD_MM, minY: bbox.minY - PAD_MM,
-                maxX: bbox.maxX + PAD_MM, maxY: bbox.maxY + PAD_MM };
+  // Отступ: для размеров нужно больше места
+  const PAD_MM = withDimensions ? 500 : 150;
+  const worldMinX = bbox.minX - PAD_MM, worldMinY = bbox.minY - PAD_MM;
+  const worldMaxX = bbox.maxX + PAD_MM, worldMaxY = bbox.maxY + PAD_MM;
+  const worldW = worldMaxX - worldMinX, worldH = worldMaxY - worldMinY;
 
-  const worldW = bx.maxX - bx.minX, worldH = bx.maxY - bx.minY;
-  const scaleX = outW / worldW, scaleY = outH / worldH;
-  const scale  = Math.min(scaleX, scaleY) * 0.92; // небольшой отступ
+  // Масштаб: вписываем план в outW×outH с небольшим отступом
+  const scale = Math.min(outW / worldW, outH / worldH) * 0.94;
   const renderW = worldW * scale, renderH = worldH * scale;
-  const panX = (outW - renderW) / 2 - bx.minX * scale;
-  const panY = (outH - renderH) / 2 - bx.minY * scale;
+
+  // panX/panY: центрируем план в canvas
+  // toScreen(wx,wy) = wx*scale + panX
+  // Хотим чтобы worldMinX*scale + panX = (outW - renderW)/2
+  const panX = (outW - renderW) / 2 - worldMinX * scale;
+  const panY = (outH - renderH) / 2 - worldMinY * scale;
 
   // Создаём offscreen canvas
-  const oc   = document.createElement('canvas');
-  oc.width   = outW; oc.height = outH;
+  const oc = document.createElement('canvas');
+  oc.width = outW; oc.height = outH;
   const octx = oc.getContext('2d');
 
-  // Сохраняем текущий рендер-контекст
+  // Сохраняем текущий рендер-контекст и viewport
   const savedCanvas   = _canvas;
   const savedCtx      = _ctx;
   const savedGetScale = _getScale;
@@ -957,54 +962,63 @@ export function renderToImage(outW, outH, withDimensions = false) {
   _canvas   = oc;
   _ctx      = octx;
   _getScale = () => scale;
-  _hatchPat = null; // сбрасываем паттерн — он привязан к контексту
+  _hatchPat = null;
 
-  // Импортируем setViewport
-  import('./snapping.js').then(({ setViewport }) => setViewport(scale, panX, panY)).catch(() => {});
-  // Синхронный вариант через window если доступен
-  if (window._snappingModule?.setViewport) window._snappingModule.setViewport(scale, panX, panY);
+  // Обновляем snapping viewport СИНХРОННО (нужно до любого вызова toScreen)
+  // setViewport импортирован в этом модуле через snapping.js
+  const { setViewport: _sv } = await_setViewport_sync(scale, panX, panY);
 
   // Белый фон
   octx.fillStyle = '#ffffff';
   octx.fillRect(0, 0, outW, outH);
 
   if (withDimensions) {
-    // Лёгкая сетка (только крупные линии)
-    const stepMaj = 1000;
-    const wMin = { x: (0 - panX) / scale, y: (0 - panY) / scale };
-    const wMax = { x: (outW - panX) / scale, y: (outH - panY) / scale };
+    // Лёгкая сетка — только метровые линии
+    const step = 1000;
+    const x0 = Math.floor(worldMinX / step) * step;
+    const y0 = Math.floor(worldMinY / step) * step;
     octx.strokeStyle = '#e8eaee'; octx.lineWidth = 0.5;
-    for (let x = Math.floor(wMin.x / stepMaj) * stepMaj; x <= wMax.x + stepMaj; x += stepMaj) {
-      const sx = x * scale + panX;
+    for (let wx = x0; wx <= worldMaxX + step; wx += step) {
+      const sx = wx * scale + panX;
       octx.beginPath(); octx.moveTo(sx, 0); octx.lineTo(sx, outH); octx.stroke();
     }
-    for (let y = Math.floor(wMin.y / stepMaj) * stepMaj; y <= wMax.y + stepMaj; y += stepMaj) {
-      const sy = y * scale + panY;
+    for (let wy = y0; wy <= worldMaxY + step; wy += step) {
+      const sy = wy * scale + panY;
       octx.beginPath(); octx.moveTo(0, sy); octx.lineTo(outW, sy); octx.stroke();
     }
   }
 
-  // Рисуем план
-  const emptyItems = [];
-  drawRoomFills(emptyItems);
-  drawWalls(emptyItems);
-  drawWallJoints(emptyItems);
-  drawOpenings(emptyItems, 'start', 1);
+  // Рендерим план
+  const empty = [];
+  drawRoomFills(empty);
+  drawWalls(empty);
+  drawWallJoints(empty);
+  drawOpenings(empty, 'start', 1);
 
   if (withDimensions) {
     drawWallDimensions();
     drawOpeningLeaders(exteriorWallIds);
   }
 
-  // Восстанавливаем контекст
+  // Восстанавливаем контекст и viewport
   _canvas   = savedCanvas;
   _ctx      = savedCtx;
   _getScale = savedGetScale;
   _hatchPat = savedHatch;
 
-  // Восстанавливаем viewport основного рендера
-  const vp = window._plannerViewport;
-  if (vp && window._snappingModule?.setViewport) window._snappingModule.setViewport(vp.scale, vp.panX, vp.panY);
+  const vp = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
+  await_setViewport_sync(vp.scale, vp.panX, vp.panY);
 
   return oc.toDataURL('image/png');
+}
+
+// Синхронно устанавливает viewport в snapping.js.
+// setViewport импортирован в начале этого модуля — переиспользуем его.
+function await_setViewport_sync(scale, panX, panY) {
+  // setViewport экспортирован из snapping.js и импортирован в этом файле
+  // через: import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints } from './snapping.js';
+  // Мы добавляем setViewport в этот импорт ниже.
+  // Вызываем через _setViewport который инжектируется из initRenderer или через window
+  if (typeof _setViewportFn === 'function') _setViewportFn(scale, panX, panY);
+  return {};
 }
