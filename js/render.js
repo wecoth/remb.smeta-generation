@@ -78,15 +78,15 @@ export function drawAlignedTextBox(text, pos, angle, opts = {}) {
     ? baseFont.replace(/(\d+(?:\.\d+)?)px/, (_, n) => (parseFloat(n) * _fontScale).toFixed(1) + 'px')
     : baseFont;
   _ctx.font = scaledFont;
-  const pad = 6 * _fontScale;
-  const tw = _ctx.measureText(text).width, bw = tw + pad * 2, bh = 16 * _fontScale;
-  _ctx.fillStyle = opts.background || 'rgba(255,255,255,0.95)';
-  _ctx.beginPath();
-  const r = 4 * _fontScale;
-  if (_ctx.roundRect) _ctx.roundRect(-bw / 2, -bh / 2, bw, bh, r);
-  else _ctx.rect(-bw / 2, -bh / 2, bw, bh);
-  _ctx.fill(); _ctx.fillStyle = opts.textColor || '#0f172a';
-  _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(text, 0, 0); _ctx.restore();
+  // Без подложки — только текст с лёгкой тенью для читаемости
+  _ctx.shadowColor = 'rgba(255,255,255,0.95)';
+  _ctx.shadowBlur  = 3 * _fontScale;
+  _ctx.fillStyle   = opts.textColor || '#0f172a';
+  _ctx.textAlign   = 'center';
+  _ctx.textBaseline = 'middle';
+  _ctx.fillText(text, 0, 0);
+  _ctx.shadowBlur = 0;
+  _ctx.restore();
 }
 
 export function getWallResizeHandles(wall) {
@@ -679,7 +679,7 @@ function drawWallDimensions() {
       const p1 = sp(sorted[0] + GAP, normalOff);
       const p2 = sp(sorted[sorted.length-1] - GAP, normalOff);
       _ctx.strokeStyle = lineColor;
-      _ctx.lineWidth = 0.7;
+      _ctx.lineWidth = 0.7 * _fontScale;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
@@ -779,8 +779,8 @@ function drawOpeningLeaders(extWallIds) {
     // Вектор от центра стены к краю canvas — определяет куда "вправо"
     const toDirX = sCenter.x < canvasCX ? -1 : 1;
 
-    const DIAG_PX = 28 * Math.min(scale * 6, 1.2); // длина диагонали в px
-    const SHELF_PX = 32 * Math.min(scale * 6, 1.2); // длина полочки в px
+    const DIAG_PX = 28 * Math.min(scale * 6, 1.2) * _fontScale;
+    const SHELF_PX = 32 * Math.min(scale * 6, 1.2) * _fontScale;
 
     // Направление диагонали: наружу от стены + немного вправо
     // Вычисляем в screen-пространстве
@@ -802,7 +802,7 @@ function drawOpeningLeaders(extWallIds) {
 
     // Рисуем изломанную линию
     _ctx.strokeStyle = '#6b7280';
-    _ctx.lineWidth = 0.8;
+    _ctx.lineWidth = 0.8 * _fontScale;
     _ctx.setLineDash([]);
     _ctx.beginPath();
     _ctx.moveTo(sStart.x, sStart.y);
@@ -821,12 +821,12 @@ function drawOpeningLeaders(extWallIds) {
     const typeLabel = op.type === 'window' ? 'Окно' : 'Вх. дверь';
     const textX = sEnd.x + toDirX * 3;
 
-    _ctx.font = '500 9px Onest, Inter, sans-serif';
+    _ctx.font = `500 ${11 * _fontScale}px Onest, Inter, sans-serif`;
     _ctx.fillStyle = '#374151';
     _ctx.textAlign = toDirX > 0 ? 'left' : 'right';
     _ctx.textBaseline = 'bottom';
     _ctx.fillText(label, textX, sEnd.y);
-    _ctx.font = '400 8px Onest, Inter, sans-serif';
+    _ctx.font = `400 ${9 * _fontScale}px Onest, Inter, sans-serif`;
     _ctx.fillStyle = '#9ca3af';
     _ctx.textBaseline = 'top';
     _ctx.fillText(typeLabel, textX, sEnd.y + 1);
