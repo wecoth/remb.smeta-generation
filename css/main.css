@@ -194,7 +194,7 @@ html, body {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 360px;
+  width: 380px;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -272,16 +272,36 @@ html, body {
 .expl-scroll { flex: 1; overflow-y: auto; overflow-x: auto; max-height: 220px; }
 .expl-scroll::-webkit-scrollbar { width: 3px; height: 3px; }
 .expl-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
-.expl-table { width: 100%; border-collapse: collapse; font-size: 10px; min-width: 480px; }
+.expl-table { width: 100%; border-collapse: collapse; font-size: 10px; min-width: 460px; }
+
+/* Заголовки */
 .expl-table thead th {
-  background: #F5F5F3; font-weight: 500; color: #999999; font-size: 9px;
-  text-transform: uppercase; letter-spacing: 0.3px; padding: 4px 4px; text-align: right;
-  border-bottom: 1px solid rgba(0,0,0,0.07); position: sticky; top: 0; z-index: 1;
-  white-space: nowrap; cursor: default;
+  font-weight: 500; font-size: 9px; text-transform: uppercase;
+  letter-spacing: 0.3px; padding: 4px 5px;
+  border-bottom: 2px solid rgba(0,0,0,0.10);
+  position: sticky; top: 0; z-index: 1;
+  text-align: right; white-space: nowrap; cursor: default;
 }
-.expl-table thead th:first-child { text-align: left; min-width: 80px; }
-.expl-table tbody td { padding: 4px 4px; border-bottom: 1px solid rgba(0,0,0,0.05); color: #111111; text-align: right; white-space: nowrap; }
+.expl-th-name { text-align: left !important; min-width: 80px; background: #F5F5F3; color: #999; }
+
+/* Основные колонки — чуть темнее фон */
+.expl-th-main { background: #EEECEA; color: #555; border-left: 1px solid rgba(0,0,0,0.07); }
+
+/* Справочные колонки — светлее, курсив */
+.expl-th-ref  { background: #F5F5F3; color: #AAAAAA; border-left: 1px solid rgba(0,0,0,0.05); font-style: italic; }
+
+/* Ячейки строк */
+.expl-table tbody td {
+  padding: 4px 5px; border-bottom: 1px solid rgba(0,0,0,0.05);
+  color: #111; text-align: right; white-space: nowrap;
+}
 .expl-table tbody td:first-child { text-align: left; }
+.expl-table tbody td.expl-ref { color: #888; }
+
+/* Входная дверь — жирным с акцентом */
+.expl-table tbody td.expl-entrance { font-weight: 700; color: #1A1A1A; }
+
+.expl-table tbody tr:hover td { background: #F8F8F6; }
 .expl-table tbody tr:hover td { background: #F8F8F6; }
 .expl-table .empty-row td { color: #AAAAAA; font-style: italic; text-align: center; padding: 10px; font-size: 10px; }
 .room-dot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
