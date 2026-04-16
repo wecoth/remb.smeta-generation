@@ -178,13 +178,9 @@ export function computeRooms(wallHeightFallback = 2700) {
     // Проёмы
     const roomOpenings = appState.openings.filter(op => boundaryWalls.has(op.wallId));
 
-    // Входная дверь — дверь на стене граничащей с exterior
-    const entranceDoorId = detectEntranceDoor(roomOpenings, exteriorWallIds);
-
     // Метрики
     const metrics = computeRoomMetrics(
-      [...boundaryWalls.values()], roomOpenings,
-      roomHeightMm, centerWorld, entranceDoorId
+      [...boundaryWalls.values()], roomOpenings, roomHeightMm, centerWorld
     );
 
     // cells для render.js
@@ -238,14 +234,14 @@ function detectEntranceDoor(openings, exteriorWallIds) {
 // ══════════════════════════════════════════════════════════════════
 // РАСЧЁТ МЕТРИК
 // ══════════════════════════════════════════════════════════════════
-function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
+function computeRoomMetrics(walls, openings, heightMm, center) {
   const heightM = heightMm / 1000;
 
   const orderedWalls = orderBoundaryWalls(walls);
   const wallSegData  = buildWallSegments(orderedWalls, openings);
 
   // ── Периметр пола ─────────────────────────────────────────────
-  // Вычитаем ширину дверей И панорамных окон (высота = высота помещения)
+  // По физической длине стен, минус двери и панорамные окна
   let perimeterRawMm = 0;
   for (const w of orderedWalls) perimeterRawMm += wallLengthMm(w);
 
@@ -254,7 +250,6 @@ function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
     if (op.type === 'door') {
       perimeterDeductMm += op.width;
     } else if (op.type === 'window' && op.height >= heightMm * 0.95) {
-      // Панорамное окно: высота >= 95% высоты помещения
       perimeterDeductMm += op.width;
     }
   }
@@ -287,17 +282,13 @@ function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
 
   // ── Проёмы ────────────────────────────────────────────────────
   let windowAreaM2 = 0, windowCount = 0;
-  let entranceDoorAreaM2 = 0;
   let windowRevealsLm = 0;
 
-  // Оконные откосы: ширина + 2×высота (3 стороны, без подоконника)
   for (const op of openings) {
     if (op.type === 'window') {
       windowAreaM2    += (op.width * op.height) / 1e6;
       windowRevealsLm += (op.width + 2 * op.height) / 1000;
       windowCount++;
-    } else if (op.type === 'door' && op.id === entranceDoorId) {
-      entranceDoorAreaM2 = (op.width * op.height) / 1e6;
     }
   }
 
@@ -305,31 +296,27 @@ function computeRoomMetrics(walls, openings, heightMm, center, entranceDoorId) {
   const pogonazLm = round2(narrowWallsLm + windowRevealsLm);
 
   // ── Внешние углы ──────────────────────────────────────────────
-  // Углы стен: количество внешних углов × высота
-  // Углы откосов: 2 вертикальных ребра на каждый оконный проём × высота проёма
-  const wallOuterCornersLm   = round2(cornerStats.outer * heightM);
-  let   revealCornersLm      = 0;
+  const wallOuterCornersLm = round2(cornerStats.outer * heightM);
+  let revealCornersLm = 0;
   for (const op of openings) {
     if (op.type === 'window') revealCornersLm += 2 * op.height / 1000;
   }
   const outerAnglesLm = round2(wallOuterCornersLm + revealCornersLm);
 
   return {
-    perimeterFloorM:    round2(perimeterFloorM),
-    wallAreaNetM2:      round2(wallAreaNetM2),
-    wallAreaGrossM2:    round2(wallAreaGrossM2),
-    openingsAreaM2:     round2(openingsAreaM2),
-    narrowWallsLm:      round2(narrowWallsLm),
-    cornersInner:       cornerStats.inner,
-    cornersOuter:       cornerStats.outer,
-    outerAnglesLm,          // внешние углы стен + откосов суммарно
-    windowAreaM2:       round2(windowAreaM2),
+    perimeterFloorM:  round2(perimeterFloorM),
+    wallAreaNetM2:    round2(wallAreaNetM2),
+    wallAreaGrossM2:  round2(wallAreaGrossM2),
+    openingsAreaM2:   round2(openingsAreaM2),
+    narrowWallsLm:    round2(narrowWallsLm),
+    cornersInner:     cornerStats.inner,
+    cornersOuter:     cornerStats.outer,
+    outerAnglesLm,
+    windowAreaM2:     round2(windowAreaM2),
     windowCount,
-    windowRevealsLm:    round2(windowRevealsLm),
-    pogonazLm,              // простенки < 50 см + оконные откосы
-    entranceDoorAreaM2: round2(entranceDoorAreaM2),
-    entranceDoorId,
-    heightM:            round2(heightM),
+    windowRevealsLm:  round2(windowRevealsLm),
+    pogonazLm,
+    heightM:          round2(heightM),
   };
 }
 
@@ -362,9 +349,9 @@ function orderBoundaryWalls(walls) {
 
 function wallStart(w) { return { x: w.cx1 ?? w.x1, y: w.cy1 ?? w.y1 }; }
 function wallEnd(w)   { return { x: w.cx2 ?? w.x2, y: w.cy2 ?? w.y2 }; }
+// Длина по ФИЗИЧЕСКОЙ оси — к ней привязан op.t
 function wallLengthMm(w) {
-  const s = wallStart(w), e = wallEnd(w);
-  return Math.hypot(e.x - s.x, e.y - s.y);
+  return Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
 }
 function reversedWall(w) {
   return { ...w,
@@ -516,7 +503,7 @@ export function updateExpl(explBody, roomCountEl) {
   if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
 
   if (!appState.rooms.length) {
-    explBody.innerHTML = `<tr class="empty-row"><td colspan="8">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
+    explBody.innerHTML = `<tr class="empty-row"><td colspan="7">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
     return;
   }
 
@@ -524,10 +511,6 @@ export function updateExpl(explBody, roomCountEl) {
     const m     = r.metrics || {};
     const color = ROOM_STROKES[i % ROOM_STROKES.length].replace('0.4', '0.8');
     const fmt   = v => (v != null && v > 0) ? v.toFixed(2) : '—';
-
-    const entranceCell = m.entranceDoorAreaM2 > 0
-      ? `<td class="expl-entrance">${m.entranceDoorAreaM2.toFixed(2)}</td>`
-      : `<td>—</td>`;
 
     return `<tr>
       <td><div class="room-name-cell">
@@ -539,7 +522,6 @@ export function updateExpl(explBody, roomCountEl) {
       <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
       <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
       <td>${fmt(m.windowAreaM2)}</td>
-      ${entranceCell}
       <td>${fmt(m.pogonazLm)}</td>
       <td>${fmt(m.outerAnglesLm)}</td>
     </tr>`;
@@ -559,19 +541,18 @@ export function getComputedRooms() {
   return appState.rooms.map(r => {
     const m = r.metrics || {};
     return {
-      name:               r.name,
-      floorArea:          r.area,
-      wallsArea:          m.wallAreaNetM2      ?? r.wallArea,
-      perimeter:          m.perimeterFloorM    ?? r.perimeter,
-      height:             r.height             ?? 0,
-      windowAreaM2:       m.windowAreaM2       ?? 0,
-      windowCount:        m.windowCount        ?? 0,
-      entranceDoorAreaM2: m.entranceDoorAreaM2 ?? 0,
-      pogonazLm:          m.pogonazLm          ?? 0,
-      outerAnglesLm:      m.outerAnglesLm      ?? 0,
-      cornersOuter:       m.cornersOuter       ?? 0,
-      narrowWallsLm:      m.narrowWallsLm      ?? 0,
-      windowRevealsLm:    m.windowRevealsLm    ?? 0,
+      name:            r.name,
+      floorArea:       r.area,
+      wallsArea:       m.wallAreaNetM2   ?? r.wallArea,
+      perimeter:       m.perimeterFloorM ?? r.perimeter,
+      height:          r.height          ?? 0,
+      windowAreaM2:    m.windowAreaM2    ?? 0,
+      windowCount:     m.windowCount     ?? 0,
+      pogonazLm:       m.pogonazLm       ?? 0,
+      outerAnglesLm:   m.outerAnglesLm   ?? 0,
+      cornersOuter:    m.cornersOuter    ?? 0,
+      narrowWallsLm:   m.narrowWallsLm   ?? 0,
+      windowRevealsLm: m.windowRevealsLm ?? 0,
     };
   });
 }
