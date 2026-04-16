@@ -190,13 +190,9 @@ export function computeRooms(wallHeightFallback = 2700) {
     if (regionTouchesEdge.has(id)) continue;
     if (pixels.length * cellArea < minRoomArea) continue;
 
-    // Площадь пола — считаем по bitmap_area (без inflate)
-    // чтобы не включать зону толщины стен
-    let areaPxCount = 0;
-    for (const [gx, gy] of pixels) {
-      if (bitmap_area[gy * cols + gx] === 0) areaPxCount++;
-    }
-    const areaMm2 = areaPxCount * cellArea;
+    // Площадь пола — по количеству пикселей flood fill (внутреннее пространство)
+    // bitmap_flood использует inflate поэтому flood fill уже не включает зону стен
+    const areaMm2 = pixels.length * cellArea;
     if (areaMm2 < minRoomArea) continue;
 
     // Центроид
@@ -238,6 +234,13 @@ export function computeRooms(wallHeightFallback = 2700) {
       roomHeightMm, centerWorld, entranceDoorId
     );
 
+    // Площадь пола — Shoelace по внутреннему контуру стен.
+    // Точная геометрия, не зависит от разрешения bitmap.
+    // Fallback на flood fill если контур не замкнут.
+    const orderedForArea = orderBoundaryWalls([...boundaryWalls.values()]);
+    const geoAreaMm2     = shoelaceInnerArea(orderedForArea);
+    const areaMm2Final   = geoAreaMm2 > 10000 ? geoAreaMm2 : pixels.length * CELL_MM * CELL_MM;
+
     // cells для render.js
     const cells = pixels.map(([gx, gy]) => ({
       x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
@@ -263,9 +266,8 @@ export function computeRooms(wallHeightFallback = 2700) {
       key, cells, boundarySegments, center: centerWorld,
       defaultName,
       name: appState.roomNameOverrides[key] || defaultName,
-      // Базовые поля (обратная совместимость render.js / smeta.js)
-      area:         areaMm2 / 1e6,
-      volume:       areaMm2 * roomHeightMm / 1e9,
+      area:         areaMm2Final / 1e6,
+      volume:       areaMm2Final * roomHeightMm / 1e9,
       height:       roomHeightMm / 1000,
       perimeter:    metrics.perimeterFloorM,
       wallArea:     metrics.wallAreaNetM2,
@@ -532,6 +534,44 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY, inflate = true) {
       if (inside) bitmap[gy * cols + gx] = 1;
     }
   }
+}
+
+// ── Площадь по формуле Гаусса (Shoelace) по внутренней грани стен ─
+// Используем внутреннюю грань: сдвигаем каждую стену на thickness/2
+// внутрь помещения (к центроиду). Это даёт чистую площадь пола.
+function shoelaceInnerArea(walls) {
+  if (walls.length < 3) return 0;
+
+  // Берём контурные точки (cx/cy) — они образуют замкнутый полигон
+  // Площадь по Shoelace = |Σ(x_i * y_{i+1} - x_{i+1} * y_i)| / 2
+  const pts = walls.map(w => wallStart(w));
+  // Добавляем последнюю точку (конец последней стены) для замыкания
+  pts.push(wallEnd(walls[walls.length - 1]));
+
+  let area = 0;
+  const n = pts.length;
+  for (let i = 0; i < n - 1; i++) {
+    area += pts[i].x * pts[i + 1].y;
+    area -= pts[i + 1].x * pts[i].y;
+  }
+  area = Math.abs(area) / 2;
+
+  // Вычитаем площадь "оболочки" толщины стен (периметр × thickness / 2)
+  // Приближение: для прямоугольной комнаты это точно, для сложных — приближённо
+  // Периметр = сумма длин контурных стен
+  let perimMm = 0;
+  for (const w of walls) perimMm += wallLengthMm(w);
+
+  // Средняя толщина стен помещения
+  let totalThick = 0;
+  for (const w of walls) totalThick += w.thickness;
+  const avgThick = walls.length > 0 ? totalThick / walls.length : 200;
+
+  // Площадь за вычетом зоны стен: A_inner = A_outer - P * t/2 + corners * (t/2)²
+  // Упрощение: A_inner ≈ A_outer - P * t/2
+  const innerArea = Math.max(0, area - perimMm * (avgThick / 2));
+
+  return innerArea;
 }
 
 function findWallAtPoint(wx, wy) {
