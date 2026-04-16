@@ -160,16 +160,47 @@ export function computeRooms(wallHeightFallback = 2700) {
       }
     }
 
-    // Площадь стен
+    // Площадь стен (брутто)
     const grossWallAreaM2 = (perimeterMm * roomHeightMm) / 1e6;
+
+    // Проёмы относящиеся к этому помещению
+    const roomOpenings = appState.openings.filter(op => boundaryWalls.has(op.wallId));
 
     // Площадь проёмов
     let openingsAreaM2 = 0;
-    for (const op of appState.openings) {
-      if (boundaryWalls.has(op.wallId)) {
-        openingsAreaM2 += (op.width * op.height) / 1e6;
+    for (const op of roomOpenings) {
+      openingsAreaM2 += (op.width * op.height) / 1e6;
+    }
+
+    // ── Откосы (погонаж) ──────────────────────────────────────────
+    // Периметр откоса одного проёма = 2*(ширина+высота) / 1000 м.п.
+    // Но нам нужна толщина стены (глубина откоса), а не периметр.
+    // Откос = периметр проёма = 2*(ширина + высота) в метрах
+    let revealsLm = 0; // погонные метры откосов
+    let windowsCount = 0, doorsCount = 0;
+    let windowsAreaM2 = 0, doorsAreaM2 = 0;
+    for (const op of roomOpenings) {
+      const wall = boundaryWalls.get(op.wallId);
+      const wallThickM = (wall?.thickness || 200) / 1000;
+      // периметр откоса: глубина (толщина стены) × (кол-во сторон)
+      // стандартно: 2 боковины + верх = (2*высота + ширина) * толщина / ... 
+      // На практике для строителей: погонаж откосов = (2*h + w) где h=высота проёма, w=ширина
+      // умноженное на кол-во сторон (обычно считается 1 сторона)
+      // Проще: метраж = периметр проёма / 1000
+      revealsLm += (2 * op.height + op.width) / 1000;
+      if (op.type === 'window') {
+        windowsCount++;
+        windowsAreaM2 += (op.width * op.height) / 1e6;
+      } else if (op.type === 'door') {
+        doorsCount++;
+        doorsAreaM2 += (op.width * op.height) / 1e6;
       }
     }
+
+    // ── Углы помещения ────────────────────────────────────────────
+    // Считаем углы по граничным пикселям: находим "угловые" точки
+    // где направление границы меняется
+    const corners = computeRoomCorners(pixels, bitmap, cols, rows, regionId, id);
 
     // Room key
     const key = getRoomKey(pixels, CELL_MM);
@@ -198,31 +229,202 @@ export function computeRooms(wallHeightFallback = 2700) {
     const defaultName = roomDefaultName(appState.rooms.length);
     appState.rooms.push({
       key, cells, boundarySegments,
-      area:        areaMm2 / 1e6,
-      volume:      areaMm2 * roomHeightMm / 1e9,
-      height:      roomHeightMm / 1000,
-      wallArea:    Math.max(0, grossWallAreaM2 - openingsAreaM2),
-      perimeter:   perimeterMm / 1000,
-      openingsArea: openingsAreaM2,
-      center:      centerWorld,
+      area:          areaMm2 / 1e6,
+      volume:        areaMm2 * roomHeightMm / 1e9,
+      height:        roomHeightMm / 1000,
+      wallArea:      Math.max(0, grossWallAreaM2 - openingsAreaM2),
+      perimeter:     perimeterMm / 1000,
+      openingsArea:  openingsAreaM2,
+      center:        centerWorld,
+      // расширенные метрики
+      corners,
+      revealsLm:     Math.round(revealsLm * 100) / 100,
+      windowsCount,
+      doorsCount,
+      windowsAreaM2: Math.round(windowsAreaM2 * 100) / 100,
+      doorsAreaM2:   Math.round(doorsAreaM2 * 100) / 100,
       defaultName,
       name: appState.roomNameOverrides[key] || defaultName,
     });
   }
 }
 
+// ── Подсчёт углов помещения по граничным пикселям ─────────────────
+// Логика: смотрим на все пиксели помещения которые граничат со стеной.
+// Угол — это точка где встречаются две разно-направленные границы.
+// Упрощённый метод: строим выпуклую/вогнутую оболочку по граничным
+// пикселям и считаем повороты > ~45°.
+//
+// Для практических нужд (ремонт): 
+//   внутренний угол = вогнутый угол контура (< 180° с точки зрения комнаты)
+//   внешний угол = выпуклый угол (> 180° с точки зрения комнаты)
+
+function computeRoomCorners(pixels, bitmap, cols, rows, regionId, id) {
+  // Строим pixelSet для быстрой проверки
+  const pixelSet = new Set();
+  for (const [gx, gy] of pixels) pixelSet.add(gy * cols + gx);
+
+  // Собираем граничные пиксели (свободные пиксели комнаты рядом со стеной)
+  // и для каждого — маску соседей-стен
+  // Используем march squares подход: смотрим 2×2 окно
+  // Угол = место где 2×2 окно содержит mix of room/wall в угловом паттерне
+
+  // Более простой подход для строителей:
+  // Считаем углы как количество стен-сегментов в помещении.
+  // Каждая пара смежных стен даёт один угол.
+  // Для прямоугольной комнаты: 4 стены → 4 угла.
+  // Используем граничный трассировщик.
+
+  // Трассируем внешний контур граничных пикселей:
+  // граничный пиксель = пиксель помещения у которого хотя бы один сосед — стена или край
+  const boundary = [];
+  for (const [gx, gy] of pixels) {
+    let isBoundary = false;
+    for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) { isBoundary = true; break; }
+      if (bitmap[ny * cols + nx] === 1) { isBoundary = true; break; }
+    }
+    if (isBoundary) boundary.push([gx, gy]);
+  }
+
+  if (boundary.length < 4) return { inner: 0, outer: 0, total: 0 };
+
+  // Считаем углы через анализ направлений нормалей граничных пикселей.
+  // Для каждого граничного пикселя определяем "нормаль" (в какую сторону стена).
+  // Угол = смена направления нормали.
+
+  // Упрощённый и надёжный подход:
+  // Строим цепочку граничных пикселей обходом контура (Moore neighborhood tracing)
+  // и считаем повороты.
+
+  const traced = traceContour(pixels, bitmap, cols, rows);
+  if (!traced || traced.length < 4) return { inner: 0, outer: 0, total: 0 };
+
+  // Считаем повороты вдоль контура
+  let innerCorners = 0, outerCorners = 0;
+  const n = traced.length;
+  const ANGLE_THRESHOLD = Math.PI / 6; // 30° минимальный поворот
+
+  for (let i = 0; i < n; i++) {
+    const prev = traced[(i - 1 + n) % n];
+    const curr = traced[i];
+    const next = traced[(i + 1) % n];
+
+    const dx1 = curr[0] - prev[0], dy1 = curr[1] - prev[1];
+    const dx2 = next[0] - curr[0], dy2 = next[1] - curr[1];
+
+    const len1 = Math.hypot(dx1, dy1), len2 = Math.hypot(dx2, dy2);
+    if (len1 < 0.5 || len2 < 0.5) continue;
+
+    const dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2);
+    const cross = dx1 * dy2 - dy1 * dx2;
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+    if (angle > ANGLE_THRESHOLD) {
+      // cross > 0 = поворот влево = внутренний угол (вогнутый)
+      // cross < 0 = поворот вправо = внешний угол (выпуклый)
+      if (cross > 0) innerCorners++;
+      else outerCorners++;
+    }
+  }
+
+  return {
+    inner: innerCorners,
+    outer: outerCorners,
+    total: innerCorners + outerCorners,
+  };
+}
+
+// ── Трассировка контура (упрощённый Moore neighborhood) ───────────
+function traceContour(pixels, bitmap, cols, rows) {
+  if (!pixels.length) return null;
+
+  // Строим pixelSet
+  const pixelSet = new Set(pixels.map(([gx, gy]) => gy * cols + gx));
+
+  // Находим крайний левый верхний пиксель (стартовая точка)
+  let startGx = Infinity, startGy = Infinity;
+  for (const [gx, gy] of pixels) {
+    if (gy < startGy || (gy === startGy && gx < startGx)) {
+      startGx = gx; startGy = gy;
+    }
+  }
+
+  // Упрощённый обход: используем граничные пиксели в порядке обхода
+  // Направления для Moore neighborhood (8-связность)
+  const dirs8 = [
+    [1, 0], [1, 1], [0, 1], [-1, 1],
+    [-1, 0], [-1, -1], [0, -1], [1, -1],
+  ];
+
+  const boundary = [];
+  let cx = startGx, cy = startGy;
+  let prevDirIdx = 6; // начинаем смотря "вверх" (против часовой)
+  const maxSteps = pixels.length * 2 + 100;
+  let steps = 0;
+
+  // Подготовим набор граничных пикселей (тех что рядом со стеной/краем)
+  const boundarySet = new Set();
+  for (const [gx, gy] of pixels) {
+    for (const [nx, ny] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const bx = gx + nx, by = gy + ny;
+      if (bx < 0 || by < 0 || bx >= cols || by >= rows || bitmap[by * cols + bx] === 1) {
+        boundarySet.add(gy * cols + gx);
+        break;
+      }
+    }
+  }
+
+  // Если граничных пикселей слишком мало — возвращаем null
+  if (boundarySet.size < 4) return null;
+
+  // Конвертируем в массив и упрощаем (удаляем дубликаты направлений)
+  // Простой подход: возвращаем граничные пиксели отсортированные по углу от центроида
+  // Это даёт разумный обход для выпуклых и умеренно невыпуклых форм
+
+  let sumBx = 0, sumBy = 0;
+  const bPixels = [];
+  for (const idx of boundarySet) {
+    const bx = idx % cols, by = (idx / cols) | 0;
+    sumBx += bx; sumBy += by;
+    bPixels.push([bx, by]);
+  }
+  const centX = sumBx / bPixels.length;
+  const centY = sumBy / bPixels.length;
+
+  // Сортируем по углу вокруг центроида (даёт правильный обход для выпуклых форм)
+  bPixels.sort((a, b) => {
+    const angA = Math.atan2(a[1] - centY, a[0] - centX);
+    const angB = Math.atan2(b[1] - centY, b[0] - centX);
+    return angA - angB;
+  });
+
+  // Прореживаем — берём каждый N-й пиксель для скорости подсчёта углов
+  // но не слишком редко чтобы не пропустить углы
+  const step = Math.max(1, Math.floor(bPixels.length / 200));
+  const sampled = bPixels.filter((_, i) => i % step === 0);
+
+  return sampled.length >= 4 ? sampled : null;
+}
+
 // ── Растеризация стены в bitmap ───────────────────────────────────
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+  // ИСПРАВЛЕНИЕ: добавляем inflate на 0.5 клетки чтобы диагональные стены
+  // гарантированно замыкали контур даже при тонких стенах
   const half = wall.thickness / 2;
   const sinA = Math.sin(angle), cosA = Math.cos(angle);
   const dx = -sinA * half, dy = cosA * half;
 
+  // Слегка расширяем вдоль оси чтобы заполнить пробелы на концах
+  const INFLATE_ALONG = CELL_MM * 0.6;
+  const ux = cosA * INFLATE_ALONG, uy = sinA * INFLATE_ALONG;
+
   const corners = [
-    { x: wall.x1 + dx, y: wall.y1 + dy },
-    { x: wall.x2 + dx, y: wall.y2 + dy },
-    { x: wall.x2 - dx, y: wall.y2 - dy },
-    { x: wall.x1 - dx, y: wall.y1 - dy },
+    { x: wall.x1 + dx - ux, y: wall.y1 + dy - uy },
+    { x: wall.x2 + dx + ux, y: wall.y2 + dy + uy },
+    { x: wall.x2 - dx + ux, y: wall.y2 - dy + uy },
+    { x: wall.x1 - dx - ux, y: wall.y1 - dy - uy },
   ];
 
   let gxMin = Infinity, gyMin = Infinity, gxMax = -Infinity, gyMax = -Infinity;
@@ -238,6 +440,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   gyMax = Math.min(rows - 1, Math.ceil(gyMax) + 1);
 
   // Edge normals для convex polygon test
+  // ИСПРАВЛЕНИЕ: порог > 0 вместо > 1 для надёжного захвата граничных пикселей
   const edges = [];
   for (let i = 0; i < 4; i++) {
     const a = corners[i], b = corners[(i + 1) % 4];
@@ -250,7 +453,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
       const wy = minY + (gy + 0.5) * CELL_MM;
       let inside = true;
       for (const e of edges) {
-        if ((wx - e.ax) * e.nx + (wy - e.ay) * e.ny > 1) {
+        if ((wx - e.ax) * e.nx + (wy - e.ay) * e.ny > 0) {
           inside = false; break;
         }
       }
@@ -281,13 +484,16 @@ function findWallAtPoint(wx, wy) {
 
 export function updateExpl(explBody, roomCountEl) {
   if (!explBody) return;
-  roomCountEl.textContent = appState.rooms.length;
+  if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
   if (!appState.rooms.length) {
-    explBody.innerHTML = '<tr class="empty-row"><td colspan="6">Нарисуйте замкнутый контур, чтобы посчитать пол, объём, стены и периметр</td></tr>';
+    explBody.innerHTML = `<tr class="empty-row"><td colspan="9">Нарисуйте замкнутый контур — появятся площадь пола, стен, периметр и углы</td></tr>`;
     return;
   }
   explBody.innerHTML = appState.rooms.map((r, i) => {
     const color = ROOM_STROKES[i % ROOM_STROKES.length].replace('0.4', '0.8');
+    const cornersStr = r.corners
+      ? `${r.corners.inner}вн / ${r.corners.outer}нар`
+      : '—';
     return `<tr>
       <td><div class="room-name-cell">
         <span class="room-dot" style="background:${color}"></span>
@@ -295,10 +501,12 @@ export function updateExpl(explBody, roomCountEl) {
           data-room-key="${escHtml(r.key)}" data-room-default="${escHtml(r.defaultName)}">
       </div></td>
       <td>${r.area.toFixed(2)}</td>
-      <td>${r.volume.toFixed(2)}</td>
       <td>${r.wallArea.toFixed(2)}</td>
       <td>${r.perimeter.toFixed(2)}</td>
-      <td>${r.openingsArea.toFixed(2)}</td>
+      <td>${(r.height || 0).toFixed(2)}</td>
+      <td>${cornersStr}</td>
+      <td>${r.revealsLm ? r.revealsLm.toFixed(2) : '—'}</td>
+      <td>${r.windowsCount || 0} / ${r.doorsCount || 0}</td>
     </tr>`;
   }).join('');
 }
@@ -311,9 +519,17 @@ function escHtml(s) {
 
 export function getComputedRooms() {
   return appState.rooms.map(r => ({
-    name:      r.name,
-    floorArea: parseFloat(r.area.toFixed(2)),
-    wallsArea: parseFloat(r.wallArea.toFixed(2)),
-    perimeter: parseFloat(r.perimeter.toFixed(2)),
+    name:          r.name,
+    floorArea:     parseFloat(r.area.toFixed(2)),
+    wallsArea:     parseFloat(r.wallArea.toFixed(2)),
+    perimeter:     parseFloat(r.perimeter.toFixed(2)),
+    height:        parseFloat((r.height || 0).toFixed(2)),
+    cornersInner:  r.corners?.inner  ?? 0,
+    cornersOuter:  r.corners?.outer  ?? 0,
+    revealsLm:     r.revealsLm ?? 0,
+    windowsCount:  r.windowsCount ?? 0,
+    doorsCount:    r.doorsCount   ?? 0,
+    windowsAreaM2: r.windowsAreaM2 ?? 0,
+    doorsAreaM2:   r.doorsAreaM2   ?? 0,
   }));
 }
