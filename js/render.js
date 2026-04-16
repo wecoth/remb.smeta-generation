@@ -685,22 +685,24 @@ function drawWallDimensions() {
       _ctx.stroke();
     };
 
-    // ── СНАРУЖИ: общий размер ─────────────────────────────────
-    const OUT_OFF = (halfT + 100) * (-interiorSign);
-    drawChain([0, wlen], OUT_OFF, '#9ca3af');
-    {
-      const pt = sp(wlen / 2, OUT_OFF);
+    // ── ВНУТРИ: цепочка ──────────────────────────────────────
+    // Если нет проёмов — один размер угол-угол внутри.
+    // Если есть проёмы — цепочка сегментов, общий размер не рисуем.
+    const IN_OFF = (halfT + 80) * interiorSign;
+
+    if (!hasOpenings) {
+      // Простой размер угол-угол
+      drawChain([0, wlen], IN_OFF, '#9ca3af');
+      const pt = sp(wlen / 2, IN_OFF);
       drawAlignedTextBox(`${Math.round(wlen)} мм`, pt, angle, {
         font: '500 9px Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
-        textColor: '#6b7280',
+        textColor: '#374151',
       });
+      continue;
     }
 
-    if (!hasOpenings) continue;
-
-    // ── ВНУТРИ: цепочка с проёмами ────────────────────────────
-    const IN_OFF = (halfT + 80) * interiorSign;
+    // Цепочка с проёмами
     const chainTicks = [0, wlen];
     for (const { start, end } of wallOpenings) { chainTicks.push(start); chainTicks.push(end); }
     drawChain(chainTicks, IN_OFF, '#9ca3af');
@@ -729,7 +731,8 @@ function drawWallDimensions() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// ВЫНОСКИ ОКОН И ВХОДНОЙ ДВЕРИ
+// ВЫНОСКИ ОКОН И ВХОДНОЙ ДВЕРИ (изломанная линия, как на обмерных планах)
+// Схема: точка на стене → диагональ под ~45° наружу → горизонтальная полочка → подпись
 // ══════════════════════════════════════════════════════════════════
 function drawOpeningLeaders(extWallIds) {
   const scale = _getScale();
@@ -750,57 +753,75 @@ function drawOpeningLeaders(extWallIds) {
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
-    // Центр проёма
+    // Центр проёма в мировых координатах
     const cx = wall.x1 + ux * op.t * wlen;
     const cy = wall.y1 + uy * op.t * wlen;
 
-    const outSign   = -interiorSign;
-    const LEADER_MM = halfT + 220;
-    const baseX = cx + nx * (halfT + 10) * outSign;
-    const baseY = cy + ny * (halfT + 10) * outSign;
-    const tipX  = cx + nx * LEADER_MM * outSign;
-    const tipY  = cy + ny * LEADER_MM * outSign;
+    // Точка старта выноски — на внешней грани стены
+    const outSign = -interiorSign;
+    const startX = cx + nx * (halfT + 5) * outSign;
+    const startY = cy + ny * (halfT + 5) * outSign;
+    const sStart = toScreen(startX, startY);
 
-    const sBase = toScreen(baseX, baseY);
-    const sTip  = toScreen(tipX,  tipY);
+    // Диагональный отрезок: ~45° от стены наружу
+    // Направление: смесь нормали наружу + вдоль стены вправо
+    // Определяем "вправо" как направление от центра canvas
+    const canvasCX = _canvas.width / 2, canvasCY = _canvas.height / 2;
+    const sCenter = toScreen(cx, cy);
+    // Вектор от центра стены к краю canvas — определяет куда "вправо"
+    const toDirX = sCenter.x < canvasCX ? -1 : 1;
 
-    // Линия выноски
+    const DIAG_PX = 28 * Math.min(scale * 6, 1.2); // длина диагонали в px
+    const SHELF_PX = 32 * Math.min(scale * 6, 1.2); // длина полочки в px
+
+    // Направление диагонали: наружу от стены + немного вправо
+    // Вычисляем в screen-пространстве
+    const sNormOut = toScreen(startX + nx * 100 * outSign, startY + ny * 100 * outSign);
+    const normDirX = sNormOut.x - sStart.x, normDirY = sNormOut.y - sStart.y;
+    const normLen = Math.hypot(normDirX, normDirY);
+    const normUX = normLen > 0.1 ? normDirX / normLen : 0;
+    const normUY = normLen > 0.1 ? normDirY / normLen : -1;
+
+    // Диагональ = нормаль наружу + небольшой сдвиг вправо
+    const diagX = normUX * 0.7 + toDirX * 0.7;
+    const diagY = normUY * 0.7;
+    const diagLen = Math.hypot(diagX, diagY);
+    const diagUX = diagLen > 0.1 ? diagX / diagLen : normUX;
+    const diagUY = diagLen > 0.1 ? diagY / diagLen : normUY;
+
+    const sMid = { x: sStart.x + diagUX * DIAG_PX, y: sStart.y + diagUY * DIAG_PX };
+    const sEnd = { x: sMid.x + toDirX * SHELF_PX, y: sMid.y };
+
+    // Рисуем изломанную линию
     _ctx.strokeStyle = '#6b7280';
     _ctx.lineWidth = 0.8;
     _ctx.setLineDash([]);
-    _ctx.beginPath(); _ctx.moveTo(sBase.x, sBase.y); _ctx.lineTo(sTip.x, sTip.y); _ctx.stroke();
-
-    // Засечка у стены
-    const TICK = 5, ta = angle + Math.PI / 2;
     _ctx.beginPath();
-    _ctx.moveTo(sBase.x - Math.cos(ta)*TICK, sBase.y - Math.sin(ta)*TICK);
-    _ctx.lineTo(sBase.x + Math.cos(ta)*TICK, sBase.y + Math.sin(ta)*TICK);
+    _ctx.moveTo(sStart.x, sStart.y);
+    _ctx.lineTo(sMid.x, sMid.y);
+    _ctx.lineTo(sEnd.x, sEnd.y);
     _ctx.stroke();
 
-    // Полочка + подпись
-    const SHELF = 35 * Math.min(scale * 8, 1); // px, адаптивная
-    // Направление полочки — по направлению угла стены
-    const shelfDirX = Math.cos(angle), shelfDirY = Math.sin(angle);
-    // Всегда вправо по ориентации (или от центра canvas)
-    const shelfSign = (sTip.x + shelfDirX * 10) > sTip.x ? 1 : 1;
-
+    // Точка-кружок на стене
     _ctx.beginPath();
-    _ctx.moveTo(sTip.x, sTip.y);
-    _ctx.lineTo(sTip.x + SHELF, sTip.y);
-    _ctx.stroke();
+    _ctx.arc(sStart.x, sStart.y, 2, 0, Math.PI * 2);
+    _ctx.fillStyle = '#6b7280';
+    _ctx.fill();
 
+    // Подпись рядом с концом полочки
     const label     = `${Math.round(op.width)}×${Math.round(op.height)} мм`;
     const typeLabel = op.type === 'window' ? 'Окно' : 'Вх. дверь';
+    const textX = sEnd.x + toDirX * 3;
 
     _ctx.font = '500 9px Onest, Inter, sans-serif';
     _ctx.fillStyle = '#374151';
-    _ctx.textAlign = 'left';
+    _ctx.textAlign = toDirX > 0 ? 'left' : 'right';
     _ctx.textBaseline = 'bottom';
-    _ctx.fillText(label, sTip.x + SHELF + 3, sTip.y);
+    _ctx.fillText(label, textX, sEnd.y);
     _ctx.font = '400 8px Onest, Inter, sans-serif';
     _ctx.fillStyle = '#9ca3af';
     _ctx.textBaseline = 'top';
-    _ctx.fillText(typeLabel, sTip.x + SHELF + 3, sTip.y + 1);
+    _ctx.fillText(typeLabel, textX, sEnd.y + 1);
   }
 
   _ctx.restore();
