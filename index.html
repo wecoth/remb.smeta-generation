@@ -127,29 +127,12 @@
   }
   .spp-page { display:none;width:100%; }
   .spp-page.active { display:block; }
-  .spp-a4 {
-    width:100%;
-    max-width:680px;
-    min-height:500px;
-    margin:0 auto;
-    background:#fff;
-    box-shadow:0 2px 16px rgba(0,0,0,.10);
-    border-radius:3px;
-  }
+  /* spp-a4 size is in main.css — just keep position here */
+  .spp-a4 { position:relative; overflow:visible; }
+  .cover-pg.spp-a4 { min-height:500px; }
+  .be-editable-title { position:relative; }
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
-
-  /* ── Block editor helpers ─────────────────────────────── */
-  .be-editable-title {
-    position: relative;
-  }
-  .spp-a4 {
-    position: relative;
-  }
-  /* Cover page min height for proper positioning */
-  .cover-pg.spp-a4 {
-    min-height: 500px;
-  }
 
 </style>
 </head>
