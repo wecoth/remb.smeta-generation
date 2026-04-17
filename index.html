@@ -102,11 +102,12 @@
   .spp-header {
     background:#fff;
     border-bottom:1px solid var(--line2,#e8e8e8);
-    padding:0 24px;
+    padding:0 16px;
     flex-shrink:0;
     display:flex;
     align-items:center;
-    height:44px;
+    height:40px;
+    gap:2px;
   }
   .spp-tabs {
     display:flex;gap:2px;
@@ -121,20 +122,24 @@
   .spp-tab:hover { background:#f5f5f5;color:#333; }
   .spp-tab.active { background:#f0f4ff;color:#4a6fe3;font-weight:600; }
   .spp-body {
-    flex:1;overflow-y:auto;
-    display:flex;align-items:flex-start;justify-content:center;
-    padding:24px;
+    flex:1; min-height:0; overflow-y:auto;
+    display:flex; flex-direction:column;
+    align-items:center; gap:20px;
+    padding:12px 8px 40px;
   }
-  .spp-page { display:none;width:100%; }
-  .spp-page.active { display:block; }
+  .spp-page { display:block; width:100%; }
   .spp-a4 {
-    width:100%;
-    max-width:680px;
-    min-height:500px;
-    margin:0 auto;
-    background:#fff;
-    box-shadow:0 2px 16px rgba(0,0,0,.10);
-    border-radius:3px;
+    width: calc(100% - 16px);
+    max-width: 100%;
+    aspect-ratio: 297 / 210;
+    min-height: 400px;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 2px 20px rgba(0,0,0,.12);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
   }
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
@@ -574,7 +579,7 @@
   <div class="spp-body" id="sppBody">
 
     <!-- Cover page -->
-    <div class="spp-page active" data-page="cover">
+    <div class="spp-page" data-page="cover">
       <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden">
         <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
@@ -988,28 +993,28 @@
   }
 })();
 
-// ── SPP TABS ─────────────────────────────────────────────
+// ── SPP TABS — scroll navigation ─────────────────────────
 (function() {
   function initSppTabs() {
-    var tabs  = document.querySelectorAll('.spp-tab');
-    var pages = document.querySelectorAll('.spp-page');
+    var tabs = document.querySelectorAll('.spp-tab');
+    var body = document.getElementById('sppBody');
+
     tabs.forEach(function(tab) {
       tab.addEventListener('click', function() {
-        var p = tab.dataset.page;
         tabs.forEach(function(t){ t.classList.remove('active'); });
-        pages.forEach(function(pg){ pg.classList.remove('active'); });
         tab.classList.add('active');
-        var target = document.querySelector('.spp-page[data-page="' + p + '"]');
-        if (target) {
-          target.classList.add('active');
-          // Init block editor for this page's .spp-a4
-          setTimeout(function() {
-            var a4 = target.querySelector('.spp-a4');
-            if (a4 && window.BlockEditor) window.BlockEditor.initPage(a4);
-          }, 50);
+        var target = document.querySelector('.spp-page[data-page="' + tab.dataset.page + '"]');
+        if (target && body) {
+          body.scrollTo({ top: target.offsetTop - 12, behavior: 'smooth' });
         }
       });
     });
+
+    // Init BlockEditor + reset scroll
+    setTimeout(function() {
+      if (window.BlockEditor) window.BlockEditor.init();
+      if (body) body.scrollTop = 0;
+    }, 300);
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initSppTabs);
