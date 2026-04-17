@@ -565,7 +565,7 @@
   <div class="spp-body" id="sppBody">
 
     <div class="spp-section" data-page="cover">
-      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:visible;">
+      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:visible;min-height:540px;">
         <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
           <div id="prevCircle2" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
@@ -992,6 +992,9 @@
     // Init block editor for all visible sections on load
     setTimeout(function() {
       if (window.BlockEditor) window.BlockEditor.init();
+      // Scroll preview to top
+      var body = document.getElementById('sppBody');
+      if (body) body.scrollTop = 0;
     }, 400);
   }
 
