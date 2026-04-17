@@ -1005,7 +1005,7 @@ const BlockEditor = (() => {
       el.contentEditable = 'true';
       el.spellcheck = false;
       el.classList.add('be-editing');
-      el.focus();
+      el.focus({ preventScroll: true });
       try {
         const r = document.caretRangeFromPoint(e.clientX, e.clientY);
         if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
