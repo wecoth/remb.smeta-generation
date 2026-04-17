@@ -125,12 +125,31 @@
     display:flex;align-items:flex-start;justify-content:center;
     padding:24px;
   }
-  /* spp-a4 size is in main.css — just keep position here */
-  .spp-a4 { position:relative; }
-
-  .be-editable-title { position:relative; }
+  .spp-page { display:none;width:100%; }
+  .spp-page.active { display:block; }
+  .spp-a4 {
+    width:100%;
+    max-width:680px;
+    min-height:500px;
+    margin:0 auto;
+    background:#fff;
+    box-shadow:0 2px 16px rgba(0,0,0,.10);
+    border-radius:3px;
+  }
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
+
+  /* ── Block editor helpers ─────────────────────────────── */
+  .be-editable-title {
+    position: relative;
+  }
+  .spp-a4 {
+    position: relative;
+  }
+  /* Cover page min height for proper positioning */
+  .cover-pg.spp-a4 {
+    min-height: 500px;
+  }
 
 </style>
 </head>
@@ -543,82 +562,85 @@
 
 <!-- RIGHT: live preview panel -->
 <div class="smeta-preview-panel" id="smetaPreviewPanel">
-  <!-- Section visibility checkboxes -->
-  <div class="spp-checks-bar" id="sppChecksBar">
-    <span class="spp-checks-label">В документ:</span>
-    <label class="spp-chk" data-page="cover"><input type="checkbox" checked> Обложка</label>
-    <label class="spp-chk" data-page="object"><input type="checkbox" checked> Карточка объекта</label>
-    <label class="spp-chk" data-page="smr"><input type="checkbox" checked> СМР</label>
-    <label class="spp-chk" data-page="mat"><input type="checkbox" checked> Материалы</label>
-    <label class="spp-chk" data-page="timeline"><input type="checkbox" checked> Сроки</label>
+  <div class="spp-header">
+    <div class="spp-tabs" id="sppTabs">
+      <button class="spp-tab active" data-page="cover">Обложка</button>
+      <button class="spp-tab" data-page="plan">Планировка</button>
+      <button class="spp-tab" data-page="smr">СМР</button>
+      <button class="spp-tab" data-page="mat">Материалы</button>
+      <button class="spp-tab" data-page="final">Итоговая</button>
+    </div>
   </div>
   <div class="spp-body" id="sppBody">
 
-    <!-- 1. Обложка -->
-    <div class="spp-section" data-page="cover">
-      <div class="preview-page spp-a4" id="prevCover2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;min-height:520px;position:relative;">
-        <!-- Центральный блок -->
-        <div id="prevCovLogo2" style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px">
+    <!-- Cover page -->
+    <div class="spp-page active" data-page="cover">
+      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden">
+        <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
           <div id="prevCircle2" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
         </div>
-        <div id="prevCovName2" style="font-size:20px;font-weight:400;letter-spacing:5px;text-transform:uppercase;margin-bottom:6px">КОМПАНИЯ</div>
-        <div id="prevCovSlogan2" style="font-size:10px;letter-spacing:4px;color:#888;text-transform:uppercase;margin-bottom:40px">КАЧЕСТВО ПОД КЛЮЧ</div>
-        <div id="prevCovType2" style="font-size:14px;font-weight:300;color:#555;letter-spacing:2px">Проектно-сметная документация</div>
-        <!-- Нижний колонтитул -->
-        <div style="position:absolute;bottom:28px;right:32px;display:flex;align-items:center;gap:6px">
+        <div id="prevCovName2" style="position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);font-size:20px;font-weight:400;letter-spacing:5px;text-transform:uppercase;white-space:nowrap">КОМПАНИЯ</div>
+        <div id="prevCovSlogan2" style="position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);font-size:10px;letter-spacing:4px;color:#888;text-transform:uppercase;white-space:nowrap">КАЧЕСТВО ПОД КЛЮЧ</div>
+        <div id="prevCovType2" style="position:absolute;left:50%;top:72%;transform:translate(-50%,-50%);font-size:14px;font-weight:300;color:#555;letter-spacing:2px;white-space:nowrap">Проектно-сметная документация</div>
+        <div style="position:absolute;bottom:40px;right:40px;display:flex;align-items:center;gap:6px">
           <div id="prevFootCircle2" style="width:22px;height:22px;border:1.5px solid #aaa;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;color:#aaa">К</div>
           <div id="prevFootName2" style="font-size:9px;font-weight:600;letter-spacing:2px;color:#aaa">КОМПАНИЯ</div>
         </div>
       </div>
     </div>
 
-    <!-- 2. Карточка объекта -->
-    <div class="spp-section" data-page="object">
-      <div class="preview-page spp-a4" id="prevPlanning2">
-        <div style="padding:28px 52px 28px;display:flex;flex-direction:column;height:100%;box-sizing:border-box">
-          <div class="be-editable-title" style="font-size:22px;font-weight:400;text-align:center;margin-bottom:24px;letter-spacing:.5px">Планирование работ:</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;flex:1">
-            <!-- LEFT: plan image -->
-            <div style="display:flex;flex-direction:column">
-              <div id="prevPlanBox2" style="flex:1;min-height:300px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;border:1px solid #e8e8e8;border-radius:3px">
-                <img id="prevPlanImg2" alt="" style="width:100%;height:100%;object-fit:contain;display:none;background:#fff">
-                <div id="prevPlanPh2" style="color:#ccc;font-size:40px">⬚</div>
-              </div>
-            </div>
-            <!-- RIGHT: info -->
-            <div style="display:flex;flex-direction:column;gap:12px">
-              <div id="prevObjInfo2" style="font-size:11px;line-height:2.1;color:#333"></div>
-              <div class="be-plan-docs" style="font-size:10px;color:#555;line-height:1.9">
-                На основании осмотра объекта подготовлены следующие документы:<br>
-                – Обмерный план.<br>
-                – Смета строительно-монтажных работ (СМР).<br>
-                – Смета на строительные и отделочные материалы.<br>
-                – Календарный график производства работ.
-              </div>
-              <div>
-                <div style="font-size:11px;font-weight:500;text-align:center;margin-bottom:6px">Экспликация помещений</div>
-                <table style="width:100%;border-collapse:collapse;font-size:10px">
-                  <thead><tr>
-                    <th style="border:1px solid #ccc;padding:5px 7px;text-align:left;font-weight:500;font-size:9.5px;background:#f5f5f2">Помещение</th>
-                    <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2">Пол м²</th>
-                    <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2">Стены м²</th>
-                    <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2">Периметр</th>
-                  </tr></thead>
-                  <tbody id="prevRoomsBody2"></tbody>
-                </table>
-              </div>
+    <!-- Planning page -->
+    <div class="spp-page" data-page="plan">
+      <div class="preview-page spp-a4" id="prevPlanning2" data-be-page="plan">
+
+        <!-- Title — editable block -->
+        <div class="be-plan-title be-editable-title" style="font-size:22px;font-weight:400;text-align:center;padding:28px 66px 20px;letter-spacing:.5px">Планирование работ:</div>
+
+        <!-- Main grid: 50/50 -->
+        <div class="be-plan-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0 66px 28px;min-height:420px">
+
+          <!-- LEFT: drawing/plan image -->
+          <div class="be-plan-left" style="padding-right:16px;display:flex;flex-direction:column;border-right:1px solid #eee">
+            <div id="prevPlanBox2" style="flex:1;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;border:1px solid #e8e8e8;border-radius:3px">
+              <img id="prevPlanImg2" alt="" style="width:100%;height:100%;object-fit:contain;display:none;background:#fff">
+              <div id="prevPlanPh2" style="color:#ccc;font-size:40px">⬚</div>
             </div>
           </div>
-        </div>
+
+          <!-- RIGHT: info + rooms table -->
+          <div class="be-plan-right" style="padding-left:16px;display:flex;flex-direction:column;gap:12px">
+            <div id="prevObjInfo2" style="font-size:11px;line-height:2;color:#333"></div>
+            <div class="be-plan-docs" style="font-size:10px;color:#555;line-height:1.9">
+              На основании осмотра объекта подготовлены следующие документы:<br>
+              – Обмерный план.<br>
+              – Смета строительно-монтажных работ (СМР).<br>
+              – Смета на строительные и отделочные материалы.<br>
+              – Календарный график производства работ.
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:500;text-align:center;margin-bottom:6px;letter-spacing:.3px">Экспликация помещений</div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px">
+                <thead><tr>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:left;font-weight:500;font-size:9.5px;background:#f5f5f2">Помещение</th>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2">Пол м²</th>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2">Стены м²</th>
+                  <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2">Периметр</th>
+                </tr></thead>
+                <tbody id="prevRoomsBody2"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /be-plan-grid -->
       </div>
     </div>
 
-    <!-- 3. СМР -->
-    <div class="spp-section" data-page="smr">
-      <div class="preview-page spp-a4" id="prevSmr2">
-        <div style="padding:36px 52px;display:flex;flex-direction:column">
-          <div class="be-editable-title" style="font-size:20px;font-weight:400;text-align:center;margin-bottom:24px;letter-spacing:.3px">Смета строительно-монтажных работ</div>
+    <!-- SMR page -->
+    <div class="spp-page" data-page="smr">
+      <div class="preview-page spp-a4" id="prevSmr2" data-be-page="smr">
+        <div style="padding:40px 52px;display:flex;flex-direction:column">
+          <div class="be-editable-title" style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета строительно-монтажных работ</div>
           <table style="width:100%;border-collapse:collapse;font-size:10px">
             <thead><tr>
               <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:24px">№</th>
@@ -634,11 +656,11 @@
       </div>
     </div>
 
-    <!-- 4. Материалы -->
-    <div class="spp-section" data-page="mat">
-      <div class="preview-page spp-a4" id="prevMat2">
-        <div style="padding:36px 52px;display:flex;flex-direction:column">
-          <div class="be-editable-title" style="font-size:20px;font-weight:400;text-align:center;margin-bottom:24px;letter-spacing:.3px">Смета на строительные и отделочные материалы</div>
+    <!-- Mat page -->
+    <div class="spp-page" data-page="mat">
+      <div class="preview-page spp-a4" id="prevMat2" data-be-page="mat">
+        <div style="padding:40px 52px;display:flex;flex-direction:column">
+          <div class="be-editable-title" style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета на строительные и отделочные материалы</div>
           <table style="width:100%;border-collapse:collapse;font-size:10px">
             <thead><tr>
               <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:24px">№</th>
@@ -654,14 +676,25 @@
       </div>
     </div>
 
-    <!-- 5. Сроки (заглушка) -->
-    <div class="spp-section" data-page="timeline">
-      <div class="preview-page spp-a4" id="prevTimeline2">
-        <div style="padding:36px 52px;display:flex;flex-direction:column">
-          <div class="be-editable-title" style="font-size:20px;font-weight:400;text-align:center;margin-bottom:24px;letter-spacing:.3px">Календарный график производства работ</div>
-          <div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#ccc;font-size:13px;min-height:300px">
-            <div style="font-size:32px">📅</div>
-            <div>Раздел в разработке</div>
+    <!-- Final page -->
+    <div class="spp-page" data-page="final">
+      <div class="preview-page spp-a4" id="prevFinal2" data-be-page="final">
+        <div style="padding:40px 52px;display:flex;flex-direction:column">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:20px">
+            <thead><tr>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:28px">№</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px">Разделы</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:50px">Ед.</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:60px">Кол-во</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:right;width:110px">За ед. ₽</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:right;width:120px">Всего ₽</th>
+              <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;width:80px">Примечание</th>
+            </tr></thead>
+            <tbody id="prevFinBody2"></tbody>
+          </table>
+          <div style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:24px;font-size:14px">
+            <span style="font-size:12px;color:#666">Итого по разделам:</span>
+            <strong id="prevFinVal2" style="font-size:20px;font-weight:500">0 ₽</strong>
           </div>
         </div>
       </div>
@@ -955,45 +988,33 @@
   }
 })();
 
-// ── SECTION CHECKBOXES ───────────────────────────────────
+// ── SPP TABS ─────────────────────────────────────────────
 (function() {
-  function initChecks() {
-    document.querySelectorAll('.spp-chk').forEach(function(lbl) {
-      var page  = lbl.dataset.page;
-      var input = lbl.querySelector('input');
-      var sec   = document.querySelector('.spp-section[data-page="' + page + '"]');
-
-      function update() {
-        if (sec) {
-          var visible = input.checked;
-          sec.style.display = visible ? '' : 'none';
-          sec.dataset.excluded = visible ? '0' : '1';
-          if (visible && window.BlockEditor) {
-            var a4 = sec.querySelector('.spp-a4');
-            if (a4) setTimeout(function(){ window.BlockEditor.initPage(a4); }, 50);
-          }
+  function initSppTabs() {
+    var tabs  = document.querySelectorAll('.spp-tab');
+    var pages = document.querySelectorAll('.spp-page');
+    tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var p = tab.dataset.page;
+        tabs.forEach(function(t){ t.classList.remove('active'); });
+        pages.forEach(function(pg){ pg.classList.remove('active'); });
+        tab.classList.add('active');
+        var target = document.querySelector('.spp-page[data-page="' + p + '"]');
+        if (target) {
+          target.classList.add('active');
+          // Init block editor for this page's .spp-a4
+          setTimeout(function() {
+            var a4 = target.querySelector('.spp-a4');
+            if (a4 && window.BlockEditor) window.BlockEditor.initPage(a4);
+          }, 50);
         }
-      }
-
-      input.addEventListener('change', update);
-      // Don't call update() on init — all sections visible by default
+      });
     });
-
-    // Init block editor for all visible sections on load
-    setTimeout(function() {
-      if (window.BlockEditor) window.BlockEditor.init();
-    }, 400);
-    // Reset scroll AFTER editor init (editor may scroll elements into view)
-    setTimeout(function() {
-      var body = document.getElementById('sppBody');
-      if (body) body.scrollTop = 0;
-    }, 600);
   }
-
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initChecks);
+    document.addEventListener('DOMContentLoaded', initSppTabs);
   } else {
-    initChecks();
+    initSppTabs();
   }
 })();
 </script>
