@@ -547,7 +547,7 @@ html, body {
   font-family: 'Merriweather', serif;
   transform-origin: top center; transform: scale(0.85); margin-bottom: -60px;
 }
-.preview-page.cover-pg { display: block; position: relative; } /* absolute children need block parent */
+.preview-page.cover-pg { position: relative; }
 
 /* Preview editor elements */
 .ed-ready { position: absolute !important; }
