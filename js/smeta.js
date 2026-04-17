@@ -20,28 +20,6 @@ function cLetter() { return cName().charAt(0).toUpperCase(); }
 // ── Logo ──────────────────────────────────────────────────────────
 
 export function handleLogo(e) {
-  const f = e.target.files[0]; if (!f) return;ф// ─── SMETA.JS ─────────────────────────────────────────────────────
-import { appState } from './state.js';
-import { renderToImage } from './render.js';
-
-// ── Utils ─────────────────────────────────────────────────────────
-
-export function fmt(v) {
-  return (+v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
-}
-export function fmtDate(v) {
-  if (!v) return '—';
-  const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString('ru-RU');
-}
-export function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-function cName() { return document.getElementById('companyName')?.value.trim() || 'КОМПАНИЯ'; }
-function cLetter() { return cName().charAt(0).toUpperCase(); }
-
-// ── Logo ──────────────────────────────────────────────────────────
-
-export function handleLogo(e) {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = ev => {
@@ -602,21 +580,9 @@ export async function generatePDF() {
     const resp = await fetch('https://assistcloudai.xyz/webhook/generate-pdf', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        html: Array.from(document.querySelectorAll('.spp-section'))
-          .filter(p => p.dataset.excluded !== '1' && !p.classList.contains('hidden'))
-          .map(p => {
-            const a4 = p.querySelector('.spp-a4');
-            if (!a4) return '';
-            const cl2 = a4.cloneNode(true);
-            cl2.querySelectorAll('.be-ctrl,.be-rz,.be-margin-guide,#be-fmt-bar').forEach(el => el.remove());
-            cl2.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
-            cl2.querySelectorAll('.be-block').forEach(el => {
-              el.classList.remove('be-selected','be-editing','be-dragging');
-              if (el.dataset.beHidden === '1') el.remove();
-            });
-            cl2.style.transform = 'none'; cl2.style.margin = '0';
-            return '<div class="a4">' + cl2.innerHTML + '</div>';
-          }).filter(Boolean).join(''),
+        html: Array.from(document.querySelectorAll('.preview-page'))
+          .filter(p => p.style.display !== 'none')
+          .map(p => { const cl2 = p.cloneNode(true); cl2.querySelectorAll('.ed-controls,.ed-resize').forEach(el => el.remove()); cl2.style.transform = 'none'; cl2.style.margin = '0'; return `<div class="a4">${cl2.innerHTML}</div>`; }).join(''),
         css,
       }),
     });
@@ -696,440 +662,366 @@ export function initSmeta() {
 
 
 // ══════════════════════════════════════════════════════════════════
-// BLOCK EDITOR v4 — drag, resize, word-toolbar, rotate, hide
+// BLOCK EDITOR — universal drag/resize/edit for .spp-a4 pages
 // ══════════════════════════════════════════════════════════════════
+//
+// ══════════════════════════════════════════════════════════════════
+// BLOCK EDITOR v2 — click-to-select, persistent toolbar, A4 margins
+// ══════════════════════════════════════════════════════════════════
+//
+// Model: click element → select (toolbar stays) → click elsewhere → deselect
+// Double-click text → contenteditable inline edit
+// Drag handle → move anywhere within page
+// A− A+ → font size   ◻− ◻+ → scale   ↺ → rotate 90°   ✕/👁 → hide/show
 
 const BlockEditor = (() => {
 
-  let _sel = null;
+  let _selected = null; // currently selected be-block element
 
-  // ── Injected CSS ────────────────────────────────────────────────
+  // ── Toolbar HTML ──────────────────────────────────────────────
+  const mkToolbar = () => {
+    const t = document.createElement('div');
+    t.className = 'be-toolbar';
+    t.innerHTML = `
+      <span class="be-handle" title="Перетащить">⠿</span>
+      <span class="be-sep"></span>
+      <button class="be-btn" data-action="fs-" title="Уменьшить шрифт">A−</button>
+      <button class="be-btn" data-action="fs+" title="Увеличить шрифт">A+</button>
+      <span class="be-sep"></span>
+      <button class="be-btn" data-action="sc-" title="Уменьшить масштаб">◻−</button>
+      <button class="be-btn" data-action="sc+" title="Увеличить масштаб">◻+</button>
+      <span class="be-sep"></span>
+      <button class="be-btn" data-action="rot" title="Повернуть на 90°">↺</button>
+      <span class="be-sep"></span>
+      <button class="be-btn be-del" data-action="del" title="Скрыть элемент">✕</button>`;
+    return t;
+  };
+
+  // ── CSS injected once ─────────────────────────────────────────
   const CSS = `
-    .be-block { box-sizing:border-box; border-radius:2px; }
+    /* ── Block wrapper ── */
+    .be-block {
+      position: relative;
+      cursor: default;
+      border-radius: 2px;
+      transition: outline .1s;
+    }
     .be-block:hover {
-      outline: 1.5px dashed rgba(74,159,255,0.32);
+      outline: 1.5px dashed rgba(74,159,255,0.35);
       outline-offset: 2px;
-      cursor: grab;
     }
     .be-block.be-selected {
       outline: 2px solid #4a9eff !important;
       outline-offset: 2px;
-      cursor: grab;
     }
-    .be-block.be-editing {
-      outline: 2px solid #2272e0 !important;
-      cursor: text !important;
-    }
-    .be-block.be-dragging { cursor: grabbing !important; opacity:.92; }
-    .be-block.be-hidden   { opacity:.08; }
 
-    /* Block controls toolbar (rotate + hide) */
-    .be-ctrl {
+    /* ── Toolbar ── */
+    .be-toolbar {
       display: none;
       position: absolute;
-      bottom: -32px; left: 50%;
-      transform: translateX(-50%);
+      top: -36px; left: 0;
       z-index: 9999;
       background: #1a1a2e;
-      border-radius: 20px;
-      padding: 4px 8px;
-      gap: 4px; align-items: center;
-      box-shadow: 0 3px 12px rgba(0,0,0,.32);
-      user-select: none; pointer-events: all; white-space: nowrap;
-    }
-    .be-block.be-selected > .be-ctrl { display: flex; }
-    .be-cbtn {
-      background: rgba(255,255,255,.12); border: none;
-      border-radius: 12px; color: #fff;
-      font-size: 12px; padding: 3px 9px;
-      cursor: pointer; font-family: 'Onest',sans-serif;
-      line-height: 1.3; transition: background .12s;
-    }
-    .be-cbtn:hover { background: rgba(255,255,255,.28); }
-    .be-cbtn-del { background: rgba(180,40,30,.55) !important; }
-    .be-cbtn-del:hover { background: rgba(220,60,45,.85) !important; }
-
-    /* Corner resize handle */
-    .be-rz {
-      display: none;
-      position: absolute; bottom:-5px; right:-5px;
-      width:12px; height:12px;
-      background:#4a9eff; border:2px solid #fff;
-      border-radius:3px; cursor:se-resize;
-      z-index:9999; pointer-events:all;
-      box-shadow: 0 1px 4px rgba(0,0,0,.3);
-    }
-    .be-block.be-selected > .be-rz { display:block; }
-
-    /* Word-like text format toolbar */
-    .be-fmt {
-      display: none;
-      position: fixed;
-      z-index: 99999;
-      background: #fff;
-      border: 1px solid #e0e0e0;
       border-radius: 8px;
       padding: 4px 6px;
-      gap: 2px; align-items: center;
-      box-shadow: 0 4px 16px rgba(0,0,0,.18);
+      gap: 3px;
+      align-items: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      white-space: nowrap;
       user-select: none;
       pointer-events: all;
-      white-space: nowrap;
     }
-    .be-fmt.visible { display: flex; }
-    .be-fbtn {
-      background: transparent; border: none;
-      border-radius: 5px; color: #222;
-      font-size: 12px; padding: 3px 7px;
-      cursor: pointer; font-family: inherit;
-      line-height: 1.3; transition: background .1s;
-      min-width: 26px; text-align: center;
+    .be-block.be-selected > .be-toolbar { display: flex; }
+
+    .be-sep {
+      width: 1px; height: 14px;
+      background: rgba(255,255,255,0.15);
+      display: inline-block; flex-shrink: 0;
     }
-    .be-fbtn:hover { background: #f0f0f0; }
-    .be-fbtn.active { background: #e8eeff; color: #3a5ed0; font-weight:600; }
-    .be-fsize {
-      width: 38px; border: 1px solid #ddd; border-radius:5px;
-      font-size: 12px; padding: 3px 4px; text-align:center;
-      font-family: inherit; color:#222; background:#fff;
+    .be-handle {
+      cursor: grab;
+      color: rgba(255,255,255,0.5);
+      font-size: 15px;
+      padding: 0 3px;
+      line-height: 1;
     }
-    .be-fcolor {
-      width: 22px; height: 22px; border: 1px solid #ddd;
-      border-radius: 4px; cursor: pointer; padding: 0;
-      overflow: hidden; background: #fff;
+    .be-handle:active { cursor: grabbing; }
+    .be-btn {
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 5px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 7px;
+      cursor: pointer;
+      font-family: 'Onest', sans-serif;
+      line-height: 1.3;
+      transition: background .12s;
     }
-    .be-fsep {
-      width: 1px; height: 18px; background: #e0e0e0;
-      flex-shrink: 0; margin: 0 2px;
+    .be-btn:hover { background: rgba(255,255,255,0.28); }
+    .be-del { background: rgba(180,40,30,0.55) !important; }
+    .be-del:hover { background: rgba(220,60,45,0.85) !important; }
+
+    /* ── Text editing mode ── */
+    .be-block.be-editing {
+      outline: 2px solid #2171e0 !important;
+      background: rgba(33,113,224,0.04);
+    }
+    .be-block.be-editing > .be-toolbar { display: flex; }
+
+    /* ── Hidden state ── */
+    .be-block.be-hidden {
+      opacity: 0.1;
+    }
+    .be-block.be-hidden:hover {
+      opacity: 0.3;
+      outline: 1.5px dashed #aaa;
     }
 
-    /* Margin guide */
+    /* ── A4 margin guides ── */
     .be-margin-guide {
-      position:absolute; pointer-events:none; z-index:0;
-      border:1px dashed rgba(150,150,150,.25); box-sizing:border-box;
+      position: absolute;
+      pointer-events: none;
+      z-index: 1;
+      border: 1px dashed rgba(180,180,180,0.4);
+      box-sizing: border-box;
     }
   `;
 
   function injectStyle() {
-    if (document.getElementById('be-style-v4')) return;
+    if (document.getElementById('be-style-v2')) return;
     const s = document.createElement('style');
-    s.id = 'be-style-v4'; s.textContent = CSS;
+    s.id = 'be-style-v2';
+    s.textContent = CSS;
     document.head.appendChild(s);
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────
+
+  function getFontSize(el) {
+    return parseFloat(getComputedStyle(el).fontSize) || 14;
+  }
   function getScale(el) { return parseFloat(el.dataset.beScale || '1'); }
   function getRot(el)   { return parseFloat(el.dataset.beRot   || '0'); }
 
   function applyTransform(el) {
-    el.style.transform = `rotate(${getRot(el)}deg) scale(${getScale(el)})`;
+    const sc  = getScale(el);
+    const rot = getRot(el);
+    el.style.transform = `rotate(${rot}deg) scale(${sc})`;
     el.style.transformOrigin = 'top left';
   }
 
-  function snapAbsolute(el, page) {
-    if (el.dataset.bePosInit) return;
-    el.dataset.bePosInit = '1';
-    const pr = page.getBoundingClientRect();
-    const er = el.getBoundingClientRect();
-    el.style.position = 'absolute';
-    el.style.margin   = '0';
-    el.style.transform = (el.style.transform || '').replace(/translate\([^)]*\)/g, '').trim();
-    el.style.left = (er.left - pr.left) + 'px';
-    el.style.top  = (er.top  - pr.top)  + 'px';
-  }
+  // ── Selection management ──────────────────────────────────────
 
-  // ── Selection ────────────────────────────────────────────────────
   function select(el) {
-    if (_sel && _sel !== el) deselect(_sel);
-    _sel = el;
+    if (_selected && _selected !== el) deselect(_selected);
+    _selected = el;
     el.classList.add('be-selected');
   }
+
   function deselect(el) {
     if (!el) return;
-    el.classList.remove('be-selected','be-editing','be-dragging');
-    if (el.contentEditable === 'true') el.contentEditable = 'false';
-    if (_sel === el) _sel = null;
-  }
-
-  // ── Drag-to-move ─────────────────────────────────────────────────
-  function setupDrag(el, page) {
-    let moved = false, ox, oy, sx, sy;
-    el.addEventListener('mousedown', e => {
-      if (e.target.closest('.be-ctrl,.be-rz,.be-fmt')) return;
-      if (e.button !== 0) return;
-      if (el.classList.contains('be-editing')) return;
-      e.preventDefault();
-      select(el);
-      snapAbsolute(el, page);
-      moved = false;
-      sx = e.clientX; sy = e.clientY;
-      ox = parseFloat(el.style.left) || 0;
-      oy = parseFloat(el.style.top)  || 0;
-      const onMove = mv => {
-        const dx = mv.clientX - sx, dy = mv.clientY - sy;
-        if (!moved && Math.hypot(dx,dy) < 4) return;
-        moved = true;
-        el.classList.add('be-dragging');
-        el.style.left = (ox+dx) + 'px';
-        el.style.top  = (oy+dy) + 'px';
-      };
-      const onUp = () => {
-        el.classList.remove('be-dragging');
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-  }
-
-  // ── Corner resize ─────────────────────────────────────────────────
-  function setupResize(rh, el, page) {
-    rh.addEventListener('mousedown', e => {
-      e.preventDefault(); e.stopPropagation();
-      snapAbsolute(el, page);
-      const sx = e.clientX, sy = e.clientY;
-      const s0 = getScale(el);
-      const rect = el.getBoundingClientRect();
-      const ref  = Math.max(rect.width, rect.height) / s0;
-      const onMove = mv => {
-        const d = (Math.abs(mv.clientX-sx) > Math.abs(mv.clientY-sy))
-          ? mv.clientX-sx : mv.clientY-sy;
-        el.dataset.beScale = Math.max(0.15, Math.min(5, s0 + d/ref)).toFixed(3);
-        applyTransform(el);
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-  }
-
-  // ── Word-like text format toolbar ────────────────────────────────
-  let _fmt = null;
-
-  function getFmtBar() {
-    if (_fmt) return _fmt;
-    _fmt = document.createElement('div');
-    _fmt.className = 'be-fmt';
-    _fmt.id = 'be-fmt-bar';
-    _fmt.innerHTML = `
-      <input class="be-fsize" id="be-fsize" type="number" value="14" min="6" max="96" title="Размер шрифта">
-      <div class="be-fsep"></div>
-      <button class="be-fbtn" data-cmd="bold"      title="Жирный (Ctrl+B)"><b>B</b></button>
-      <button class="be-fbtn" data-cmd="italic"    title="Курсив (Ctrl+I)"><i>I</i></button>
-      <button class="be-fbtn" data-cmd="underline" title="Подчёркнутый (Ctrl+U)"><u>U</u></button>
-      <button class="be-fbtn" data-cmd="strikeThrough" title="Зачёркнутый"><s>S</s></button>
-      <div class="be-fsep"></div>
-      <button class="be-fbtn" data-cmd="justifyLeft"   title="По левому краю">⬅</button>
-      <button class="be-fbtn" data-cmd="justifyCenter" title="По центру">☰</button>
-      <button class="be-fbtn" data-cmd="justifyRight"  title="По правому краю">➡</button>
-      <div class="be-fsep"></div>
-      <input class="be-fcolor" type="color" id="be-fcolor" value="#000000" title="Цвет текста">
-    `;
-    document.body.appendChild(_fmt);
-
-    // Prevent mousedown from deselecting the editing element
-    _fmt.addEventListener('mousedown', e => e.preventDefault());
-
-    // Format buttons
-    _fmt.querySelectorAll('[data-cmd]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.preventDefault();
-        document.execCommand(btn.dataset.cmd, false, null);
-        updateFmtState();
-      });
-    });
-
-    // Font size
-    const fsizeEl = _fmt.querySelector('#be-fsize');
-    fsizeEl.addEventListener('change', () => {
-      document.execCommand('fontSize', false, '7');
-      // execCommand fontSize uses 1-7, we override with style
-      document.querySelectorAll('font[size="7"]').forEach(f => {
-        f.removeAttribute('size');
-        f.style.fontSize = fsizeEl.value + 'px';
-      });
-    });
-    fsizeEl.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { fsizeEl.dispatchEvent(new Event('change')); e.preventDefault(); }
-    });
-
-    // Color
-    _fmt.querySelector('#be-fcolor').addEventListener('input', e => {
-      document.execCommand('foreColor', false, e.target.value);
-    });
-
-    return _fmt;
-  }
-
-  function updateFmtState() {
-    const bar = getFmtBar();
-    ['bold','italic','underline','strikeThrough','justifyLeft','justifyCenter','justifyRight'].forEach(cmd => {
-      const btn = bar.querySelector(`[data-cmd="${cmd}"]`);
-      if (btn) btn.classList.toggle('active', document.queryCommandState(cmd));
-    });
-    // Update font size display
-    const fs = document.queryCommandValue('fontSize');
-    const el = window.getSelection()?.anchorNode?.parentElement;
-    if (el) {
-      const cs = parseFloat(getComputedStyle(el).fontSize);
-      if (cs) bar.querySelector('#be-fsize').value = Math.round(cs);
+    el.classList.remove('be-selected', 'be-editing');
+    if (el.contentEditable === 'true') {
+      el.contentEditable = 'false';
     }
+    _selected = null;
   }
 
-  function positionFmtBar() {
-    const bar = getFmtBar();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) { bar.classList.remove('visible'); return; }
-    const range = sel.getRangeAt(0);
-    if (range.collapsed) { bar.classList.remove('visible'); return; }
-    const rect = range.getBoundingClientRect();
-    if (!rect.width) { bar.classList.remove('visible'); return; }
-    bar.style.left = Math.max(4, rect.left + rect.width/2 - 160) + 'px';
-    bar.style.top  = (rect.top - 48 + window.scrollY) + 'px';
-    bar.classList.add('visible');
-    updateFmtState();
-  }
-
-  function hideFmtBar() {
-    if (_fmt) _fmt.classList.remove('visible');
-  }
-
-  // ── Text editing ──────────────────────────────────────────────────
-  function setupTextEdit(el) {
-    el.addEventListener('dblclick', e => {
-      if (e.target.closest('.be-ctrl,.be-rz,.be-fmt')) return;
-      select(el);
-      el.contentEditable = 'true';
-      el.spellcheck = false;
-      el.classList.add('be-editing');
-      el.focus({ preventScroll: true });
-      try {
-        const r = document.caretRangeFromPoint(e.clientX, e.clientY);
-        if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
-      } catch(_) {}
-    });
-    el.addEventListener('mouseup', () => {
-      if (el.classList.contains('be-editing')) setTimeout(positionFmtBar, 10);
-    });
-    el.addEventListener('keyup', () => {
-      if (el.classList.contains('be-editing')) positionFmtBar();
-    });
-    el.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        el.contentEditable = 'false';
-        el.classList.remove('be-editing');
-        hideFmtBar();
-        el.blur();
+  // Click on page background → deselect
+  function setupPageDeselect(page) {
+    if (page.dataset.beDeselect) return;
+    page.dataset.beDeselect = '1';
+    page.addEventListener('mousedown', e => {
+      if (!e.target.closest('.be-block') && !e.target.closest('.be-toolbar')) {
+        if (_selected) deselect(_selected);
       }
     });
-    el.addEventListener('blur', () => {
-      setTimeout(() => {
-        // Don't hide if focus moved to format bar
-        if (!document.activeElement?.closest('#be-fmt-bar')) {
-          el.contentEditable = 'false';
-          el.classList.remove('be-editing');
-          hideFmtBar();
-        }
-      }, 150);
-    }, true);
   }
 
-  // ── Block controls (rotate + hide) ───────────────────────────────
-  function mkCtrl(el) {
-    const t = document.createElement('div');
-    t.className = 'be-ctrl';
-    t.innerHTML = `
-      <button class="be-cbtn be-cbtn-rot" title="Повернуть на 90°">↺</button>
-      <button class="be-cbtn be-cbtn-del" title="Скрыть / показать">✕</button>`;
-    t.addEventListener('mousedown', e => e.stopPropagation());
-    t.querySelector('.be-cbtn-rot').onclick = e => {
-      e.stopPropagation();
-      el.dataset.beRot = (getRot(el) + 90) % 360;
-      applyTransform(el);
-    };
-    t.querySelector('.be-cbtn-del').onclick = e => {
-      e.stopPropagation();
-      const hidden = el.classList.toggle('be-hidden');
-      el.dataset.beHidden = hidden ? '1' : '0';
-      e.target.textContent = hidden ? '👁' : '✕';
-      e.target.title = hidden ? 'Показать' : 'Скрыть';
-    };
-    return t;
+  // ── A4 margin guide ───────────────────────────────────────────
+  // 20px ≈ 2cm at screen scale (794px wide ≈ A4 at 96dpi, 1cm = 37.8px → 2cm = 75.6px)
+  // For preview panel at ~680px wide: scale factor ~0.855, so 2cm ≈ 65px
+  const MARGIN_PX = 66; // ~2cm in preview
+
+  function addMarginGuide(page) {
+    if (page.querySelector('.be-margin-guide')) return;
+    const guide = document.createElement('div');
+    guide.className = 'be-margin-guide';
+    guide.style.cssText = `
+      top: ${MARGIN_PX}px;
+      left: ${MARGIN_PX}px;
+      right: ${MARGIN_PX}px;
+      bottom: ${MARGIN_PX}px;
+    `;
+    page.appendChild(guide);
   }
 
-  // ── Attach to one element ─────────────────────────────────────────
+  // ── Drag ─────────────────────────────────────────────────────
+
+  function setupDrag(handle, el, page) {
+    if (handle.dataset.beDragInit) return;
+    handle.dataset.beDragInit = '1';
+
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      select(el);
+
+      const pageRect = page.getBoundingClientRect();
+      const elRect   = el.getBoundingClientRect();
+
+      // Snapshot absolute position on first drag
+      if (!el.dataset.bePosInit) {
+        el.dataset.bePosInit = '1';
+        el.style.position = 'absolute';
+        // Remove centering transform before setting pixel position
+        const curTransform = el.style.transform || '';
+        const cleanTransform = curTransform.replace(/translate\([^)]*\)/g, '').trim();
+        el.style.transform = cleanTransform;
+        el.style.left = (elRect.left - pageRect.left) + 'px';
+        el.style.top  = (elRect.top  - pageRect.top)  + 'px';
+        el.style.margin = '0';
+      }
+
+      const ox = parseFloat(el.style.left) || 0;
+      const oy = parseFloat(el.style.top)  || 0;
+      const sx = e.clientX, sy = e.clientY;
+
+      const onMove = mv => {
+        el.style.left = (ox + mv.clientX - sx) + 'px';
+        el.style.top  = (oy + mv.clientY - sy) + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  // ── Attach toolbar to one element ────────────────────────────
+
   function attach(el, page) {
     if (!el || el.dataset.beInit) return;
     el.dataset.beInit = '1';
     el.classList.add('be-block');
-    el.style.position = el.style.position || 'relative';
 
-    el.appendChild(mkCtrl(el));
+    const toolbar = mkToolbar();
+    // Prevent toolbar click from bubbling to page (which would deselect)
+    toolbar.addEventListener('mousedown', e => e.stopPropagation());
 
-    const rh = document.createElement('div');
-    rh.className = 'be-rz';
-    el.appendChild(rh);
-    setupResize(rh, el, page);
+    // ── Click → select ─────────────────────────────────────────
+    el.addEventListener('mousedown', e => {
+      if (e.target.closest('.be-toolbar')) return;
+      e.stopPropagation();
+      select(el);
+    });
 
-    setupDrag(el, page);
-
+    // ── Double-click → edit text ───────────────────────────────
     const hasTable = !!el.querySelector('table');
     const hasImg   = !!el.querySelector('img');
-    if (!hasTable && !hasImg) setupTextEdit(el);
-  }
+    if (!hasTable && !hasImg) {
+      el.addEventListener('dblclick', e => {
+        if (e.target.closest('.be-toolbar')) return;
+        select(el);
+        el.contentEditable = 'true';
+        el.spellcheck = false;
+        el.classList.add('be-editing');
+        // Place cursor
+        el.focus();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          el.contentEditable = 'false';
+          el.classList.remove('be-editing');
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => {
+        el.contentEditable = 'false';
+        el.classList.remove('be-editing');
+      }, true);
+    }
 
-  // ── Margin guide ──────────────────────────────────────────────────
-  function addMarginGuide(page) {
-    if (page.querySelector('.be-margin-guide')) return;
-    const g = document.createElement('div');
-    g.className = 'be-margin-guide';
-    const m = 65; // ~2cm at preview scale
-    g.style.cssText = `top:${m}px;left:${m}px;right:${m}px;bottom:${m}px;`;
-    page.appendChild(g);
-  }
+    // ── Toolbar actions ────────────────────────────────────────
+    toolbar.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      e.stopPropagation();
+      const a = btn.dataset.action;
 
-  // ── Click outside → deselect ──────────────────────────────────────
-  function setupDeselect(page) {
-    if (page.dataset.beDeselect) return;
-    page.dataset.beDeselect = '1';
-    page.addEventListener('mousedown', e => {
-      if (!e.target.closest('.be-block') && !e.target.closest('.be-ctrl') && !e.target.closest('#be-fmt-bar')) {
-        if (_sel) deselect(_sel);
-        hideFmtBar();
+      if (a === 'del') {
+        const hidden = el.classList.toggle('be-hidden');
+        el.dataset.beHidden = hidden ? '1' : '0';
+        btn.textContent = hidden ? '👁' : '✕';
+        btn.title = hidden ? 'Показать' : 'Скрыть элемент';
+        if (hidden) {
+          // Allow hovering hidden elements to restore
+          el.style.pointerEvents = 'all';
+        }
+        return;
       }
+      if (a === 'fs-') el.style.fontSize = Math.max(6,  getFontSize(el) - 1) + 'px';
+      if (a === 'fs+') el.style.fontSize = Math.min(80, getFontSize(el) + 1) + 'px';
+      if (a === 'sc-') { el.dataset.beScale = Math.max(0.15, parseFloat((getScale(el) - 0.05).toFixed(2))); applyTransform(el); }
+      if (a === 'sc+') { el.dataset.beScale = Math.min(5,    parseFloat((getScale(el) + 0.05).toFixed(2))); applyTransform(el); }
+      if (a === 'rot') { el.dataset.beRot = (getRot(el) + 90) % 360; applyTransform(el); }
     });
+
+    // ── Drag setup ─────────────────────────────────────────────
+    const handle = toolbar.querySelector('.be-handle');
+    setupDrag(handle, el, page);
+
+    el.appendChild(toolbar);
   }
 
-  // ── Init one page ─────────────────────────────────────────────────
+  // ── Init one .spp-a4 page ────────────────────────────────────
+
   function initPage(page) {
     if (!page || page.dataset.bePageInit) return;
     page.dataset.bePageInit = '1';
     page.style.position = 'relative';
-    addMarginGuide(page);
-    setupDeselect(page);
 
+    addMarginGuide(page);
+    setupPageDeselect(page);
+
+    // Direct children
     Array.from(page.children).forEach(child => {
-      const c = child.className || '';
-      if (c.includes('be-margin') || c.includes('be-ctrl')) return;
+      if (child.classList.contains('be-toolbar') || child.classList.contains('be-margin-guide')) return;
       attach(child, page);
     });
 
-    ['#prevCovLogo2','#prevCovName2','#prevCovSlogan2','#prevCovType2',
-     '#prevObjInfo2','#prevPlanBox2','.be-editable-title','.be-plan-docs',
-    ].forEach(sel => page.querySelectorAll(sel).forEach(el => attach(el, page)));
+    // Named sub-elements (individually editable inside wrapper divs)
+    const named = [
+      '#prevCovLogo2', '#prevCovName2', '#prevCovSlogan2',
+      '#prevCovType2',
+      '#prevObjInfo2', '#prevPlanBox2',
+      '.be-editable-title',
+    ];
+    named.forEach(sel => {
+      page.querySelectorAll(sel).forEach(el => attach(el, page));
+    });
   }
 
-  // ── Public ────────────────────────────────────────────────────────
+  // ── Public API ────────────────────────────────────────────────
+
   function init() {
     injectStyle();
-    getFmtBar(); // pre-create format bar
     document.querySelectorAll('.spp-a4').forEach(initPage);
   }
 
   return { init, initPage };
+
 })();
 
 function initRightPanelEditor() {
