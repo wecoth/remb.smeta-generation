@@ -546,12 +546,30 @@
 <!-- RIGHT: live preview panel -->
 <div class="smeta-preview-panel" id="smetaPreviewPanel">
   <div class="spp-header">
-    <div class="spp-tabs" id="sppTabs">
-      <button class="spp-tab active" data-page="cover">Обложка</button>
-      <button class="spp-tab" data-page="plan">Планировка</button>
-      <button class="spp-tab" data-page="smr">СМР</button>
-      <button class="spp-tab" data-page="mat">Материалы</button>
-      <button class="spp-tab" data-page="final">Итоговая</button>
+    <div class="spp-pill-wrap">
+      <div class="spp-pill" id="sppTabs">
+        <button class="spp-tab active" data-page="cover">
+          <span class="spp-check" data-page="cover" title="Показать в PDF">✓</span>
+          Обложка
+        </button>
+        <button class="spp-tab" data-page="plan">
+          <span class="spp-check" data-page="plan" title="Показать в PDF">✓</span>
+          Планировка
+        </button>
+        <button class="spp-tab" data-page="smr">
+          <span class="spp-check" data-page="smr" title="Показать в PDF">✓</span>
+          СМР
+        </button>
+        <button class="spp-tab" data-page="mat">
+          <span class="spp-check" data-page="mat" title="Показать в PDF">✓</span>
+          Материалы
+        </button>
+        <button class="spp-tab" data-page="final">
+          <span class="spp-check" data-page="final" title="Показать в PDF">✓</span>
+          Итоговая
+        </button>
+        <div class="spp-pill-slider" id="sppPillSlider"></div>
+      </div>
     </div>
   </div>
   <div class="spp-body" id="sppBody">
@@ -971,27 +989,66 @@
   }
 })();
 
-// ── SPP TABS ─────────────────────────────────────────────
+// ── SPP PILL TABS + CHECKBOXES ───────────────────────────
 (function() {
   function initSppTabs() {
-    var tabs  = document.querySelectorAll('.spp-tab');
-    var pages = document.querySelectorAll('.spp-page');
+    var pill   = document.getElementById('sppTabs');
+    var slider = document.getElementById('sppPillSlider');
+    var tabs   = document.querySelectorAll('.spp-tab');
+    var pages  = document.querySelectorAll('.spp-page');
+
+    function moveSlider(activeTab) {
+      if (!slider || !pill) return;
+      var pillRect = pill.getBoundingClientRect();
+      var tabRect  = activeTab.getBoundingClientRect();
+      slider.style.width     = tabRect.width + 'px';
+      slider.style.transform = 'translateX(' + (tabRect.left - pillRect.left - 3) + 'px)';
+    }
+
+    function switchTab(tab) {
+      var p = tab.dataset.page;
+      tabs.forEach(function(t){ t.classList.remove('active'); });
+      pages.forEach(function(pg){ pg.classList.remove('active'); });
+      tab.classList.add('active');
+      moveSlider(tab);
+      var target = document.querySelector('.spp-page[data-page="' + p + '"]');
+      if (target) {
+        target.classList.add('active');
+        setTimeout(function() {
+          var a4 = target.querySelector('.spp-a4');
+          if (a4 && window.BlockEditor) window.BlockEditor.initPage(a4);
+        }, 50);
+      }
+    }
+
     tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-        var p = tab.dataset.page;
-        tabs.forEach(function(t){ t.classList.remove('active'); });
-        pages.forEach(function(pg){ pg.classList.remove('active'); });
-        tab.classList.add('active');
-        var target = document.querySelector('.spp-page[data-page="' + p + '"]');
-        if (target) {
-          target.classList.add('active');
-          // Init block editor for this page's .spp-a4
-          setTimeout(function() {
-            var a4 = target.querySelector('.spp-a4');
-            if (a4 && window.BlockEditor) window.BlockEditor.initPage(a4);
-          }, 50);
-        }
+      tab.addEventListener('click', function(e) {
+        if (e.target.classList.contains('spp-check')) return;
+        switchTab(tab);
       });
+    });
+
+    // Checkboxes — toggle page in PDF/preview
+    document.querySelectorAll('.spp-check').forEach(function(chk) {
+      chk.dataset.on = '1';
+      chk.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var on = chk.dataset.on !== '0';
+        chk.dataset.on = on ? '0' : '1';
+        chk.classList.toggle('unchecked', on);
+        var page = chk.closest('.spp-tab').dataset.page;
+        var pageEl = document.querySelector('.spp-page[data-page="' + page + '"]');
+        if (pageEl) pageEl.dataset.excluded = on ? '1' : '0';
+      });
+    });
+
+    requestAnimationFrame(function() {
+      var active = document.querySelector('.spp-tab.active');
+      if (active) {
+        slider.style.transition = 'none';
+        moveSlider(active);
+        requestAnimationFrame(function(){ slider.style.transition = ''; });
+      }
     });
   }
   if (document.readyState === 'loading') {
