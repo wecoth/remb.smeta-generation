@@ -325,135 +325,51 @@ export function liveUpdate() {
   const client = document.getElementById('clientName')?.value || '—';
   const ex = document.getElementById('executorName')?.value || '—';
   const dt = fmtDate(document.getElementById('inspDate')?.value);
-
-  // Cover preview
-  const pli = document.getElementById('prevLogoImg'), pc = document.getElementById('prevCircle');
-  if (appState.logoData) { if (pli) { pli.src = appState.logoData; pli.style.display = 'block'; } if (pc) pc.style.display = 'none'; }
-  else { if (pli) pli.style.display = 'none'; if (pc) { pc.style.display = 'flex'; pc.textContent = cl; } }
-  const pcn = document.getElementById('prevCovName'); if (pcn) pcn.textContent = cn.toUpperCase();
-  const pcs = document.getElementById('prevCovSlogan'); if (pcs) pcs.textContent = sl;
-  const pfc = document.getElementById('prevFootCircle'); if (pfc) pfc.textContent = cl;
-  const pfn = document.getElementById('prevFootName'); if (pfn) pfn.textContent = cn.toUpperCase();
-
-  // Plan preview
-  const ppi = document.getElementById('prevPlanImg'), pph = document.getElementById('prevPlanPh');
-  if (appState.planData) { if (ppi) { ppi.src = appState.planData; ppi.style.display = 'block'; } if (pph) pph.style.display = 'none'; }
-  else { if (ppi) ppi.style.display = 'none'; if (pph) pph.style.display = 'block'; }
-
-  const poi = document.getElementById('prevObjInfo');
-  if (poi) poi.innerHTML = `<strong>Объект:</strong> ${esc(on)}<br><strong>Дата осмотра:</strong> ${dt}<br><strong>Заказчик:</strong> ${esc(client)}<br><strong>Исполнитель:</strong> ${esc(ex)}`;
-
-  // Rooms preview
   const rooms = getRooms();
   let tf = 0, tw = 0, tp = 0;
-  const rb = document.getElementById('prevRoomsBody');
-  if (rb) {
-    rb.innerHTML = '';
-    rooms.forEach(r => {
-      tf += parseFloat(r.floor) || 0; tw += parseFloat(r.walls) || 0; tp += parseFloat(r.perim) || 0;
-      rb.innerHTML += `<tr><td style="border:1px solid #e0e0e0;padding:5px 7px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.floor}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.walls}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.perim}</td></tr>`;
-    });
-  }
-  const ptf = document.getElementById('prevTotF'), ptw = document.getElementById('prevTotW'), ptp = document.getElementById('prevTotP');
-  if (ptf) ptf.textContent = tf.toFixed(2); if (ptw) ptw.textContent = tw.toFixed(2); if (ptp) ptp.textContent = tp.toFixed(2);
-  ['prevPfC', 'prevPfN'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.textContent = i === 0 ? cl : cn.toUpperCase(); });
+  rooms.forEach(r => { tf += parseFloat(r.floor)||0; tw += parseFloat(r.walls)||0; tp += parseFloat(r.perim)||0; });
+  const smrRows = collectSmrRows().slice(0, 25), smrTot = getSmrTotal();
+  const matRows = collectMatRows().slice(0, 25), matTot = getMatTotal();
 
-  // SMR preview
-  const smrRows = collectSmrRows().slice(0, 20), smrTot = getSmrTotal();
-  const smrPrev = document.getElementById('prevSmr');
-  if (smrRows.length > 0 && smrPrev) {
-    smrPrev.style.display = 'block';
-    const se = document.getElementById('prevSmrEmpty'); if (se) se.style.display = 'none';
-    const sb = document.getElementById('prevSmrBody');
-    if (sb) sb.innerHTML = smrRows.map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i + 1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
-      `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(smrTot)}</td></tr>`;
-  }
-
-  // Mat preview
-  const matRows = collectMatRows().slice(0, 20), matTot = getMatTotal();
-  const matPrev = document.getElementById('prevMat');
-  if (matRows.length > 0 && matPrev) {
-    matPrev.style.display = 'block';
-    const mb2 = document.getElementById('prevMatBody');
-    if (mb2) mb2.innerHTML = matRows.map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i + 1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
-      `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(matTot)}</td></tr>`;
-  }
-
-  // Final preview
-  const smrV = getSmrTotal(), matV = getMatTotal();
-  const finPrev = document.getElementById('prevFinal');
-  if ((smrV > 0 || matV > 0) && finPrev) {
-    finPrev.style.display = 'block';
-    let rows = '', num = 0;
-    if (smrV > 0) { num++; rows += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительно-монтажные работы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf > 0 ? fmt(smrV / tf) : '—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(smrV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
-    if (matV > 0) { num++; rows += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительные и отделочные материалы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf > 0 ? fmt(matV / tf) : '—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(matV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
-    const pfb = document.getElementById('prevFinBody'); if (pfb) pfb.innerHTML = rows;
-    const pfv = document.getElementById('prevFinVal'); if (pfv) pfv.textContent = fmt(smrV + matV);
-  }
-
-  // Страница обмерного плана — показываем если есть полный чертёж
-  const fullPlanPage = document.getElementById('fullPlanPage');
-  const fullPlanImg  = document.getElementById('fullPlanImg');
-  const fullImg = appState.planDataFull || null;
-  if (fullPlanPage) {
-    if (fullImg) {
-      fullPlanPage.style.display = 'block';
-      if (fullPlanImg) { fullPlanImg.src = fullImg; fullPlanImg.style.display = 'block'; }
-    } else {
-      fullPlanPage.style.display = 'none';
-    }
-  }
-
-  // ── Sync right panel (desktop preview) ──────────────────────────
-  _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, smrRows, smrTot, matRows, matTot });
-}
-
-function _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, smrRows, smrTot, matRows, matTot }) {
-  // Cover
+  // ── Cover ──────────────────────────────────────────────────────────
   const pli2 = document.getElementById('prevLogoImg2'), pc2 = document.getElementById('prevCircle2');
   if (appState.logoData) { if (pli2) { pli2.src = appState.logoData; pli2.style.display = 'block'; } if (pc2) pc2.style.display = 'none'; }
   else { if (pli2) pli2.style.display = 'none'; if (pc2) { pc2.style.display = 'flex'; pc2.textContent = cl; } }
-  const pcn2 = document.getElementById('prevCovName2'); if (pcn2 && !pcn2.isContentEditable && !pcn2.dataset.userEdited) pcn2.textContent = cn.toUpperCase();
+  const pcn2 = document.getElementById('prevCovName2'); if (pcn2 && !pcn2.dataset.userEdited) pcn2.textContent = cn.toUpperCase();
   const pcs2 = document.getElementById('prevCovSlogan2'); if (pcs2 && !pcs2.dataset.userEdited) pcs2.textContent = sl;
   const pfc2 = document.getElementById('prevFootCircle2'); if (pfc2 && !pfc2.dataset.userEdited) pfc2.textContent = cl;
   const pfn2 = document.getElementById('prevFootName2'); if (pfn2 && !pfn2.dataset.userEdited) pfn2.textContent = cn.toUpperCase();
-  const pct2 = document.getElementById('prevCovType2'); // не трогаем если пользователь редактировал
 
-  // Plan
+  // ── Plan / Карточка объекта ────────────────────────────────────────
   const ppi2 = document.getElementById('prevPlanImg2'), pph2 = document.getElementById('prevPlanPh2');
   if (appState.planData) { if (ppi2) { ppi2.src = appState.planData; ppi2.style.display = 'block'; } if (pph2) pph2.style.display = 'none'; }
   else { if (ppi2) ppi2.style.display = 'none'; if (pph2) pph2.style.display = 'block'; }
   const poi2 = document.getElementById('prevObjInfo2');
   if (poi2) poi2.innerHTML = `<strong>Объект:</strong> ${esc(on)}<br><strong>Дата осмотра:</strong> ${dt}<br><strong>Заказчик:</strong> ${esc(client)}<br><strong>Исполнитель:</strong> ${esc(ex)}`;
-
-  // Rooms table in plan page
   const rb2 = document.getElementById('prevRoomsBody2');
-  if (rb2) {
-    rb2.innerHTML = '';
-    rooms.forEach(r => { rb2.innerHTML += `<tr><td style="border:1px solid #e0e0e0;padding:5px 7px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.floor}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.walls}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.perim}</td></tr>`; });
-  }
+  if (rb2) { rb2.innerHTML = rooms.map(r => `<tr><td style="border:1px solid #e0e0e0;padding:5px 7px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.floor}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.walls}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.perim}</td></tr>`).join(''); }
 
-  // SMR
+  // ── SMR ────────────────────────────────────────────────────────────
   const sb2 = document.getElementById('prevSmrBody2'), se2 = document.getElementById('prevSmrEmpty2');
   if (sb2) {
     if (smrRows.length > 0) {
       if (se2) se2.style.display = 'none';
-      sb2.innerHTML = smrRows.slice(0,25).map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
+      sb2.innerHTML = smrRows.map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
         `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(smrTot)}</td></tr>`;
     } else { if (se2) se2.style.display = 'flex'; sb2.innerHTML = ''; }
   }
 
-  // Mat
+  // ── Materials ──────────────────────────────────────────────────────
   const mb2 = document.getElementById('prevMatBody2'), me2 = document.getElementById('prevMatEmpty2');
   if (mb2) {
     if (matRows.length > 0) {
       if (me2) me2.style.display = 'none';
-      mb2.innerHTML = matRows.slice(0,25).map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
+      mb2.innerHTML = matRows.map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
         `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(matTot)}</td></tr>`;
     } else { if (me2) me2.style.display = 'flex'; mb2.innerHTML = ''; }
   }
 
-  // Final
+  // ── Final ──────────────────────────────────────────────────────────
   const smrV = getSmrTotal(), matV = getMatTotal();
   const pfb2 = document.getElementById('prevFinBody2'), pfv2 = document.getElementById('prevFinVal2');
   if (pfb2) {
@@ -463,7 +379,10 @@ function _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, sm
     pfb2.innerHTML = rows2;
   }
   if (pfv2) pfv2.textContent = fmt(smrV + matV);
+
+  updateSummary();
 }
+
 
 // ── Preview modal ─────────────────────────────────────────────────
 
