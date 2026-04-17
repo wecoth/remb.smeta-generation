@@ -602,8 +602,8 @@ export async function generatePDF() {
     const resp = await fetch('https://assistcloudai.xyz/webhook/generate-pdf', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        html: Array.from(document.querySelectorAll('.spp-page'))
-          .filter(p => p.dataset.excluded !== '1')
+        html: Array.from(document.querySelectorAll('.spp-section'))
+          .filter(p => p.dataset.excluded !== '1' && !p.classList.contains('hidden'))
           .map(p => {
             const a4 = p.querySelector('.spp-a4');
             if (!a4) return '';
