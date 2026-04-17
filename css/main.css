@@ -731,67 +731,110 @@ html, body {
 .sidebar-scroll { padding: 16px 20px 40px; }
 
 /* ═══════════════════════════════════════════════════════════════
-   BLOCK EDITOR (be-*)
+   BLOCK EDITOR v2
 ═══════════════════════════════════════════════════════════════ */
 
-.be-block {
+/* Plan page layout */
+.be-plan-grid {
+  flex: 1;
+}
+.be-plan-left {
   position: relative;
 }
-.be-block:hover > .be-toolbar,
-.be-block:focus-within > .be-toolbar {
-  display: flex !important;
+.be-plan-right {
+  position: relative;
 }
+
+/* A4 page sizing in right panel */
+.spp-a4 {
+  width: 100%;
+  max-width: 740px;
+  min-height: 500px;
+  margin: 0 auto;
+  background: var(--white);
+  box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
+  border-radius: 2px;
+  font-family: 'Merriweather', serif;
+  position: relative;
+  overflow: visible;
+}
+
+/* Margin guide */
+.be-margin-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  border: 1px dashed rgba(160,160,160,0.3);
+  box-sizing: border-box;
+  border-radius: 1px;
+}
+
+/* Block hover/selected states */
+.be-block {
+  position: relative;
+  border-radius: 2px;
+}
+.be-block:hover {
+  outline: 1.5px dashed rgba(74,159,255,0.3);
+  outline-offset: 2px;
+}
+.be-block.be-selected {
+  outline: 2px solid #4a9eff !important;
+  outline-offset: 2px;
+}
+.be-block.be-editing {
+  outline: 2px solid #2171e0 !important;
+  background: rgba(33,113,224,0.03);
+}
+.be-block.be-hidden {
+  opacity: 0.1;
+}
+
+/* Toolbar */
 .be-toolbar {
   display: none;
   position: absolute;
-  top: -34px; left: 0;
+  top: -36px; left: 0;
   z-index: 9999;
   background: #1a1a2e;
-  border-radius: 7px;
-  padding: 3px 5px;
+  border-radius: 8px;
+  padding: 4px 7px;
   gap: 3px;
   align-items: center;
-  box-shadow: 0 3px 14px rgba(0,0,0,0.32);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.38);
   white-space: nowrap;
   user-select: none;
   pointer-events: all;
 }
-/* Keep toolbar visible when hovering toolbar itself */
-.be-toolbar:hover { display: flex !important; }
+.be-block.be-selected > .be-toolbar,
+.be-block.be-editing > .be-toolbar { display: flex; }
+
+.be-sep {
+  width: 1px; height: 14px;
+  background: rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
 .be-handle {
   cursor: grab;
-  color: rgba(255,255,255,0.45);
-  font-size: 14px;
-  padding: 0 5px;
+  color: rgba(255,255,255,0.5);
+  font-size: 15px;
+  padding: 0 4px;
   line-height: 1;
 }
 .be-handle:active { cursor: grabbing; }
 .be-btn {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.1);
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  padding: 3px 6px;
+  padding: 3px 7px;
   cursor: pointer;
   font-family: 'Onest', sans-serif;
   line-height: 1.3;
   transition: background .12s;
 }
 .be-btn:hover { background: rgba(255,255,255,0.28); }
-.be-del { background: rgba(192,57,43,0.55) !important; }
-.be-del:hover { background: rgba(231,76,60,0.85) !important; }
-.be-editing {
-  outline: 2px solid #4a9eff !important;
-  outline-offset: 3px;
-  min-width: 20px;
-  border-radius: 3px;
-}
-/* Hover outline on be-blocks */
-.be-block:hover { outline: 1.5px dashed rgba(74,159,255,0.45); outline-offset: 2px; }
-.be-block:hover > .be-toolbar { outline: none; }
-
-/* Special: table blocks and image blocks — show outline only, no font controls */
-.be-block-table:hover > .be-toolbar .be-btn[data-action="fs-"],
-.be-block-table:hover > .be-toolbar .be-btn[data-action="fs+"] { display: none; }
+.be-del { background: rgba(180,40,30,0.55) !important; }
+.be-del:hover { background: rgba(220,60,45,0.85) !important; }
