@@ -729,3 +729,69 @@ html, body {
 /* Sidebar head button adjustments */
 .sidebar-head { padding: 16px 20px 12px; }
 .sidebar-scroll { padding: 16px 20px 40px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   BLOCK EDITOR (be-*)
+═══════════════════════════════════════════════════════════════ */
+
+.be-block {
+  position: relative;
+}
+.be-block:hover > .be-toolbar,
+.be-block:focus-within > .be-toolbar {
+  display: flex !important;
+}
+.be-toolbar {
+  display: none;
+  position: absolute;
+  top: -34px; left: 0;
+  z-index: 9999;
+  background: #1a1a2e;
+  border-radius: 7px;
+  padding: 3px 5px;
+  gap: 3px;
+  align-items: center;
+  box-shadow: 0 3px 14px rgba(0,0,0,0.32);
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: all;
+}
+/* Keep toolbar visible when hovering toolbar itself */
+.be-toolbar:hover { display: flex !important; }
+.be-handle {
+  cursor: grab;
+  color: rgba(255,255,255,0.45);
+  font-size: 14px;
+  padding: 0 5px;
+  line-height: 1;
+}
+.be-handle:active { cursor: grabbing; }
+.be-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 6px;
+  cursor: pointer;
+  font-family: 'Onest', sans-serif;
+  line-height: 1.3;
+  transition: background .12s;
+}
+.be-btn:hover { background: rgba(255,255,255,0.28); }
+.be-del { background: rgba(192,57,43,0.55) !important; }
+.be-del:hover { background: rgba(231,76,60,0.85) !important; }
+.be-editing {
+  outline: 2px solid #4a9eff !important;
+  outline-offset: 3px;
+  min-width: 20px;
+  border-radius: 3px;
+}
+/* Hover outline on be-blocks */
+.be-block:hover { outline: 1.5px dashed rgba(74,159,255,0.45); outline-offset: 2px; }
+.be-block:hover > .be-toolbar { outline: none; }
+
+/* Special: table blocks and image blocks — show outline only, no font controls */
+.be-block-table:hover > .be-toolbar .be-btn[data-action="fs-"],
+.be-block-table:hover > .be-toolbar .be-btn[data-action="fs+"] { display: none; }
