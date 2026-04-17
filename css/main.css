@@ -694,7 +694,7 @@ html, body {
   padding: 28px 24px 40px;
 }
 .spp-page { display: none; width: 100%; }
-.spp-page.active { display: none; }
+.spp-page.active { display: block; }
 
 /* A4 page in right panel — scales to fit available width */
 .spp-a4 {
