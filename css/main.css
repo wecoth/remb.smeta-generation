@@ -696,11 +696,12 @@ html, body {
 .spp-page { display: none; width: 100%; }
 .spp-page.active { display: block; }
 
-/* A4 page in right panel — scales to fit available width */
+/* A4 page in right panel — strict A4 portrait ratio */
 .spp-a4 {
   width: calc(100% - 24px);
-  max-width: 860px;
-  min-height: 520px;
+  max-width: 780px;
+  /* A4 portrait: 210mm x 297mm → ratio 1:1.4142 */
+  aspect-ratio: 297 / 210;
   margin: 0 auto;
   background: var(--white);
   box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
@@ -708,6 +709,7 @@ html, body {
   font-family: 'Merriweather', serif;
   position: relative;
   overflow: visible;
+  flex-shrink: 0;
 }
 
 /* Inline edit on spp-a4 elements */
@@ -763,11 +765,8 @@ html, body {
 
 /* Mini toolbar — pill at bottom of selected block */
 .be-toolbar {
-  display: none;
+  display: none; /* shown via JS — floats above page, not inside element */
   position: absolute;
-  bottom: -30px;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 9999;
   background: #1a1a2e;
   border-radius: 20px;
@@ -779,8 +778,6 @@ html, body {
   pointer-events: all;
   white-space: nowrap;
 }
-.be-block.be-selected > .be-toolbar,
-.be-block.be-editing > .be-toolbar { display: flex; }
 
 .be-tbtn {
   background: rgba(255,255,255,.12);
@@ -800,19 +797,18 @@ html, body {
 
 /* Corner resize handle */
 .be-resize {
-  display: none;
-  position: absolute;
-  bottom: -5px;
-  right: -5px;
+  display: none; /* shown via JS */
+  position: absolute; /* relative to .spp-a4 page */
   width: 12px;
   height: 12px;
   background: #4a9eff;
+  border: 2px solid #fff;
   border-radius: 3px;
   cursor: se-resize;
   z-index: 9999;
   pointer-events: all;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
 }
-.be-block.be-selected > .be-resize { display: block; }
 
 /* Margin guide */
 .be-margin-guide {
