@@ -674,97 +674,70 @@ html, body {
   flex: 1; display: flex; flex-direction: column;
   background: #eceae6; overflow: hidden;
 }
-.spp-header {
-  background: var(--bg);
+.spp-checks-bar {
+  background: var(--white);
   border-bottom: 1px solid var(--line2);
   padding: 8px 16px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 52px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
-.spp-pill-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
+.spp-checks-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-right: 4px;
+  white-space: nowrap;
 }
-.spp-pill {
-  position: relative;
-  display: inline-flex;
-  background: var(--white);
-  border: 1px solid var(--line2);
-  border-radius: 14px;
-  padding: 3px;
-  gap: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,.07);
-}
-.spp-pill-slider {
-  position: absolute;
-  top: 3px; bottom: 3px; left: 3px;
-  background: #1a1a2e;
-  border-radius: 11px;
-  transition: transform .2s cubic-bezier(.4,0,.2,1), width .2s cubic-bezier(.4,0,.2,1);
-  pointer-events: none;
-  z-index: 0;
-}
-.spp-tab {
-  position: relative;
-  z-index: 1;
+.spp-chk {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 14px;
-  border: none;
-  background: transparent;
   font: 500 12px/1 'Onest', sans-serif;
-  color: var(--muted);
-  border-radius: 11px;
+  color: var(--ink);
   cursor: pointer;
-  transition: color .18s;
+  padding: 4px 10px 4px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--line2);
+  background: var(--white);
+  transition: background .12s, border-color .12s;
+  user-select: none;
   white-space: nowrap;
 }
-.spp-tab.active { color: #fff; }
-.spp-tab:not(.active):hover { color: var(--ink); }
-
-/* Checkbox indicator */
-.spp-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
+.spp-chk:hover { background: var(--card); }
+.spp-chk input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: #27ae60;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background .12s, color .12s;
-  background: rgba(0,0,0,.08);
-  color: transparent;
 }
-.spp-tab.active .spp-check {
-  background: rgba(255,255,255,.2);
-  color: rgba(255,255,255,.8);
+.spp-chk:has(input:checked) {
+  border-color: #27ae60;
+  background: #f0faf4;
+  color: #1a6e3c;
 }
-.spp-check.checked {
-  background: #27ae60 !important;
-  color: #fff !important;
+.spp-chk:has(input:not(:checked)) {
+  opacity: .55;
 }
-.spp-check:not(.checked) {
-  background: rgba(0,0,0,.08);
-  color: transparent;
-}
-/* default: all checked */
-.spp-tab .spp-check { background: rgba(255,255,255,.25); color: #fff; }
-.spp-tab:not(.active) .spp-check { background: #27ae60; color: #fff; }
-.spp-tab:not(.active) .spp-check.unchecked { background: rgba(0,0,0,.1); color: transparent; }
 .spp-body {
-  flex: 1; overflow-y: auto;
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 10px 8px 16px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 8px 40px;
+}
+.spp-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.spp-section.hidden {
+  display: none;
 }
 .spp-page { display: none; width: 100%; }
 .spp-page.active { display: block; }
