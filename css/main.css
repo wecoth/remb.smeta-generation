@@ -672,7 +672,7 @@ html, body {
 /* Right live preview panel */
 .smeta-preview-panel {
   flex: 1; display: flex; flex-direction: column;
-  background: #eceae6; overflow: hidden;
+  background: #eceae6; overflow: hidden; min-height: 0;
 }
 .spp-checks-bar {
   background: var(--white);
@@ -723,6 +723,7 @@ html, body {
 }
 .spp-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
