@@ -350,11 +350,18 @@ html, body {
    SMETA VIEW
 ═══════════════════════════════════════════════════════════════ */
 
-.smeta-shell { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.smeta-shell { height: 100%; display: flex; flex-direction: row; overflow: hidden; }
 
 .sidebar {
-  width: 100%; max-width: 680px; margin: 0 auto;
-  background: var(--bg); display: flex; flex-direction: column; overflow: hidden; height: 100%;
+  width: clamp(300px, 33.333vw, 520px);
+  min-width: 300px;
+  flex-shrink: 0;
+  background: var(--white);
+  border-right: 1px solid var(--line2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
 }
 .sidebar-head {
   padding: 20px 28px 14px; border-bottom: 1px solid var(--line);
@@ -630,3 +637,95 @@ html, body {
 .fin-total { display: flex; justify-content: flex-end; gap: 14px; align-items: baseline; margin-top: 6mm; }
 .fin-total span { font-size: 11px; color: #555; font-family: 'Merriweather', serif; }
 .fin-total strong { font-size: 18px; font-weight: 500; font-family: 'Merriweather', serif; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DESKTOP SMETA LAYOUT (right preview panel)
+═══════════════════════════════════════════════════════════════ */
+
+/* Topbar pill switcher */
+.topbar-pill-wrap {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center;
+}
+.topbar-pill {
+  position: relative; display: flex;
+  background: var(--card); border: 1px solid var(--line2);
+  border-radius: 10px; padding: 3px; gap: 0;
+}
+.pill-btn {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 18px; border: none; background: transparent;
+  font: 500 12px/1 'Onest', sans-serif;
+  color: var(--muted); border-radius: 8px; cursor: pointer;
+  transition: color .18s; white-space: nowrap;
+}
+.pill-btn.active { color: var(--ink); }
+.pill-slider {
+  position: absolute; top: 3px; left: 3px; bottom: 3px;
+  background: var(--white); border-radius: 7px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  transition: transform .22s cubic-bezier(.4,0,.2,1), width .22s cubic-bezier(.4,0,.2,1);
+  pointer-events: none; z-index: 0;
+}
+
+/* Right live preview panel */
+.smeta-preview-panel {
+  flex: 1; display: flex; flex-direction: column;
+  background: #eceae6; overflow: hidden;
+}
+.spp-header {
+  background: var(--white); border-bottom: 1px solid var(--line2);
+  padding: 0 24px; flex-shrink: 0;
+  display: flex; align-items: center; height: 44px;
+}
+.spp-tabs { display: flex; gap: 2px; }
+.spp-tab {
+  padding: 6px 14px; border: none; background: transparent;
+  font: 500 12px/1 'Onest', sans-serif;
+  color: var(--muted); border-radius: 6px; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.spp-tab:hover { background: var(--card); color: var(--ink); }
+.spp-tab.active { background: #e8eeff; color: #3a5ed0; font-weight: 600; }
+.spp-body {
+  flex: 1; overflow-y: auto;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 28px 24px 40px;
+}
+.spp-page { display: none; width: 100%; }
+.spp-page.active { display: block; }
+
+/* A4 page in right panel — scales to fit available width */
+.spp-a4 {
+  width: 100%;
+  max-width: 740px;
+  min-height: 480px;
+  margin: 0 auto;
+  background: var(--white);
+  box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
+  border-radius: 2px;
+  font-family: 'Merriweather', serif;
+  position: relative;
+}
+
+/* Inline edit on spp-a4 elements */
+.spp-a4 [data-editable] {
+  cursor: text;
+  border-radius: 3px;
+  transition: background .12s, outline .12s;
+  outline: 1.5px dashed transparent;
+  outline-offset: 3px;
+}
+.spp-a4 [data-editable]:hover {
+  outline-color: #4a9eff;
+  background: rgba(74,158,255,0.05);
+}
+.spp-a4 [data-editable]:focus {
+  outline-color: #2171e0;
+  background: rgba(33,113,224,0.07);
+}
+
+/* Sidebar head button adjustments */
+.sidebar-head { padding: 16px 20px 12px; }
+.sidebar-scroll { padding: 16px 20px 40px; }
