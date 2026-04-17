@@ -747,6 +747,7 @@ html, body {
   width: calc(100% - 16px);
   max-width: 100%;
   aspect-ratio: 297 / 210;
+  min-height: 400px;
   margin: 0 auto;
   background: var(--white);
   box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
