@@ -126,6 +126,7 @@
     display:flex; flex-direction:column;
     align-items:center; gap:20px;
     padding:12px 8px 40px;
+    position:relative;
   }
   .spp-page { display:block; width:100%; }
   .spp-a4 {
@@ -1002,16 +1003,19 @@
         tab.classList.add('active');
         var target = document.querySelector('.spp-page[data-page="' + tab.dataset.page + '"]');
         if (target && body) {
-          body.scrollTo({ top: target.offsetTop - 12, behavior: 'smooth' });
+          var bodyRect   = body.getBoundingClientRect();
+          var targetRect = target.getBoundingClientRect();
+          body.scrollTo({ top: body.scrollTop + (targetRect.top - bodyRect.top) - 12, behavior: 'smooth' });
         }
       });
     });
 
-    // Init BlockEditor + reset scroll
+    // Init BlockEditor + reset scroll to top
     setTimeout(function() {
       if (window.BlockEditor) window.BlockEditor.init();
-      if (body) body.scrollTop = 0;
     }, 300);
+    setTimeout(function() { if (body) body.scrollTop = 0; }, 350);
+    setTimeout(function() { if (body) body.scrollTop = 0; }, 700);
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initSppTabs);
