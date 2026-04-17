@@ -691,22 +691,23 @@ html, body {
 .spp-body {
   flex: 1; overflow-y: auto;
   display: flex; align-items: flex-start; justify-content: center;
-  padding: 28px 24px 40px;
+  padding: 16px 12px 32px;
 }
 .spp-page { display: none; width: 100%; }
 .spp-page.active { display: block; }
 
 /* A4 page in right panel — scales to fit available width */
 .spp-a4 {
-  width: 100%;
-  max-width: 740px;
-  min-height: 480px;
+  width: calc(100% - 24px);
+  max-width: 860px;
+  min-height: 520px;
   margin: 0 auto;
   background: var(--white);
   box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
   border-radius: 2px;
   font-family: 'Merriweather', serif;
   position: relative;
+  overflow: visible;
 }
 
 /* Inline edit on spp-a4 elements */
@@ -731,110 +732,94 @@ html, body {
 .sidebar-scroll { padding: 16px 20px 40px; }
 
 /* ═══════════════════════════════════════════════════════════════
-   BLOCK EDITOR v2
+   BLOCK EDITOR v3
 ═══════════════════════════════════════════════════════════════ */
 
-/* Plan page layout */
-.be-plan-grid {
-  flex: 1;
-}
-.be-plan-left {
-  position: relative;
-}
-.be-plan-right {
-  position: relative;
-}
-
-/* A4 page sizing in right panel */
-.spp-a4 {
-  width: 100%;
-  max-width: 740px;
-  min-height: 500px;
-  margin: 0 auto;
-  background: var(--white);
-  box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
-  border-radius: 2px;
-  font-family: 'Merriweather', serif;
-  position: relative;
-  overflow: visible;
-}
-
-/* Margin guide */
-.be-margin-guide {
-  position: absolute;
-  pointer-events: none;
-  z-index: 1;
-  border: 1px dashed rgba(160,160,160,0.3);
-  box-sizing: border-box;
-  border-radius: 1px;
-}
-
-/* Block hover/selected states */
 .be-block {
-  position: relative;
+  box-sizing: border-box;
   border-radius: 2px;
 }
 .be-block:hover {
   outline: 1.5px dashed rgba(74,159,255,0.3);
   outline-offset: 2px;
+  cursor: grab;
 }
 .be-block.be-selected {
   outline: 2px solid #4a9eff !important;
   outline-offset: 2px;
+  cursor: grab;
 }
 .be-block.be-editing {
-  outline: 2px solid #2171e0 !important;
-  background: rgba(33,113,224,0.03);
+  outline: 2px solid #2272e0 !important;
+  cursor: text !important;
+}
+.be-block.be-dragging {
+  cursor: grabbing !important;
+  opacity: .93;
 }
 .be-block.be-hidden {
-  opacity: 0.1;
+  opacity: .08;
 }
 
-/* Toolbar */
+/* Mini toolbar — pill at bottom of selected block */
 .be-toolbar {
   display: none;
   position: absolute;
-  top: -36px; left: 0;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 9999;
   background: #1a1a2e;
-  border-radius: 8px;
-  padding: 4px 7px;
-  gap: 3px;
+  border-radius: 20px;
+  padding: 4px 8px;
+  gap: 4px;
   align-items: center;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.38);
-  white-space: nowrap;
+  box-shadow: 0 3px 12px rgba(0,0,0,.32);
   user-select: none;
   pointer-events: all;
+  white-space: nowrap;
 }
 .be-block.be-selected > .be-toolbar,
 .be-block.be-editing > .be-toolbar { display: flex; }
 
-.be-sep {
-  width: 1px; height: 14px;
-  background: rgba(255,255,255,0.15);
-  flex-shrink: 0;
-}
-.be-handle {
-  cursor: grab;
-  color: rgba(255,255,255,0.5);
-  font-size: 15px;
-  padding: 0 4px;
-  line-height: 1;
-}
-.be-handle:active { cursor: grabbing; }
-.be-btn {
-  background: rgba(255,255,255,0.1);
+.be-tbtn {
+  background: rgba(255,255,255,.12);
   border: none;
-  border-radius: 5px;
+  border-radius: 12px;
   color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 7px;
+  font-size: 12px;
+  padding: 3px 9px;
   cursor: pointer;
   font-family: 'Onest', sans-serif;
   line-height: 1.3;
   transition: background .12s;
 }
-.be-btn:hover { background: rgba(255,255,255,0.28); }
-.be-del { background: rgba(180,40,30,0.55) !important; }
-.be-del:hover { background: rgba(220,60,45,0.85) !important; }
+.be-tbtn:hover { background: rgba(255,255,255,.28); }
+.be-tbtn-del { background: rgba(180,40,30,.55) !important; }
+.be-tbtn-del:hover { background: rgba(220,60,45,.85) !important; }
+
+/* Corner resize handle */
+.be-resize {
+  display: none;
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  width: 12px;
+  height: 12px;
+  background: #4a9eff;
+  border-radius: 3px;
+  cursor: se-resize;
+  z-index: 9999;
+  pointer-events: all;
+}
+.be-block.be-selected > .be-resize { display: block; }
+
+/* Margin guide */
+.be-margin-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  border: 1px dashed rgba(150,150,150,.25);
+  box-sizing: border-box;
+  border-radius: 1px;
+}
