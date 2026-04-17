@@ -556,7 +556,7 @@
 
     <!-- 1. Обложка -->
     <div class="spp-section" data-page="cover">
-      <div class="preview-page spp-a4" id="prevCover2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
+      <div class="preview-page spp-a4" id="prevCover2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;min-height:520px;position:relative;">
         <!-- Центральный блок -->
         <div id="prevCovLogo2" style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
@@ -982,10 +982,12 @@
     // Init block editor for all visible sections on load
     setTimeout(function() {
       if (window.BlockEditor) window.BlockEditor.init();
-      // Scroll preview to top
+    }, 400);
+    // Reset scroll AFTER editor init (editor may scroll elements into view)
+    setTimeout(function() {
       var body = document.getElementById('sppBody');
       if (body) body.scrollTop = 0;
-    }, 400);
+    }, 600);
   }
 
   if (document.readyState === 'loading') {
