@@ -126,8 +126,8 @@
     padding:24px;
   }
   /* spp-a4 size is in main.css — just keep position here */
-  .spp-a4 { position:relative; overflow:visible; }
-  .cover-pg.spp-a4 { min-height:500px; }
+  .spp-a4 { position:relative; }
+
   .be-editable-title { position:relative; }
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
@@ -556,15 +556,17 @@
 
     <!-- 1. Обложка -->
     <div class="spp-section" data-page="cover">
-      <div class="preview-page cover-pg spp-a4" id="prevCover2" style="position:relative;min-height:540px;">
-        <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
+      <div class="preview-page spp-a4" id="prevCover2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
+        <!-- Центральный блок -->
+        <div id="prevCovLogo2" style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
           <div id="prevCircle2" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
         </div>
-        <div id="prevCovName2" style="position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);font-size:20px;font-weight:400;letter-spacing:5px;text-transform:uppercase;white-space:nowrap">КОМПАНИЯ</div>
-        <div id="prevCovSlogan2" style="position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);font-size:10px;letter-spacing:4px;color:#888;text-transform:uppercase;white-space:nowrap">КАЧЕСТВО ПОД КЛЮЧ</div>
-        <div id="prevCovType2" style="position:absolute;left:50%;top:72%;transform:translate(-50%,-50%);font-size:14px;font-weight:300;color:#555;letter-spacing:2px;white-space:nowrap">Проектно-сметная документация</div>
-        <div style="position:absolute;bottom:40px;right:40px;display:flex;align-items:center;gap:6px">
+        <div id="prevCovName2" style="font-size:20px;font-weight:400;letter-spacing:5px;text-transform:uppercase;margin-bottom:6px">КОМПАНИЯ</div>
+        <div id="prevCovSlogan2" style="font-size:10px;letter-spacing:4px;color:#888;text-transform:uppercase;margin-bottom:40px">КАЧЕСТВО ПОД КЛЮЧ</div>
+        <div id="prevCovType2" style="font-size:14px;font-weight:300;color:#555;letter-spacing:2px">Проектно-сметная документация</div>
+        <!-- Нижний колонтитул -->
+        <div style="position:absolute;bottom:28px;right:32px;display:flex;align-items:center;gap:6px">
           <div id="prevFootCircle2" style="width:22px;height:22px;border:1.5px solid #aaa;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;color:#aaa">К</div>
           <div id="prevFootName2" style="font-size:9px;font-weight:600;letter-spacing:2px;color:#aaa">КОМПАНИЯ</div>
         </div>
