@@ -660,142 +660,293 @@ export function initSmeta() {
   setTimeout(initRightPanelEditor, 200);
 }
 
-// ── Right panel inline editor ─────────────────────────────────────
-// Enables contenteditable + drag on elements with data-ed attribute
-// inside .spp-a4 pages (the desktop right preview panel)
 
-function initRightPanelEditor() {
-  // Elements that should be inline-editable (text content)
-  const editableSelectors = [
-    '#prevCovName2', '#prevCovSlogan2', '#prevCovType2',
-    '#prevFootName2', '#prevFootCircle2',
-  ];
-  editableSelectors.forEach(sel => {
-    const el = document.querySelector(sel);
-    if (!el || el.dataset.rpEdInit) return;
-    el.dataset.rpEdInit = '1';
-    el.setAttribute('contenteditable', 'true');
-    el.dataset.editable = '1';
-    el.spellcheck = false;
-    el.style.cursor = 'text';
-    el.style.minWidth = '10px';
-    el.style.outline = 'none';
-    el.addEventListener('focus', () => { el.dataset.userEdited = '1'; });
-    el.addEventListener('blur',  () => { el.dataset.userEdited = '1'; });
-    el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
-  });
+// ══════════════════════════════════════════════════════════════════
+// BLOCK EDITOR — universal drag/resize/edit for .spp-a4 pages
+// ══════════════════════════════════════════════════════════════════
+//
+// Usage: BlockEditor.init(containerEl)
+//   — scans all direct children + key named elements
+//   — attaches toolbar, drag, double-click-to-edit
+//
+// Toolbar buttons: drag-handle | A− A+ | scale− scale+ | ↺ | ✕
+// Double-click on text element → contenteditable
+// Single drag on toolbar handle → reposition
 
-  // Elements that can be dragged (position:absolute ones on cover page)
-  const draggableSelectors = [
-    '#prevCovLogo2', '#prevCovName2', '#prevCovSlogan2',
-    '#prevCovType2', '#prevFootCircle2',
-  ];
-  draggableSelectors.forEach(sel => {
-    const el = document.querySelector(sel);
-    if (!el || el.dataset.rpDragInit) return;
-    const page = el.closest('.spp-a4'); if (!page) return;
-    el.dataset.rpDragInit = '1';
-    el.style.cursor = 'move';
+const BlockEditor = (() => {
 
+  const TOOLBAR_HTML = `
+    <div class="be-toolbar" contenteditable="false">
+      <span class="be-handle" title="Перетащить">⠿</span>
+      <button class="be-btn" data-action="fs-" title="Уменьшить шрифт">A−</button>
+      <button class="be-btn" data-action="fs+" title="Увеличить шрифт">A+</button>
+      <button class="be-btn" data-action="sc-" title="Уменьшить">◻−</button>
+      <button class="be-btn" data-action="sc+" title="Увеличить">◻+</button>
+      <button class="be-btn" data-action="rot" title="Повернуть на 90°">↺</button>
+      <button class="be-btn be-del" data-action="del" title="Скрыть">✕</button>
+    </div>`;
+
+  const STYLE = `
+    .be-block { position: relative; }
+    .be-block:hover > .be-toolbar,
+    .be-block:focus-within > .be-toolbar { display: flex !important; }
+    .be-toolbar {
+      display: none;
+      position: absolute;
+      top: -32px; left: 0;
+      z-index: 9999;
+      background: #1a1a2e;
+      border-radius: 7px;
+      padding: 3px 5px;
+      gap: 3px;
+      align-items: center;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.28);
+      white-space: nowrap;
+      user-select: none;
+    }
+    .be-handle {
+      cursor: grab;
+      color: rgba(255,255,255,0.5);
+      font-size: 14px;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .be-handle:active { cursor: grabbing; }
+    .be-btn {
+      background: rgba(255,255,255,0.12);
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1.4;
+      transition: background .12s;
+    }
+    .be-btn:hover { background: rgba(255,255,255,0.25); }
+    .be-del { background: rgba(192,57,43,0.5); }
+    .be-del:hover { background: rgba(231,76,60,0.8); }
+    .be-editing {
+      outline: 2px solid #4a9eff !important;
+      outline-offset: 2px;
+      min-width: 20px;
+      min-height: 1em;
+    }
+    .be-block[data-hidden="1"] { opacity: 0.15; pointer-events: none; }
+    .be-hidden-hint {
+      display: none;
+      position: absolute;
+      top: -32px; left: 0;
+      background: #888;
+      color: #fff;
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .be-block[data-hidden="1"]:hover .be-hidden-hint { display: block; }
+  `;
+
+  function injectStyle() {
+    if (document.getElementById('be-style')) return;
+    const s = document.createElement('style');
+    s.id = 'be-style';
+    s.textContent = STYLE;
+    document.head.appendChild(s);
+  }
+
+  function getFontSize(el) {
+    return parseFloat(getComputedStyle(el).fontSize) || 14;
+  }
+
+  function getScale(el) {
+    return parseFloat(el.dataset.beScale || '1');
+  }
+
+  function applyScale(el, sc) {
+    el.dataset.beScale = sc;
+    el.style.transform = (el.style.transform || '')
+      .replace(/scale\([^)]*\)/g, '')
+      .trim() + ` scale(${sc})`;
+    el.style.transformOrigin = 'top left';
+  }
+
+  function getRotation(el) {
+    return parseFloat(el.dataset.beRot || '0');
+  }
+
+  function applyRotation(el, deg) {
+    el.dataset.beRot = deg;
+    const sc = getScale(el);
+    el.style.transform = `rotate(${deg}deg) scale(${sc})`;
+    el.style.transformOrigin = 'top left';
+  }
+
+  function attachToolbar(el, page) {
+    if (el.dataset.beInit) return;
+    el.dataset.beInit = '1';
+    el.classList.add('be-block');
+    el.style.position = el.style.position || 'relative';
+
+    // Inject toolbar
+    const tb = document.createElement('div');
+    tb.innerHTML = TOOLBAR_HTML;
+    const toolbar = tb.firstElementChild;
+    el.appendChild(toolbar);
+
+    // Toolbar button actions
+    toolbar.addEventListener('mousedown', e => e.stopPropagation());
+    toolbar.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      e.stopPropagation();
+      const action = btn.dataset.action;
+
+      if (action === 'del') {
+        el.dataset.hidden = el.dataset.hidden === '1' ? '0' : '1';
+        if (el.dataset.hidden === '1') {
+          el.style.opacity = '0.12';
+          el.style.pointerEvents = 'none';
+          btn.textContent = '👁';
+          btn.title = 'Восстановить';
+        } else {
+          el.style.opacity = '';
+          el.style.pointerEvents = '';
+          btn.textContent = '✕';
+          btn.title = 'Скрыть';
+        }
+        return;
+      }
+      if (action === 'fs-') {
+        el.style.fontSize = Math.max(7, getFontSize(el) - 1) + 'px';
+      } else if (action === 'fs+') {
+        el.style.fontSize = Math.min(72, getFontSize(el) + 1) + 'px';
+      } else if (action === 'sc-') {
+        applyScale(el, Math.max(0.2, parseFloat((getScale(el) - 0.05).toFixed(2))));
+      } else if (action === 'sc+') {
+        applyScale(el, Math.min(4, parseFloat((getScale(el) + 0.05).toFixed(2))));
+      } else if (action === 'rot') {
+        applyRotation(el, (getRotation(el) + 90) % 360);
+      }
+    });
+
+    // Drag via handle
+    const handle = toolbar.querySelector('.be-handle');
+    setupDrag(handle, el, page);
+
+    // Double-click to edit text
+    const isTextEl = !el.querySelector('table') && !el.querySelector('img');
+    if (isTextEl) {
+      el.addEventListener('dblclick', e => {
+        if (e.target.closest('.be-toolbar')) return;
+        el.contentEditable = 'true';
+        el.spellcheck = false;
+        el.classList.add('be-editing');
+        el.focus();
+      });
+      el.addEventListener('blur', () => {
+        el.contentEditable = 'false';
+        el.classList.remove('be-editing');
+      });
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { el.blur(); }
+      });
+    }
+  }
+
+  function setupDrag(handle, el, page) {
     let dragging = false, sx, sy, ox, oy;
 
-    el.addEventListener('mousedown', e => {
-      if (e.target.getAttribute('contenteditable')) {
-        // If it's also contenteditable, only drag when NOT in text cursor mode
-        // Dragging by holding outside text — skip if user clicks the text directly
-        // Use a drag delay: only drag if moved > 4px
-      }
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+
       const pageRect = page.getBoundingClientRect();
       const elRect   = el.getBoundingClientRect();
-      if (!el.dataset.posInit) {
-        el.dataset.posInit = '1';
-        el.style.transform = 'none';
-        el.style.position  = 'absolute';
+
+      // Convert current visual position to absolute within page
+      if (!el.dataset.bePosInit) {
+        el.dataset.bePosInit = '1';
+        el.style.position = 'absolute';
         el.style.left = (elRect.left - pageRect.left) + 'px';
         el.style.top  = (elRect.top  - pageRect.top)  + 'px';
+        el.style.transform = el.style.transform || '';
+        // Remove inline centering transforms from original layout
+        if (el.style.transform.includes('translate(-50%')) {
+          el.style.transform = el.style.transform.replace(/translate\([^)]*\)/g, '');
+        }
       }
+
       ox = parseFloat(el.style.left) || 0;
       oy = parseFloat(el.style.top)  || 0;
-      sx = e.clientX; sy = e.clientY;
-      dragging = false;
+      sx = e.clientX;
+      sy = e.clientY;
+      dragging = true;
+
       const onMove = mv => {
-        const dx = mv.clientX - sx, dy = mv.clientY - sy;
-        if (!dragging && Math.hypot(dx, dy) < 4) return;
-        dragging = true;
-        el.style.left = (ox + dx) + 'px';
-        el.style.top  = (oy + dy) + 'px';
+        if (!dragging) return;
+        el.style.left = (ox + mv.clientX - sx) + 'px';
+        el.style.top  = (oy + mv.clientY - sy) + 'px';
       };
       const onUp = () => {
+        dragging = false;
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
-  });
+  }
 
-  // Add hover outline to all editable/draggable elements in right panel
-  document.querySelectorAll('.spp-a4 [data-rp-ed-init], .spp-a4 [data-rp-drag-init]').forEach(el => {
-    el.style.borderRadius = '3px';
-    el.style.transition = 'outline .1s, background .1s';
-    el.setAttribute('title', 'Нажмите для редактирования / перетащите для перемещения');
-  });
+  function initPage(pageEl) {
+    if (!pageEl) return;
+    // Make page relative for absolute positioning of children
+    pageEl.style.position = 'relative';
 
-  // Size +/- buttons on cover elements
-  _addSizeControls();
+    // Attach to all direct block children
+    Array.from(pageEl.children).forEach(child => {
+      if (child.classList.contains('be-toolbar')) return;
+      attachToolbar(child, pageEl);
+    });
+
+    // Also attach to named sub-elements that should be individually editable
+    const namedSelectors = [
+      // Cover
+      '#prevCovLogo2', '#prevCovName2', '#prevCovSlogan2',
+      '#prevCovType2', '#prevFootCircle2', '#prevFootName2',
+      // Plan page  
+      '#prevObjInfo2', '#prevPlanBox2',
+      // Headers/titles inside pages
+      '.spp-a4 .smeta-page-title',
+    ];
+    namedSelectors.forEach(sel => {
+      const el = pageEl.querySelector(sel);
+      if (el && !el.dataset.beInit) attachToolbar(el, pageEl);
+    });
+  }
+
+  function init() {
+    injectStyle();
+    // Init all .spp-a4 pages
+    document.querySelectorAll('.spp-a4').forEach(page => {
+      initPage(page);
+    });
+  }
+
+  // Re-init when switching tabs (new pages might not have been inited)
+  function initPage2(pageEl) {
+    initPage(pageEl);
+  }
+
+  return { init, initPage: initPage2 };
+})();
+
+function initRightPanelEditor() {
+  BlockEditor.init();
+  // Expose to window so inline scripts and tab switching can call it
+  window.BlockEditor = BlockEditor;
 }
 
-function _addSizeControls() {
-  const targets = [
-    { sel: '#prevCovName2',   prop: 'fontSize', min: 8, max: 60, step: 2, def: 20 },
-    { sel: '#prevCovSlogan2', prop: 'fontSize', min: 6, max: 30, step: 1, def: 10 },
-    { sel: '#prevCovType2',   prop: 'fontSize', min: 6, max: 40, step: 1, def: 14 },
-    { sel: '#prevCovLogo2',   prop: 'scale',    min: 0.3, max: 3, step: 0.1, def: 1 },
-  ];
-  targets.forEach(({ sel, prop, min, max, step, def }) => {
-    const el = document.querySelector(sel); if (!el || el.dataset.sizeCtrlInit) return;
-    el.dataset.sizeCtrlInit = '1';
-
-    const ctrl = document.createElement('div');
-    ctrl.className = 'rp-size-ctrl';
-    ctrl.style.cssText = 'display:none;position:absolute;top:-24px;left:0;z-index:100;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.14);padding:2px 4px;gap:2px;align-items:center;font-size:11px;';
-    ctrl.style.display = 'none';
-
-    const btnDel = document.createElement('button');
-    btnDel.textContent = '✕'; btnDel.title = 'Скрыть';
-    btnDel.style.cssText = 'background:#fee;border:none;border-radius:4px;padding:2px 5px;cursor:pointer;color:#c0392b;font-size:11px;';
-    btnDel.onclick = e => { e.stopPropagation(); el.style.visibility = 'hidden'; ctrl.style.display = 'none'; };
-
-    const btnMinus = document.createElement('button');
-    btnMinus.textContent = '−';
-    btnMinus.style.cssText = 'background:#f5f5f5;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;';
-
-    const btnPlus = document.createElement('button');
-    btnPlus.textContent = '+';
-    btnPlus.style.cssText = 'background:#f5f5f5;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;';
-
-    let curVal = def;
-    function applyVal() {
-      if (prop === 'fontSize') {
-        el.style.fontSize = curVal + 'px';
-      } else if (prop === 'scale') {
-        el.style.transform = (el.style.transform || '').replace(/scale\([^)]*\)/, '') + ` scale(${curVal})`;
-      }
-    }
-    btnMinus.onclick = e => { e.stopPropagation(); curVal = Math.max(min, parseFloat((curVal - step).toFixed(2))); applyVal(); };
-    btnPlus.onclick  = e => { e.stopPropagation(); curVal = Math.min(max, parseFloat((curVal + step).toFixed(2))); applyVal(); };
-
-    ctrl.appendChild(btnDel);
-    ctrl.appendChild(btnMinus);
-    ctrl.appendChild(btnPlus);
-
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative;display:inline-block;';
-    el.parentNode.insertBefore(wrap, el);
-    wrap.appendChild(el);
-    wrap.appendChild(ctrl);
-
-    wrap.addEventListener('mouseenter', () => { ctrl.style.display = 'flex'; });
-    wrap.addEventListener('mouseleave', () => { ctrl.style.display = 'none'; });
-  });
-}
+export { BlockEditor };
