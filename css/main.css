@@ -547,7 +547,7 @@ html, body {
   font-family: 'Merriweather', serif;
   transform-origin: top center; transform: scale(0.85); margin-bottom: -60px;
 }
-.preview-page.cover-pg { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.preview-page.cover-pg { display: block; position: relative; } /* absolute children need block parent */
 
 /* Preview editor elements */
 .ed-ready { position: absolute !important; }
@@ -735,6 +735,7 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .spp-page { display: none; width: 100%; }
