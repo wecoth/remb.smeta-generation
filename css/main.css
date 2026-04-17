@@ -691,16 +691,15 @@ html, body {
 .spp-body {
   flex: 1; overflow-y: auto;
   display: flex; align-items: flex-start; justify-content: center;
-  padding: 16px 12px 32px;
+  padding: 10px 8px 16px;
 }
 .spp-page { display: none; width: 100%; }
 .spp-page.active { display: block; }
 
-/* A4 page in right panel — strict A4 portrait ratio */
+/* A4 page in right panel — landscape A4 ratio */
 .spp-a4 {
-  width: calc(100% - 24px);
-  max-width: 780px;
-  /* A4 portrait: 210mm x 297mm → ratio 1:1.4142 */
+  width: calc(100% - 16px);
+  max-width: 100%;
   aspect-ratio: 297 / 210;
   margin: 0 auto;
   background: var(--white);
