@@ -975,18 +975,18 @@
 
       function update() {
         if (sec) {
-          sec.classList.toggle('hidden', !input.checked);
-          sec.dataset.excluded = input.checked ? '0' : '1';
-        }
-        // Init block editor for newly shown sections
-        if (input.checked && sec && window.BlockEditor) {
-          var a4 = sec.querySelector('.spp-a4');
-          if (a4) window.BlockEditor.initPage(a4);
+          var visible = input.checked;
+          sec.style.display = visible ? '' : 'none';
+          sec.dataset.excluded = visible ? '0' : '1';
+          if (visible && window.BlockEditor) {
+            var a4 = sec.querySelector('.spp-a4');
+            if (a4) setTimeout(function(){ window.BlockEditor.initPage(a4); }, 50);
+          }
         }
       }
 
       input.addEventListener('change', update);
-      update(); // apply initial state
+      // Don't call update() on init — all sections visible by default
     });
 
     // Init block editor for all visible sections on load
