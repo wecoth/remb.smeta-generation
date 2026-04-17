@@ -1,1032 +1,825 @@
-// ─── SMETA.JS ─────────────────────────────────────────────────────
-import { appState } from './state.js';
-import { renderToImage } from './render.js';
+/* ─── MAIN.CSS ─────────────────────────────────────────────────────
+   Base: smeta warm beige palette (index_81_.html)
+   Planner UI panels adapted to use same variables
+   Planner font: Onest (replaces Inter)
+──────────────────────────────────────────────────────────────────── */
 
-// ── Utils ─────────────────────────────────────────────────────────
+@import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap');
 
-export function fmt(v) {
-  return (+v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
-}
-export function fmtDate(v) {
-  if (!v) return '—';
-  const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString('ru-RU');
-}
-export function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-function cName() { return document.getElementById('companyName')?.value.trim() || 'КОМПАНИЯ'; }
-function cLetter() { return cName().charAt(0).toUpperCase(); }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-// ── Logo ──────────────────────────────────────────────────────────
-
-export function handleLogo(e) {
-  const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    appState.logoData = ev.target.result;
-    document.getElementById('logoPreview').src = appState.logoData;
-    document.getElementById('logoPreview').style.display = 'block';
-    document.getElementById('logoPlaceholder').style.display = 'none';
-    liveUpdate();
-  };
-  r.readAsDataURL(f);
-}
-
-// ── Plan ──────────────────────────────────────────────────────────
-
-export function handlePlan(e) {
-  const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    appState.planData = ev.target.result;
-    document.getElementById('planPreview').src = appState.planData;
-    document.getElementById('planPreview').style.display = 'block';
-    document.getElementById('planPlaceholder').style.display = 'none';
-    liveUpdate();
-  };
-  r.readAsDataURL(f);
+:root {
+  /* ── Palette ── */
+  --bg:       #F0F0EE;
+  --card:     #F5F5F3;
+  --white:    #FFFFFF;
+  --ink:      #1A1A1A;
+  --muted:    #888884;
+  --muted2:   #AAAAAA;
+  --line:     rgba(0,0,0,0.07);
+  --line2:    rgba(0,0,0,0.11);
+  --radius:   14px;
+  --radius-sm:10px;
+  --sidebar:  380px;
+  /* ── Planner ── */
+  --panel-border: rgba(0,0,0,0.09);
+  --tool-active:  var(--ink);
+  --accent-hover: #2d2d2d;
+  --input-border: rgba(0,0,0,0.13);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.05);
+  --shadow-float: 0 2px 12px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
 }
 
-// ── Capture canvas as plan image ─────────────────────────────────
-// Берёт текущий canvas чертежа, вычисляет bbox всех стен в экранных
-// координатах, кропает и масштабирует на offscreen canvas.
-// Результат: PNG dataURL сохраняется как planData.
-export function captureCanvas() {
-  const walls = window._appState?.walls ?? appState?.walls ?? [];
-  if (!walls.length) { alert('Нарисуйте план перед захватом'); return; }
-
-  // planData — чистый чертёж (без сетки и размеров) для страницы "Планирование работ"
-  const cleanImg = renderToImage(800, 600, false);
-  // planDataFull — полный обмерный план (со всеми размерами) для отдельной страницы
-  const fullImg  = renderToImage(2480, 1754, true); // A4 landscape @300dpi
-
-  if (!cleanImg) { alert('Не удалось захватить чертёж'); return; }
-
-  appState.planData     = cleanImg;
-  appState.planDataFull = fullImg;
-  if (window._appState) {
-    window._appState.planData     = cleanImg;
-    window._appState.planDataFull = fullImg;
-  }
-
-  // Обновляем превью в форме
-  const planPreview = document.getElementById('planPreview');
-  const planPlaceholder = document.getElementById('planPlaceholder');
-  if (planPreview) { planPreview.src = cleanImg; planPreview.style.display = 'block'; }
-  if (planPlaceholder) planPlaceholder.style.display = 'none';
-
-  liveUpdate();
-  alert('Чертёж захвачен ✓');
+html, body {
+  height: 100%;
+  font-family: 'Onest', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
 }
 
-// ── Rooms (smeta side) ────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════
+   APP SHELL & TABS
+═══════════════════════════════════════════════════════════════ */
 
-let roomCnt = 0;
-
-export function addRoom(n = '', f = '', w = '', p = '') {
-  roomCnt++;
-  const id = 'rm' + roomCnt;
-  const d = document.createElement('div');
-  d.className = 'room-item'; d.id = id;
-  d.innerHTML = `
-    <div class="room-item-head">
-      <input class="room-name-inp" placeholder="Название помещения" value="${esc(n)}" oninput="window._smetaModule.recalcRooms()">
-      <button class="btn-del-room" onclick="document.getElementById('${id}').remove();window._smetaModule.recalcRooms()">×</button>
-    </div>
-    <div class="room-fields">
-      <div class="room-field"><label>Пол м²</label><input placeholder="0.00" value="${f}" oninput="window._smetaModule.recalcRooms()"></div>
-      <div class="room-field"><label>Стены м²</label><input placeholder="0.00" value="${w}" oninput="window._smetaModule.recalcRooms()"></div>
-      <div class="room-field"><label>Периметр м</label><input placeholder="0.00" value="${p}" oninput="window._smetaModule.recalcRooms()"></div>
-    </div>`;
-  document.getElementById('roomsList')?.appendChild(d);
-  recalcRooms();
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
-export function recalcRooms() {
-  let tf = 0, tw = 0, tp = 0;
-  document.querySelectorAll('.room-item').forEach(ri => {
-    const ins = ri.querySelectorAll('.room-fields input');
-    tf += parseFloat(ins[0]?.value) || 0;
-    tw += parseFloat(ins[1]?.value) || 0;
-    tp += parseFloat(ins[2]?.value) || 0;
-  });
-  const has = document.querySelectorAll('.room-item').length > 0;
-  const strip = document.getElementById('totalsStrip');
-  if (strip) strip.style.display = has ? 'grid' : 'none';
-  const tf2 = document.getElementById('totalFloor'), tw2 = document.getElementById('totalWalls'), tp2 = document.getElementById('totalPerim');
-  if (tf2) tf2.textContent = tf.toFixed(2);
-  if (tw2) tw2.textContent = tw.toFixed(2);
-  if (tp2) tp2.textContent = tp.toFixed(2);
-  updateSummary(); liveUpdate();
+/* ── Global top bar ── */
+.global-topbar {
+  height: 48px;
+  background: var(--white);
+  border-bottom: 1px solid var(--line2);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 8px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+  z-index: 20;
 }
 
-export function getRooms() {
-  return Array.from(document.querySelectorAll('.room-item')).map(ri => {
-    const nm = ri.querySelector('.room-name-inp')?.value || '—';
-    const ins = ri.querySelectorAll('.room-fields input');
-    return { name: nm, floor: ins[0]?.value || '0', walls: ins[1]?.value || '0', perim: ins[2]?.value || '0' };
-  });
+.app-logo {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-logo-icon {
+  width: 22px; height: 22px;
+  background: var(--ink);
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--white); font-size: 11px; font-weight: 700;
 }
 
-/** Import computed rooms from 2D planner into smeta rooms list */
-export function importRoomsFromPlanner(rooms) {
-  document.getElementById('roomsList').innerHTML = '';
-  roomCnt = 0;
-  rooms.forEach(r => addRoom(r.name, r.floorArea, r.wallsArea, r.perimeter));
-  recalcRooms();
+.tab-sep { width: 1px; height: 20px; background: var(--line2); margin: 0 2px; flex-shrink: 0; }
+
+.tab-btn {
+  height: 32px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-family: 'Onest', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.tab-btn:hover { background: var(--card); color: var(--ink); }
+.tab-btn.active { background: var(--ink); color: var(--white); border-color: var(--ink); }
+
+.topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+.tb-action-btn {
+  height: 30px; padding: 0 12px;
+  background: var(--card); border: 1px solid var(--line2); border-radius: 7px;
+  font-family: 'Onest', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted);
+  cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.tb-action-btn:hover { background: var(--white); color: var(--ink); }
+.tb-action-btn.primary { background: var(--ink); color: var(--white); border-color: transparent; }
+.tb-action-btn.primary:hover { opacity: 0.85; }
+
+/* ── View containers ── */
+.app-views { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+#plannerView { display: none; height: 100%; flex-direction: column; overflow: hidden; }
+#smetaView   { display: block; height: 100%; overflow: hidden; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PLANNER LAYOUT
+═══════════════════════════════════════════════════════════════ */
+
+.planner-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  height: calc(100vh - 92px);
+  position: relative;
 }
 
-// ── Excel parse ───────────────────────────────────────────────────
-
-function parseFile(file, cb) {
-  const r = new FileReader();
-  r.onload = e => {
-    try {
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-      const sh = wb.Sheets[wb.SheetNames[0]];
-      cb(XLSX.utils.sheet_to_json(sh, { header: 1, defval: '' }), null);
-    } catch (err) { cb(null, err); }
-  };
-  r.readAsArrayBuffer(file);
+/* ── Planner topbar ── */
+.planner-topbar {
+  height: 44px;
+  background: var(--white);
+  border-bottom: 1px solid var(--line2);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 6px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
 }
 
-function smartParse(json) {
-  if (!json || json.length < 2) return [];
-  let hi = 0;
-  for (let i = 0; i < Math.min(json.length, 10); i++) {
-    if (json[i].filter(c => String(c || '').trim()).length >= 4) { hi = i; break; }
-  }
-  const h = json[hi].map(c => String(c || '').toLowerCase());
-  const fi = (...kw) => { for (const k of kw) { const i = h.findIndex(x => x.includes(k)); if (i >= 0) return i; } return -1; };
-  const cols = {
-    name:  fi('наименование', 'работ', 'материал', 'name', 'смр', 'description'),
-    unit:  fi('ед', 'unit', 'единиц'),
-    qty:   fi('кол', 'qty', 'объём', 'объем', 'count'),
-    price: fi('за ед', 'цена', 'price', 'стоимость за', 'rate'),
-    total: fi('всего', 'итого', 'total', 'сумма', 'amount'),
-  };
-  const rows = [];
-  for (let i = hi + 1; i < json.length; i++) {
-    const row = json[i];
-    const name = String(row[cols.name] || '').trim();
-    if (!name || /^итого|^всего/i.test(name)) continue;
-    const n = v => parseFloat(String(v || '').replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
-    const qty = cols.qty >= 0 ? n(row[cols.qty]) : 0;
-    const price = cols.price >= 0 ? n(row[cols.price]) : 0;
-    let total = cols.total >= 0 ? n(row[cols.total]) : 0;
-    if (!total && qty && price) total = qty * price;
-    rows.push({ name, unit: cols.unit >= 0 ? String(row[cols.unit] || '').trim() : '', qty: qty || '', price: price || '', total: total || 0 });
-  }
-  return rows;
+.snap-badge {
+  margin-left: auto;
+  font-size: 11px; color: var(--muted);
+  background: var(--card); border: 1px solid var(--line2);
+  border-radius: 20px; padding: 3px 10px; font-weight: 500; flex-shrink: 0;
 }
 
-// ── SMR table ─────────────────────────────────────────────────────
+.tb-btn {
+  height: 30px; padding: 0 10px;
+  background: var(--card); border: 1px solid var(--line2); border-radius: 6px;
+  font-family: 'Onest', sans-serif; font-size: 12px; font-weight: 500; color: var(--ink);
+  cursor: pointer; display: flex; align-items: center; gap: 5px;
+  transition: background 0.12s; white-space: nowrap; flex-shrink: 0;
+}
+.tb-btn:hover { background: #dedad4; }
+.tb-btn:disabled { opacity: 0.45; cursor: default; }
+.tb-btn.icon-btn { width: 30px; justify-content: center; padding: 0; }
 
-export function handleSmr(e) {
-  const f = e.target.files[0]; if (!f) return;
-  parseFile(f, (json, err) => {
-    if (err) return;
-    const rows = smartParse(json);
-    const st = document.getElementById('smrSt');
-    if (st) st.innerHTML = `<span class="smeta-ok">✓ Загружено ${rows.length} позиций</span>`;
-    document.getElementById('smrZone')?.classList.add('has-data');
-    const wrap = document.getElementById('smrWrap'); if (wrap) wrap.style.display = 'block';
-    const mb = document.getElementById('smrManualBtn'); if (mb) mb.style.display = 'none';
-    document.getElementById('smrBody').innerHTML = '';
-    rows.forEach(r => addSmrRowData(r.name, r.unit, r.qty, r.price, r.total));
-    recalcSmr();
-  });
+/* ── Canvas ── */
+.canvas-wrap {
+  flex: 1; position: relative; overflow: hidden;
+  background: #ffffff; width: 100%;
+}
+#planCanvas { display: block; cursor: crosshair; background: #fff; }
+
+#lengthOverlay { display: none; position: absolute; left: 0; top: 0; pointer-events: none; z-index: 20; }
+#lengthLabel {
+  position: absolute; background: var(--ink); color: var(--white);
+  font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.28);
+  transform: translate(-50%, -130%); pointer-events: none;
 }
 
-export function initSmrManual() {
-  const mb = document.getElementById('smrManualBtn'); if (mb) mb.style.display = 'none';
-  const wrap = document.getElementById('smrWrap'); if (wrap) wrap.style.display = 'block';
-  addSmrRow();
+.statusbar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 26px;
+  background: rgba(247,244,239,0.92); backdrop-filter: blur(4px);
+  border-top: 1px solid var(--line); display: flex; align-items: center;
+  padding: 0 14px; gap: 20px; font-size: 11px; color: var(--muted); z-index: 5;
+}
+.statusbar span b { color: var(--ink); font-weight: 600; }
+
+/* ── Right panel — floating cards ── */
+.right-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  z-index: 30;
+  pointer-events: none;
+}
+.right-panel > * { pointer-events: all; }
+
+/* Floating card base */
+.fp-card {
+  background: #FFFFFF;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.09);
+  padding: 10px;
+  box-shadow: var(--shadow-float);
 }
 
-export function addSmrRow() { addSmrRowData('', '', '', '', 0); recalcSmr(); }
-
-function addSmrRowData(name, unit, qty, price, total) {
-  const wrap = document.getElementById('smrBody'); if (!wrap) return;
-  const idx = wrap.children.length + 1;
-  const d = document.createElement('div'); d.className = 'work-row-item';
-  d.innerHTML = `
-    <span class="wn">${idx}</span>
-    <input value="${esc(name)}" placeholder="Наименование" oninput="window._smetaModule.recalcSmr()">
-    <input value="${esc(unit)}" placeholder="м2" style="text-align:center">
-    <input value="${qty}" placeholder="0" style="text-align:center">
-    <input value="${total || ''}" placeholder="0.00" style="text-align:right" oninput="window._smetaModule.recalcSmr()">
-    <button class="btn-del-row" onclick="this.closest('.work-row-item').remove();window._smetaModule.renumRows('smrBody');window._smetaModule.recalcSmr()">×</button>`;
-  wrap.appendChild(d);
+.rp-scroll { display: contents; }
+.rp-section { display: none; }
+.rp-section-title {
+  font-size: 9px; font-weight: 600; color: #999999; text-transform: uppercase;
+  letter-spacing: 0.07em; margin-bottom: 8px;
 }
 
-export function recalcSmr() {
-  let t = 0;
-  document.querySelectorAll('#smrBody .work-row-item').forEach(r => { t += parseFloat(r.querySelectorAll('input')[3]?.value) || 0; });
-  const el = document.getElementById('smrTotal'); if (el) el.textContent = fmt(t);
-  updateSummary(); liveUpdate();
+/* Tool grid */
+.tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; }
+.tool-btn {
+  background: #F5F5F3; border: 1px solid rgba(0,0,0,0.09); border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 7px 4px; cursor: pointer; transition: all 0.12s;
+  color: #444444; font-size: 11px; font-weight: 500; font-family: inherit;
+  line-height: 1;
+}
+.tool-btn svg { display: none; }
+.tool-btn:hover { background: #ECECEA; color: #111111; }
+.tool-btn.active { background: #EEF3FF; border-color: #4A6FE3; color: #2952CC; font-weight: 600; }
+
+/* Params */
+.param-group { margin-bottom: 7px; }
+.param-label { font-size: 10px; color: #666666; font-weight: 400; margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center; }
+.param-unit { color: #AAAAAA; font-size: 10px; }
+.param-input-wrap {
+  display: flex; align-items: center; border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 5px; background: #F8F8F6; overflow: hidden; transition: border-color 0.12s;
+}
+.param-input-wrap:focus-within { border-color: #555555; background: #FFFFFF; }
+.param-input { flex: 1; border: none; background: transparent; font-family: inherit; font-size: 12px; color: #111111; padding: 5px 7px; outline: none; font-weight: 400; user-select: text; min-width: 0; }
+.param-input-unit { font-size: 10px; color: #AAAAAA; padding: 0 7px 0 0; white-space: nowrap; }
+
+.hint-box {
+  background: #F5F5F3; border-radius: 5px;
+  padding: 6px 8px; font-size: 10px; color: #888888; line-height: 1.5; margin-top: 5px;
+}
+.hint-box b { color: #333333; font-weight: 600; }
+
+.tool-panel { display: none; }
+.tool-panel.active { display: block; }
+
+.section-note { font-size: 10.5px; color: var(--muted2); margin: -4px 0 10px; line-height: 1.45; }
+
+/* Explication */
+.expl-panel {
+  background: #FFFFFF;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.09);
+  padding: 10px;
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.expl-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.expl-title { font-size: 9px; font-weight: 600; color: #999999; text-transform: uppercase; letter-spacing: 0.07em; }
+.expl-count { font-size: 10px; background: #EBEBEB; color: #555555; border-radius: 10px; padding: 1px 7px; font-weight: 600; }
+.expl-scroll { flex: 1; overflow-y: auto; overflow-x: auto; max-height: 220px; }
+.expl-scroll::-webkit-scrollbar { width: 3px; height: 3px; }
+.expl-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
+.expl-table { width: 100%; border-collapse: collapse; font-size: 10px; min-width: 400px; }
+.expl-table thead th {
+  font-weight: 500; font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px;
+  padding: 4px 5px; border-bottom: 2px solid rgba(0,0,0,0.10);
+  position: sticky; top: 0; z-index: 1; text-align: right; white-space: nowrap; cursor: default;
+}
+.expl-th-name { text-align: left !important; min-width: 75px; background: #F5F5F3; color: #999; }
+.expl-th-main { background: #EEECEA; color: #444; border-left: 1px solid rgba(0,0,0,0.07); }
+.expl-th-ref  { background: #F5F5F3; color: #AAAAAA; border-left: 1px solid rgba(0,0,0,0.05); font-style: italic; }
+.expl-table tbody td {
+  padding: 4px 5px; border-bottom: 1px solid rgba(0,0,0,0.05);
+  color: #111; text-align: right; white-space: nowrap;
+}
+.expl-table tbody td:first-child { text-align: left; }
+.expl-table tbody tr:hover td { background: #F8F8F6; }
+.expl-table tbody tr:hover td { background: #F8F8F6; }
+.expl-table .empty-row td { color: #AAAAAA; font-style: italic; text-align: center; padding: 10px; font-size: 10px; }
+.room-dot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.room-name-cell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.room-name-input { width: 100%; min-width: 0; border: none; background: transparent; font: inherit; color: inherit; padding: 1px 3px; border-radius: 3px; outline: none; user-select: text; }
+.room-name-input:focus { background: #FFFFFF; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+
+/* Edit panel */
+#editPanel { display: none; }
+.edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.edit-row label { flex: 1; font-size: 11px; color: var(--muted); font-weight: 500; }
+.edit-note { margin-top: 8px; font-size: 10.5px; color: var(--muted2); line-height: 1.45; }
+
+.delete-btn {
+  width: 100%; padding: 8px; background: #fff5f5; border: 1.5px solid #fecaca;
+  border-radius: 7px; color: #dc2626; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.12s; margin-top: 4px; font-family: inherit;
+}
+.delete-btn:hover { background: #fee2e2; border-color: #f87171; }
+
+/* Offset buttons */
+.offset-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 5px 3px 4px; background: #F5F5F3; border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 6px; cursor: pointer; font-size: 9px; font-weight: 500; color: #666666;
+  transition: all 0.12s; font-family: inherit;
+}
+.offset-btn svg { width: 22px; height: 18px; }
+.offset-btn:hover { background: #ECECEA; color: #111111; }
+.offset-btn.active { background: #F0F0EE; border-color: #888888; color: #111111; font-weight: 600; }
+
+/* Choice buttons */
+.choice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-top: 3px; }
+.choice-btn {
+  padding: 5px 6px; border: 1px solid rgba(0,0,0,0.10); background: #F5F5F3;
+  border-radius: 6px; font-size: 10px; font-weight: 500; color: #666666;
+  cursor: pointer; transition: all 0.12s; font-family: inherit;
+}
+.choice-btn:hover { background: #ECECEA; color: #111111; }
+.choice-btn.active { background: #F0F0EE; border-color: #888888; color: #111111; font-weight: 600; }
+.choice-btn.compact { padding: 5px 4px; font-size: 10px; }
+
+/* Zoom */
+.zoom-controls { position: absolute; bottom: 36px; right: 14px; display: flex; flex-direction: column; gap: 4px; z-index: 10; }
+.zoom-btn {
+  width: 30px; height: 30px; background: var(--white); border: 1.5px solid var(--line2); border-radius: 7px;
+  font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--muted); box-shadow: var(--shadow-sm); transition: all 0.12s; font-family: inherit;
+}
+.zoom-btn:hover { background: var(--card); color: var(--ink); }
+
+/* Import rooms button */
+.import-rooms-btn {
+  width: 100%; padding: 7px 10px; margin-top: 0;
+  background: #1A1A1A; border: none; border-radius: 7px;
+  font-family: 'Onest', sans-serif; font-size: 11px; font-weight: 500; color: #FFFFFF;
+  cursor: pointer; transition: background 0.12s; text-align: center;
+}
+.import-rooms-btn:hover { background: #333333; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SMETA VIEW
+═══════════════════════════════════════════════════════════════ */
+
+.smeta-shell { height: 100%; display: flex; flex-direction: row; overflow: hidden; }
+
+.sidebar {
+  width: clamp(300px, 33.333vw, 520px);
+  min-width: 300px;
+  flex-shrink: 0;
+  background: var(--white);
+  border-right: 1px solid var(--line2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+.sidebar-head {
+  padding: 20px 28px 14px; border-bottom: 1px solid var(--line);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+}
+.sidebar-head-left h1 { font-size: 19px; font-weight: 400; letter-spacing: -0.3px; line-height: 1.2; margin-bottom: 3px; }
+.sidebar-head-left p { font-size: 12px; color: var(--muted); font-weight: 300; }
+.sidebar-head-actions { display: flex; gap: 10px; align-items: center; }
+.sidebar-scroll { flex: 1; overflow-y: auto; padding: 18px 28px 40px; }
+.sidebar-scroll::-webkit-scrollbar { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+/* Form elements */
+.sec-label {
+  font-size: 10px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin: 18px 0 8px; padding: 0 2px;
+}
+.sec-label:first-child { margin-top: 0; }
+.card { background: var(--white); border-radius: var(--radius); padding: 16px; margin-bottom: 8px; }
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+.field label { font-size: 11px; color: var(--muted); font-weight: 400; }
+.field input, .field textarea {
+  background: transparent; border: none; border-bottom: 1px solid var(--line2);
+  padding: 7px 0; font-family: 'Onest', sans-serif; font-size: 14px; color: var(--ink);
+  outline: none; width: 100%; transition: border-color 0.2s;
+}
+.field input:focus, .field textarea:focus { border-bottom-color: var(--ink); }
+.field input::placeholder, .field textarea::placeholder { color: var(--muted2); }
+.field textarea { resize: none; min-height: 40px; }
+.field-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+/* Logo upload */
+.logo-upload {
+  background: var(--card); border-radius: var(--radius-sm); padding: 16px;
+  text-align: center; cursor: pointer; position: relative; transition: background 0.2s;
+  min-height: 64px; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 6px; margin-bottom: 12px;
+}
+.logo-upload:hover { background: #dedad4; }
+.logo-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.logo-upload .up-icon { font-size: 18px; color: var(--muted); }
+.logo-upload .up-text { font-size: 12px; color: var(--muted); font-weight: 300; }
+.logo-upload .up-text strong { color: var(--ink); font-weight: 500; }
+#logoPreview { max-height: 44px; max-width: 140px; display: none; border-radius: 6px; }
+
+/* Plan upload */
+.plan-upload {
+  background: var(--card); border-radius: var(--radius-sm); min-height: 100px; cursor: pointer;
+  position: relative; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 6px; overflow: hidden; margin-bottom: 8px;
+  transition: background 0.2s; padding: 16px;
+}
+.plan-upload:hover { background: #dedad4; }
+.plan-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.plan-upload .up-icon { font-size: 26px; color: var(--muted2); }
+.plan-upload .up-text { font-size: 12px; color: var(--muted); text-align: center; }
+#planPreview { max-width: 100%; max-height: 160px; display: none; border-radius: 8px; }
+
+/* Rooms */
+.room-item { background: var(--card); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 6px; }
+.room-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.room-name-inp { background: transparent; border: none; font-family: 'Onest', sans-serif; font-size: 15px; font-weight: 500; color: var(--ink); outline: none; width: 100%; user-select: text; }
+.room-name-inp::placeholder { color: var(--muted2); }
+.btn-del-room { background: none; border: none; color: var(--muted2); font-size: 18px; cursor: pointer; padding: 0 0 0 8px; line-height: 1; transition: color 0.15s; flex-shrink: 0; }
+.btn-del-room:hover { color: #c0392b; }
+.room-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.room-field { display: flex; flex-direction: column; gap: 3px; }
+.room-field label { font-size: 10px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+.room-field input { background: transparent; border: none; border-bottom: 1px solid var(--line2); padding: 4px 0; font-family: 'Onest', sans-serif; font-size: 13px; color: var(--ink); outline: none; width: 100%; user-select: text; }
+.room-field input:focus { border-bottom-color: var(--ink); }
+
+.totals-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; background: var(--white); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 8px; }
+.totals-item .tv { font-size: 20px; font-weight: 500; letter-spacing: -.5px; }
+.totals-item .tl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+
+.btn-add-room {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: none; border-radius: var(--radius-sm);
+  padding: 11px 14px; width: 100%;
+  font-family: 'Onest', sans-serif; font-size: 13px; color: var(--muted);
+  cursor: pointer; transition: background 0.2s; margin-bottom: 8px;
+}
+.btn-add-room:hover { background: #dedad4; color: var(--ink); }
+
+/* Smeta upload */
+.smeta-upload {
+  background: var(--card); border-radius: var(--radius-sm); padding: 16px;
+  text-align: center; cursor: pointer; position: relative; transition: background 0.2s; margin-bottom: 8px;
+}
+.smeta-upload:hover { background: #dedad4; }
+.smeta-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.smeta-upload.has-data { background: #e6efe6; }
+.smeta-upload .up-icon { font-size: 20px; color: var(--muted); margin-bottom: 4px; }
+.smeta-upload .up-text { font-size: 12px; color: var(--muted); }
+.smeta-upload .up-text strong { color: var(--ink); font-weight: 500; }
+.smeta-ok { font-size: 11px; color: #27ae60; font-weight: 500; margin-top: 4px; }
+
+/* Work rows */
+.work-table-wrap { margin-top: 8px; }
+.work-header-row {
+  display: grid; grid-template-columns: 22px 1fr 44px 50px 70px 20px;
+  gap: 0; padding: 6px 10px; background: var(--card); border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.work-header-row span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-weight: 500; }
+.work-rows-body { background: var(--white); border-radius: 0 0 var(--radius-sm) var(--radius-sm); overflow: hidden; }
+.work-row-item {
+  display: grid; grid-template-columns: 22px 1fr 44px 50px 70px 20px;
+  gap: 0; padding: 2px 10px; align-items: center; border-bottom: 1px solid var(--line); min-height: 36px;
+}
+.work-row-item:last-child { border-bottom: none; }
+.work-row-item .wn { font-size: 11px; color: var(--muted2); text-align: center; }
+.work-row-item input { background: transparent; border: none; font-family: 'Onest', sans-serif; font-size: 12px; color: var(--ink); outline: none; width: 100%; padding: 3px 4px; user-select: text; }
+.work-row-item input:focus { background: rgba(0,0,0,0.03); border-radius: 4px; }
+.work-footer-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: var(--card);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm); margin-top: 1px;
+}
+.work-footer-row .wfl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.work-footer-row .wfv { font-size: 16px; font-weight: 500; }
+.btn-add-row { background: none; border: none; font-family: 'Onest', sans-serif; font-size: 12px; color: var(--muted); cursor: pointer; padding: 8px 0; transition: color 0.2s; }
+.btn-add-row:hover { color: var(--ink); }
+.btn-del-row { background: none; border: none; color: var(--muted2); font-size: 15px; cursor: pointer; padding: 0; line-height: 1; }
+.btn-del-row:hover { color: #c0392b; }
+.btn-manual { background: none; border: none; font-family: 'Onest', sans-serif; font-size: 12px; color: var(--muted); cursor: pointer; padding: 8px 0 2px; transition: color 0.2s; display: block; }
+.btn-manual:hover { color: var(--ink); }
+
+/* Summary card */
+.summary-card { background: var(--ink); border-radius: var(--radius); padding: 18px 16px; margin-top: 16px; color: #fff; }
+.summary-card .sc-lbl { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,.4); margin-bottom: 4px; }
+.summary-card .sc-total { font-size: 32px; font-weight: 300; letter-spacing: -1px; line-height: 1; margin-bottom: 12px; }
+.summary-card .sc-row { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.1); }
+.summary-card .sc-name { font-size: 12px; color: rgba(255,255,255,.55); }
+.summary-card .sc-val  { font-size: 12px; color: #fff; font-weight: 500; }
+
+/* Smeta action buttons */
+.btn-generate {
+  background: var(--ink); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 22px; font-family: 'Onest', sans-serif; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: opacity .2s;
+}
+.btn-generate:hover { opacity: .85; }
+.btn-preview {
+  background: var(--white); color: var(--ink); border: 1px solid var(--line2); border-radius: 8px;
+  padding: 9px 18px; font-family: 'Onest', sans-serif; font-size: 13px; font-weight: 400;
+  cursor: pointer; transition: background .2s;
+}
+.btn-preview:hover { background: var(--card); }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL PREVIEW
+═══════════════════════════════════════════════════════════════ */
+
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.7); overflow-y: auto; padding: 24px;
+}
+.modal-overlay.open { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+.modal-toolbar {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(30,28,25,0.92); backdrop-filter: blur(8px);
+  width: 100%; max-width: 900px; padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between; border-radius: 10px;
+}
+.modal-toolbar span { font-size: 12px; color: rgba(255,255,255,0.5); letter-spacing: 0.5px; }
+.modal-toolbar-right { display: flex; gap: 8px; align-items: center; }
+
+.btn-close-preview {
+  background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 7px; padding: 7px 14px; font-family: 'Onest', sans-serif;
+  font-size: 12px; cursor: pointer; transition: background .2s;
+}
+.btn-close-preview:hover { background: rgba(255,255,255,0.2); }
+
+/* Preview pages */
+.preview-page {
+  width: 794px; min-height: 560px; background: #fff;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25); position: relative; flex-shrink: 0;
+  font-family: 'Merriweather', serif;
+  transform-origin: top center; transform: scale(0.85); margin-bottom: -60px;
+}
+.preview-page.cover-pg { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+/* Preview editor elements */
+.ed-ready { position: absolute !important; }
+.ed-ready:hover { outline: 1.5px dashed #4a9eff; outline-offset: 2px; }
+.ed-controls {
+  display: none; position: absolute; top: 2px; right: 2px; flex-direction: row; gap: 2px;
+  z-index: 200; background: rgba(255,255,255,0.92); border-radius: 5px; padding: 2px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.18);
+}
+.ed-ready:hover .ed-controls { display: flex; }
+.ed-btn-del, .ed-btn-size {
+  background: #1c1c1c; color: #fff; border: none; width: 20px; height: 20px;
+  border-radius: 3px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0;
+}
+.ed-btn-del { background: #c0392b; }
+.ed-btn-del:hover { background: #e74c3c; }
+.ed-btn-size:hover { background: #444; }
+.ed-resize {
+  display: none; position: absolute; bottom: -5px; right: -5px; width: 12px; height: 12px;
+  background: #4a9eff; border-radius: 2px; cursor: se-resize; z-index: 200;
+}
+.ed-ready:hover .ed-resize { display: block; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PDF / PRINT
+═══════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Merriweather';
+  src: url('https://raw.githubusercontent.com/MishkinIN/Font_GOST_2.304/master/gost_2.304.ttf') format('truetype');
+  font-weight: normal; font-style: normal;
+}
+@media print {
+  @page { size: A4 landscape; margin: 0; }
+  .app-shell { display: none !important; }
+  .modal-overlay { display: none !important; }
+  .print-doc { display: block !important; }
+  body { background: #fff; }
+}
+.print-doc { display: none; }
+.a4 { width: 297mm; min-height: 210mm; background: #fff; page-break-after: always; position: relative; font-family: 'Merriweather', serif; color: #1c1c1c; }
+.a4:last-child { page-break-after: auto; }
+.cov { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 210mm; background: #fff; }
+.cov-circle { width: 80px; height: 80px; border: 2px solid #1c1c1c; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 400; font-family: 'Merriweather', serif; }
+#covLogoImg { max-height: 90px; max-width: 220px; display: none; }
+.cov-name { font-size: 26px; font-weight: 400; letter-spacing: 6px; text-transform: uppercase; margin-top: 14px; font-family: 'Merriweather', serif; }
+.cov-slogan { font-size: 9px; letter-spacing: 5px; color: #888; text-transform: uppercase; margin-top: 5px; font-family: 'Merriweather', serif; }
+.cov-dtype { font-size: 13px; font-weight: 300; color: #444; margin-top: 55px; letter-spacing: 1px; font-family: 'Merriweather', serif; }
+.cov-foot { position: absolute; bottom: 18mm; right: 18mm; display: flex; align-items: center; gap: 8px; }
+.cov-foot .cfc { width: 24px; height: 24px; border: 1.5px solid #aaa; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 500; color: #aaa; font-family: 'Merriweather', serif; }
+.cov-foot .cfn { font-size: 8px; font-weight: 400; letter-spacing: 2px; color: #aaa; font-family: 'Merriweather', serif; }
+.pg { padding: 14mm 20mm 16mm; min-height: 210mm; display: flex; flex-direction: column; }
+.pg-title { font-size: 20px; font-weight: 400; text-align: center; margin-bottom: 8mm; letter-spacing: 1px; font-family: 'Merriweather', serif; }
+.pg-foot { margin-top: auto; padding-top: 5mm; display: flex; justify-content: flex-end; align-items: center; gap: 7px; }
+.pg-foot .pfc { width: 22px; height: 22px; border: 1.5px solid #bbb; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 500; color: #bbb; font-family: 'Merriweather', serif; }
+.pg-foot .pfn { font-size: 8px; font-weight: 400; letter-spacing: 2px; color: #bbb; font-family: 'Merriweather', serif; }
+.plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; flex: 1; }
+.plan-img-box { border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; background: #fafafa; min-height: 110mm; overflow: hidden; }
+.plan-img-box img { max-width: 100%; max-height: 135mm; object-fit: contain; }
+.plan-img-ph { text-align: center; color: #ccc; font-size: 28px; }
+.obj-info { font-size: 10.5px; line-height: 2.1; color: #222; margin-bottom: 5mm; font-family: 'Merriweather', serif; }
+.obj-info strong { font-weight: 500; }
+.obj-note { font-size: 9.5px; color: #444; line-height: 2; margin-bottom: 5mm; font-family: 'Merriweather', serif; }
+.exp-ttl { font-size: 11px; font-weight: 500; text-align: center; margin: 4mm 0 3mm; font-family: 'Merriweather', serif; letter-spacing: .5px; }
+.exp-t { width: 100%; border-collapse: collapse; font-size: 9.5px; font-family: 'Merriweather', serif; }
+.exp-t th { border: 1px solid #bbb; padding: 6px 8px; text-align: center; font-weight: 500; font-size: 9px; background: #f0f0ee; }
+.exp-t td { border: 1px solid #ddd; padding: 5px 8px; text-align: center; }
+.exp-t td:first-child { text-align: left; }
+.exp-t tfoot td { font-weight: 600; background: #f0f0ee; border: 1px solid #bbb; padding: 6px 8px; text-align: center; }
+.exp-t tfoot td:first-child { text-align: right; }
+.smeta-ttl { font-size: 18px; font-weight: 400; text-align: center; margin-bottom: 7mm; letter-spacing: 1px; font-family: 'Merriweather', serif; }
+.sm-t { width: 100%; border-collapse: collapse; font-size: 9px; font-family: 'Merriweather', serif; }
+.sm-t th { border: 1px solid #bbb; padding: 6px 5px; text-align: center; font-weight: 500; font-size: 8.5px; background: #f0f0ee; line-height: 1.4; }
+.sm-t td { border: 1px solid #ddd; padding: 5px 5px; vertical-align: top; line-height: 1.5; }
+.sm-t td:first-child { text-align: center; width: 26px; }
+.sm-t td:nth-child(3) { text-align: center; }
+.sm-t td:nth-child(4) { text-align: center; }
+.sm-t td:nth-child(5) { text-align: right; }
+.sm-t td:nth-child(6) { text-align: right; font-weight: 500; }
+.sm-t .tot-r td { font-weight: 600; font-size: 10px; background: #f0f0ee; }
+.fin-t { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 3mm; font-family: 'Merriweather', serif; }
+.fin-t th { border: 1px solid #bbb; padding: 7px 10px; background: #f0f0ee; font-weight: 500; font-size: 9px; text-align: center; }
+.fin-t td { border: 1px solid #ddd; padding: 8px 10px; }
+.fin-t td:first-child { text-align: center; width: 28px; }
+.fin-t td:nth-child(5) { text-align: right; }
+.fin-t td:nth-child(6) { text-align: right; font-weight: 600; }
+.fin-total { display: flex; justify-content: flex-end; gap: 14px; align-items: baseline; margin-top: 6mm; }
+.fin-total span { font-size: 11px; color: #555; font-family: 'Merriweather', serif; }
+.fin-total strong { font-size: 18px; font-weight: 500; font-family: 'Merriweather', serif; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DESKTOP SMETA LAYOUT (right preview panel)
+═══════════════════════════════════════════════════════════════ */
+
+/* Topbar pill switcher */
+.topbar-pill-wrap {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center;
+}
+.topbar-pill {
+  position: relative; display: flex;
+  background: var(--card); border: 1px solid var(--line2);
+  border-radius: 10px; padding: 3px; gap: 0;
+}
+.pill-btn {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 18px; border: none; background: transparent;
+  font: 500 12px/1 'Onest', sans-serif;
+  color: var(--muted); border-radius: 8px; cursor: pointer;
+  transition: color .18s; white-space: nowrap;
+}
+.pill-btn.active { color: var(--ink); }
+.pill-slider {
+  position: absolute; top: 3px; left: 3px; bottom: 3px;
+  background: var(--white); border-radius: 7px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  transition: transform .22s cubic-bezier(.4,0,.2,1), width .22s cubic-bezier(.4,0,.2,1);
+  pointer-events: none; z-index: 0;
 }
 
-export function getSmrTotal() {
-  let t = 0;
-  document.querySelectorAll('#smrBody .work-row-item').forEach(r => { t += parseFloat(r.querySelectorAll('input')[3]?.value) || 0; });
-  return t;
+/* Right live preview panel */
+.smeta-preview-panel {
+  flex: 1; display: flex; flex-direction: column;
+  background: #eceae6; overflow: hidden;
+}
+.spp-header {
+  background: var(--white); border-bottom: 1px solid var(--line2);
+  padding: 0 24px; flex-shrink: 0;
+  display: flex; align-items: center; height: 44px;
+}
+.spp-tabs { display: flex; gap: 2px; }
+.spp-tab {
+  padding: 6px 14px; border: none; background: transparent;
+  font: 500 12px/1 'Onest', sans-serif;
+  color: var(--muted); border-radius: 6px; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.spp-tab:hover { background: var(--card); color: var(--ink); }
+.spp-tab.active { background: #e8eeff; color: #3a5ed0; font-weight: 600; }
+.spp-body {
+  flex: 1; overflow-y: auto;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 16px 12px 32px;
+}
+.spp-page { display: none; width: 100%; }
+.spp-page.active { display: block; }
+
+/* A4 page in right panel — scales to fit available width */
+.spp-a4 {
+  width: calc(100% - 24px);
+  max-width: 860px;
+  min-height: 520px;
+  margin: 0 auto;
+  background: var(--white);
+  box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
+  border-radius: 2px;
+  font-family: 'Merriweather', serif;
+  position: relative;
+  overflow: visible;
 }
 
-export function collectSmrRows() {
-  return Array.from(document.querySelectorAll('#smrBody .work-row-item')).map(r => {
-    const ins = r.querySelectorAll('input');
-    return { name: ins[0]?.value || '', unit: ins[1]?.value || '', qty: ins[2]?.value || '', total: parseFloat(ins[3]?.value) || 0 };
-  });
+/* Inline edit on spp-a4 elements */
+.spp-a4 [data-editable] {
+  cursor: text;
+  border-radius: 3px;
+  transition: background .12s, outline .12s;
+  outline: 1.5px dashed transparent;
+  outline-offset: 3px;
+}
+.spp-a4 [data-editable]:hover {
+  outline-color: #4a9eff;
+  background: rgba(74,158,255,0.05);
+}
+.spp-a4 [data-editable]:focus {
+  outline-color: #2171e0;
+  background: rgba(33,113,224,0.07);
 }
 
-// ── Materials table ───────────────────────────────────────────────
+/* Sidebar head button adjustments */
+.sidebar-head { padding: 16px 20px 12px; }
+.sidebar-scroll { padding: 16px 20px 40px; }
 
-export function handleMat(e) {
-  const f = e.target.files[0]; if (!f) return;
-  parseFile(f, (json, err) => {
-    if (err) return;
-    const rows = smartParse(json);
-    const st = document.getElementById('matSt');
-    if (st) st.innerHTML = `<span class="smeta-ok">✓ Загружено ${rows.length} позиций</span>`;
-    document.getElementById('matZone')?.classList.add('has-data');
-    const wrap = document.getElementById('matWrap'); if (wrap) wrap.style.display = 'block';
-    const mb = document.getElementById('matManualBtn'); if (mb) mb.style.display = 'none';
-    document.getElementById('matBody').innerHTML = '';
-    rows.forEach(r => addMatRowData(r.name, r.unit, r.qty, r.price, r.total));
-    recalcMat();
-  });
+/* ═══════════════════════════════════════════════════════════════
+   BLOCK EDITOR v3
+═══════════════════════════════════════════════════════════════ */
+
+.be-block {
+  box-sizing: border-box;
+  border-radius: 2px;
+}
+.be-block:hover {
+  outline: 1.5px dashed rgba(74,159,255,0.3);
+  outline-offset: 2px;
+  cursor: grab;
+}
+.be-block.be-selected {
+  outline: 2px solid #4a9eff !important;
+  outline-offset: 2px;
+  cursor: grab;
+}
+.be-block.be-editing {
+  outline: 2px solid #2272e0 !important;
+  cursor: text !important;
+}
+.be-block.be-dragging {
+  cursor: grabbing !important;
+  opacity: .93;
+}
+.be-block.be-hidden {
+  opacity: .08;
 }
 
-export function initMatManual() {
-  const mb = document.getElementById('matManualBtn'); if (mb) mb.style.display = 'none';
-  const wrap = document.getElementById('matWrap'); if (wrap) wrap.style.display = 'block';
-  addMatRow();
+/* Mini toolbar — pill at bottom of selected block */
+.be-toolbar {
+  display: none;
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: #1a1a2e;
+  border-radius: 20px;
+  padding: 4px 8px;
+  gap: 4px;
+  align-items: center;
+  box-shadow: 0 3px 12px rgba(0,0,0,.32);
+  user-select: none;
+  pointer-events: all;
+  white-space: nowrap;
 }
+.be-block.be-selected > .be-toolbar,
+.be-block.be-editing > .be-toolbar { display: flex; }
 
-export function addMatRow() { addMatRowData('', '', '', '', 0); recalcMat(); }
-
-function addMatRowData(name, unit, qty, price, total) {
-  const wrap = document.getElementById('matBody'); if (!wrap) return;
-  const idx = wrap.children.length + 1;
-  const d = document.createElement('div'); d.className = 'work-row-item';
-  d.innerHTML = `
-    <span class="wn">${idx}</span>
-    <input value="${esc(name)}" placeholder="Материал" oninput="window._smetaModule.recalcMat()">
-    <input value="${esc(unit)}" placeholder="шт" style="text-align:center">
-    <input value="${qty}" placeholder="0" style="text-align:center">
-    <input value="${total || ''}" placeholder="0.00" style="text-align:right" oninput="window._smetaModule.recalcMat()">
-    <button class="btn-del-row" onclick="this.closest('.work-row-item').remove();window._smetaModule.renumRows('matBody');window._smetaModule.recalcMat()">×</button>`;
-  wrap.appendChild(d);
+.be-tbtn {
+  background: rgba(255,255,255,.12);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+  font-family: 'Onest', sans-serif;
+  line-height: 1.3;
+  transition: background .12s;
 }
+.be-tbtn:hover { background: rgba(255,255,255,.28); }
+.be-tbtn-del { background: rgba(180,40,30,.55) !important; }
+.be-tbtn-del:hover { background: rgba(220,60,45,.85) !important; }
 
-export function recalcMat() {
-  let t = 0;
-  document.querySelectorAll('#matBody .work-row-item').forEach(r => { t += parseFloat(r.querySelectorAll('input')[3]?.value) || 0; });
-  const el = document.getElementById('matTotal'); if (el) el.textContent = fmt(t);
-  updateSummary(); liveUpdate();
+/* Corner resize handle */
+.be-resize {
+  display: none;
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  width: 12px;
+  height: 12px;
+  background: #4a9eff;
+  border-radius: 3px;
+  cursor: se-resize;
+  z-index: 9999;
+  pointer-events: all;
 }
+.be-block.be-selected > .be-resize { display: block; }
 
-export function getMatTotal() {
-  let t = 0;
-  document.querySelectorAll('#matBody .work-row-item').forEach(r => { t += parseFloat(r.querySelectorAll('input')[3]?.value) || 0; });
-  return t;
+/* Margin guide */
+.be-margin-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  border: 1px dashed rgba(150,150,150,.25);
+  box-sizing: border-box;
+  border-radius: 1px;
 }
-
-export function collectMatRows() {
-  return Array.from(document.querySelectorAll('#matBody .work-row-item')).map(r => {
-    const ins = r.querySelectorAll('input');
-    return { name: ins[0]?.value || '', unit: ins[1]?.value || '', qty: ins[2]?.value || '', total: parseFloat(ins[3]?.value) || 0 };
-  });
-}
-
-export function renumRows(id) {
-  document.querySelectorAll(`#${id} .work-row-item .wn`).forEach((s, i) => s.textContent = i + 1);
-}
-
-// ── Summary ───────────────────────────────────────────────────────
-
-export function updateSummary() {
-  const s = getSmrTotal(), m = getMatTotal();
-  const scSmr = document.getElementById('scSmr'), scMat = document.getElementById('scMat');
-  const scTotal = document.getElementById('scTotal'), scMatRow = document.getElementById('scMatRow');
-  if (scSmr) scSmr.textContent = fmt(s);
-  if (scMat) scMat.textContent = fmt(m);
-  if (scTotal) scTotal.textContent = fmt(s + m);
-  if (scMatRow) scMatRow.style.display = m > 0 ? 'flex' : 'none';
-}
-
-// ── Live preview update ───────────────────────────────────────────
-
-export function liveUpdate() {
-  const cn = cName(), cl = cLetter();
-  const sl = (document.getElementById('companySlogan')?.value || 'КАЧЕСТВО ПОД КЛЮЧ').toUpperCase();
-  const on = document.getElementById('objectName')?.value || '—';
-  const client = document.getElementById('clientName')?.value || '—';
-  const ex = document.getElementById('executorName')?.value || '—';
-  const dt = fmtDate(document.getElementById('inspDate')?.value);
-
-  // Cover preview
-  const pli = document.getElementById('prevLogoImg'), pc = document.getElementById('prevCircle');
-  if (appState.logoData) { if (pli) { pli.src = appState.logoData; pli.style.display = 'block'; } if (pc) pc.style.display = 'none'; }
-  else { if (pli) pli.style.display = 'none'; if (pc) { pc.style.display = 'flex'; pc.textContent = cl; } }
-  const pcn = document.getElementById('prevCovName'); if (pcn) pcn.textContent = cn.toUpperCase();
-  const pcs = document.getElementById('prevCovSlogan'); if (pcs) pcs.textContent = sl;
-  const pfc = document.getElementById('prevFootCircle'); if (pfc) pfc.textContent = cl;
-  const pfn = document.getElementById('prevFootName'); if (pfn) pfn.textContent = cn.toUpperCase();
-
-  // Plan preview
-  const ppi = document.getElementById('prevPlanImg'), pph = document.getElementById('prevPlanPh');
-  if (appState.planData) { if (ppi) { ppi.src = appState.planData; ppi.style.display = 'block'; } if (pph) pph.style.display = 'none'; }
-  else { if (ppi) ppi.style.display = 'none'; if (pph) pph.style.display = 'block'; }
-
-  const poi = document.getElementById('prevObjInfo');
-  if (poi) poi.innerHTML = `<strong>Объект:</strong> ${esc(on)}<br><strong>Дата осмотра:</strong> ${dt}<br><strong>Заказчик:</strong> ${esc(client)}<br><strong>Исполнитель:</strong> ${esc(ex)}`;
-
-  // Rooms preview
-  const rooms = getRooms();
-  let tf = 0, tw = 0, tp = 0;
-  const rb = document.getElementById('prevRoomsBody');
-  if (rb) {
-    rb.innerHTML = '';
-    rooms.forEach(r => {
-      tf += parseFloat(r.floor) || 0; tw += parseFloat(r.walls) || 0; tp += parseFloat(r.perim) || 0;
-      rb.innerHTML += `<tr><td style="border:1px solid #e0e0e0;padding:5px 7px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.floor}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.walls}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.perim}</td></tr>`;
-    });
-  }
-  const ptf = document.getElementById('prevTotF'), ptw = document.getElementById('prevTotW'), ptp = document.getElementById('prevTotP');
-  if (ptf) ptf.textContent = tf.toFixed(2); if (ptw) ptw.textContent = tw.toFixed(2); if (ptp) ptp.textContent = tp.toFixed(2);
-  ['prevPfC', 'prevPfN'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.textContent = i === 0 ? cl : cn.toUpperCase(); });
-
-  // SMR preview
-  const smrRows = collectSmrRows().slice(0, 20), smrTot = getSmrTotal();
-  const smrPrev = document.getElementById('prevSmr');
-  if (smrRows.length > 0 && smrPrev) {
-    smrPrev.style.display = 'block';
-    const se = document.getElementById('prevSmrEmpty'); if (se) se.style.display = 'none';
-    const sb = document.getElementById('prevSmrBody');
-    if (sb) sb.innerHTML = smrRows.map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i + 1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
-      `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(smrTot)}</td></tr>`;
-  }
-
-  // Mat preview
-  const matRows = collectMatRows().slice(0, 20), matTot = getMatTotal();
-  const matPrev = document.getElementById('prevMat');
-  if (matRows.length > 0 && matPrev) {
-    matPrev.style.display = 'block';
-    const mb2 = document.getElementById('prevMatBody');
-    if (mb2) mb2.innerHTML = matRows.map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i + 1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
-      `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(matTot)}</td></tr>`;
-  }
-
-  // Final preview
-  const smrV = getSmrTotal(), matV = getMatTotal();
-  const finPrev = document.getElementById('prevFinal');
-  if ((smrV > 0 || matV > 0) && finPrev) {
-    finPrev.style.display = 'block';
-    let rows = '', num = 0;
-    if (smrV > 0) { num++; rows += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительно-монтажные работы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf > 0 ? fmt(smrV / tf) : '—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(smrV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
-    if (matV > 0) { num++; rows += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительные и отделочные материалы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf > 0 ? fmt(matV / tf) : '—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(matV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
-    const pfb = document.getElementById('prevFinBody'); if (pfb) pfb.innerHTML = rows;
-    const pfv = document.getElementById('prevFinVal'); if (pfv) pfv.textContent = fmt(smrV + matV);
-  }
-
-  // Страница обмерного плана — показываем если есть полный чертёж
-  const fullPlanPage = document.getElementById('fullPlanPage');
-  const fullPlanImg  = document.getElementById('fullPlanImg');
-  const fullImg = appState.planDataFull || null;
-  if (fullPlanPage) {
-    if (fullImg) {
-      fullPlanPage.style.display = 'block';
-      if (fullPlanImg) { fullPlanImg.src = fullImg; fullPlanImg.style.display = 'block'; }
-    } else {
-      fullPlanPage.style.display = 'none';
-    }
-  }
-
-  // ── Sync right panel (desktop preview) ──────────────────────────
-  _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, smrRows, smrTot, matRows, matTot });
-}
-
-function _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, smrRows, smrTot, matRows, matTot }) {
-  // Cover
-  const pli2 = document.getElementById('prevLogoImg2'), pc2 = document.getElementById('prevCircle2');
-  if (appState.logoData) { if (pli2) { pli2.src = appState.logoData; pli2.style.display = 'block'; } if (pc2) pc2.style.display = 'none'; }
-  else { if (pli2) pli2.style.display = 'none'; if (pc2) { pc2.style.display = 'flex'; pc2.textContent = cl; } }
-  const pcn2 = document.getElementById('prevCovName2'); if (pcn2 && !pcn2.isContentEditable && !pcn2.dataset.userEdited) pcn2.textContent = cn.toUpperCase();
-  const pcs2 = document.getElementById('prevCovSlogan2'); if (pcs2 && !pcs2.dataset.userEdited) pcs2.textContent = sl;
-  const pfc2 = document.getElementById('prevFootCircle2'); if (pfc2 && !pfc2.dataset.userEdited) pfc2.textContent = cl;
-  const pfn2 = document.getElementById('prevFootName2'); if (pfn2 && !pfn2.dataset.userEdited) pfn2.textContent = cn.toUpperCase();
-  const pct2 = document.getElementById('prevCovType2'); // не трогаем если пользователь редактировал
-
-  // Plan
-  const ppi2 = document.getElementById('prevPlanImg2'), pph2 = document.getElementById('prevPlanPh2');
-  if (appState.planData) { if (ppi2) { ppi2.src = appState.planData; ppi2.style.display = 'block'; } if (pph2) pph2.style.display = 'none'; }
-  else { if (ppi2) ppi2.style.display = 'none'; if (pph2) pph2.style.display = 'block'; }
-  const poi2 = document.getElementById('prevObjInfo2');
-  if (poi2) poi2.innerHTML = `<strong>Объект:</strong> ${esc(on)}<br><strong>Дата осмотра:</strong> ${dt}<br><strong>Заказчик:</strong> ${esc(client)}<br><strong>Исполнитель:</strong> ${esc(ex)}`;
-
-  // Rooms table in plan page
-  const rb2 = document.getElementById('prevRoomsBody2');
-  if (rb2) {
-    rb2.innerHTML = '';
-    rooms.forEach(r => { rb2.innerHTML += `<tr><td style="border:1px solid #e0e0e0;padding:5px 7px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.floor}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.walls}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.perim}</td></tr>`; });
-  }
-
-  // SMR
-  const sb2 = document.getElementById('prevSmrBody2'), se2 = document.getElementById('prevSmrEmpty2');
-  if (sb2) {
-    if (smrRows.length > 0) {
-      if (se2) se2.style.display = 'none';
-      sb2.innerHTML = smrRows.slice(0,25).map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
-        `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(smrTot)}</td></tr>`;
-    } else { if (se2) se2.style.display = 'flex'; sb2.innerHTML = ''; }
-  }
-
-  // Mat
-  const mb2 = document.getElementById('prevMatBody2'), me2 = document.getElementById('prevMatEmpty2');
-  if (mb2) {
-    if (matRows.length > 0) {
-      if (me2) me2.style.display = 'none';
-      mb2.innerHTML = matRows.slice(0,25).map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
-        `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(matTot)}</td></tr>`;
-    } else { if (me2) me2.style.display = 'flex'; mb2.innerHTML = ''; }
-  }
-
-  // Final
-  const smrV = getSmrTotal(), matV = getMatTotal();
-  const pfb2 = document.getElementById('prevFinBody2'), pfv2 = document.getElementById('prevFinVal2');
-  if (pfb2) {
-    let rows2 = '', num2 = 0;
-    if (smrV > 0) { num2++; rows2 += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num2}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительно-монтажные работы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf>0?fmt(smrV/tf):'—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(smrV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
-    if (matV > 0) { num2++; rows2 += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num2}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительные и отделочные материалы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf>0?fmt(matV/tf):'—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(matV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
-    pfb2.innerHTML = rows2;
-  }
-  if (pfv2) pfv2.textContent = fmt(smrV + matV);
-}
-
-// ── Preview modal ─────────────────────────────────────────────────
-
-export function openPreview() {
-  liveUpdate();
-  document.getElementById('modalOverlay')?.classList.add('open');
-  document.body.style.overflow = 'hidden';
-  setTimeout(initEditor, 100);
-}
-
-export function closePreview() {
-  document.getElementById('modalOverlay')?.classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-export function closePreviewOnBg(e) {
-  if (e.target === document.getElementById('modalOverlay')) closePreview();
-}
-
-// ── PDF generation ────────────────────────────────────────────────
-
-export function buildDocPages(rows, totalVal, titleText) {
-  const PER = 26; let html = '';
-  for (let s = 0; s < rows.length; s += PER) {
-    const chunk = rows.slice(s, s + PER), isLast = s + PER >= rows.length;
-    html += `<div class="a4"><div class="pg"><div class="smeta-ttl">${titleText}</div>
-      <table class="sm-t"><thead><tr>
-        <th style="width:24px">№<br>п/п</th><th>Наименование</th>
-        <th style="width:46px">Ед.<br>изм.</th><th style="width:52px">Кол-во</th>
-        <th style="width:90px">За ед. ₽</th><th style="width:100px">Всего ₽</th>
-      </tr></thead><tbody>${chunk.map((r, i) => `<tr><td>${s + i + 1}</td><td>${esc(r.name)}</td>
-        <td style="text-align:center">${esc(r.unit)}</td><td style="text-align:center">${r.qty}</td>
-        <td style="text-align:right">—</td><td style="text-align:right;font-weight:500">${fmt(r.total)}</td></tr>`).join('')}
-      </tbody>${isLast ? `<tfoot><tr class="tot-r"><td colspan="4" style="border:1px solid #e0e0e0"></td>
-        <td style="text-align:right;font-weight:700;background:#f5f5f2;border:1px solid #ccc">Итого:</td>
-        <td style="text-align:right;font-weight:700;background:#f5f5f2;border:1px solid #ccc">${fmt(totalVal)}</td></tr></tfoot>` : ''}
-      </table><div class="pg-foot"><div class="pfc">${cLetter()}</div><div class="pfn">${esc(cName().toUpperCase())}</div></div>
-    </div></div>`;
-  }
-  return html;
-}
-
-export async function generatePDF() {
-  const cn = cName(), cl = cLetter();
-  const sl = (document.getElementById('companySlogan')?.value || 'КАЧЕСТВО ПОД КЛЮЧ').toUpperCase();
-  const on = document.getElementById('objectName')?.value || '—';
-  const client = document.getElementById('clientName')?.value || '—';
-  const ex = document.getElementById('executorName')?.value || '—';
-  const dt = fmtDate(document.getElementById('inspDate')?.value);
-
-  // Update print-doc elements
-  const cli = document.getElementById('covLogoImg'), cc = document.getElementById('covCircle');
-  if (appState.logoData) { if (cli) { cli.src = appState.logoData; cli.style.display = 'block'; } if (cc) cc.style.display = 'none'; }
-  else { if (cli) cli.style.display = 'none'; if (cc) { cc.style.display = 'flex'; cc.textContent = cl; } }
-  ['covName', 'covSlogan', 'covFtC', 'covFtN'].forEach((id, i) => {
-    const el = document.getElementById(id); if (!el) return;
-    el.textContent = i === 0 ? cn.toUpperCase() : i === 1 ? sl : i === 2 ? cl : cn.toUpperCase();
-  });
-
-  const pi = document.getElementById('docPlanImg'), ph = document.getElementById('docPlanPh');
-  if (appState.planData) { if (pi) { pi.src = appState.planData; pi.style.display = 'block'; } if (ph) ph.style.display = 'none'; }
-  else { if (pi) pi.style.display = 'none'; if (ph) ph.style.display = 'block'; }
-
-  const doi = document.getElementById('docObjInfo');
-  if (doi) doi.innerHTML = `<strong>Объект:</strong> ${esc(on)}<br><strong>Дата осмотра:</strong> ${dt}<br><strong>Заказчик:</strong> ${esc(client)}<br><strong>Исполнитель:</strong> ${esc(ex)}`;
-
-  const rooms = getRooms(); let tf = 0, tw = 0, tp = 0;
-  const docRb = document.getElementById('docRoomsBody');
-  if (docRb) {
-    docRb.innerHTML = '';
-    rooms.forEach(r => {
-      tf += parseFloat(r.floor) || 0; tw += parseFloat(r.walls) || 0; tp += parseFloat(r.perim) || 0;
-      docRb.innerHTML += `<tr><td>${esc(r.name)}</td><td>${r.floor}</td><td>${r.walls}</td><td>${r.perim}</td></tr>`;
-    });
-  }
-  ['dTotF', 'dTotW', 'dTotP'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.textContent = [tf, tw, tp][i].toFixed(2); });
-  ['pfC1', 'pfC2'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = cl; });
-  ['pfN1', 'pfN2'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = cn.toUpperCase(); });
-
-  const smrRows = collectSmrRows(), smrTot = getSmrTotal();
-  const smrDp = document.getElementById('smrDocPages');
-  if (smrDp) smrDp.innerHTML = smrRows.length > 0 ? buildDocPages(smrRows, smrTot, 'Смета строительно-монтажных работ') : '';
-
-  const matRows = collectMatRows(), matTot = getMatTotal();
-  const matDp = document.getElementById('matDocPages');
-  if (matDp) matDp.innerHTML = matRows.length > 0 ? buildDocPages(matRows, matTot, 'Смета на строительные и отделочные материалы') : '';
-
-  const fb = document.getElementById('finBody'); let num = 0;
-  if (fb) {
-    fb.innerHTML = '';
-    if (smrRows.length > 0) { num++; fb.innerHTML += `<tr><td>${num}</td><td>Строительно-монтажные работы</td><td>м²</td><td>${tf.toFixed(2)}</td><td>${tf > 0 ? fmt(smrTot / tf) : '—'}</td><td>${fmt(smrTot)}</td><td></td></tr>`; }
-    if (matRows.length > 0) { num++; fb.innerHTML += `<tr><td>${num}</td><td>Строительные и отделочные материалы</td><td>м²</td><td>${tf.toFixed(2)}</td><td>${tf > 0 ? fmt(matTot / tf) : '—'}</td><td>${fmt(matTot)}</td><td></td></tr>`; }
-  }
-  const ft = document.getElementById('finTotal'); if (ft) ft.textContent = fmt(smrTot + matTot);
-  syncEditorToDoc();
-
-  // Страница "Обмерный план" — полный чертёж со всеми размерами
-  const fullPlanPage = document.getElementById('fullPlanPage');
-  if (fullPlanPage) {
-    const fullImg = appState.planDataFull || appState.planData;
-    if (fullImg) {
-      fullPlanPage.style.display = 'block';
-      const fpi = document.getElementById('fullPlanImg');
-      if (fpi) { fpi.src = fullImg; fpi.style.display = 'block'; }
-    } else {
-      fullPlanPage.style.display = 'none';
-    }
-  }
-
-  const btns = document.querySelectorAll('.btn-generate');
-  btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
-  try {
-    const css = Array.from(document.styleSheets).map(s => { try { return Array.from(s.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; } }).join('\n');
-    const resp = await fetch('https://assistcloudai.xyz/webhook/generate-pdf', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        html: Array.from(document.querySelectorAll('.preview-page'))
-          .filter(p => p.style.display !== 'none')
-          .map(p => { const cl2 = p.cloneNode(true); cl2.querySelectorAll('.ed-controls,.ed-resize').forEach(el => el.remove()); cl2.style.transform = 'none'; cl2.style.margin = '0'; return `<div class="a4">${cl2.innerHTML}</div>`; }).join(''),
-        css,
-      }),
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const blob = await resp.blob();
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Смета_${on}.pdf`; a.click();
-  } catch (e2) { alert('Ошибка генерации PDF: ' + e2.message); }
-  finally { btns.forEach(b => { b.textContent = 'Сформировать PDF →'; b.disabled = false; }); }
-}
-
-// ── Preview editor ────────────────────────────────────────────────
-
-const SCALE = 0.85;
-
-function initEditor() {
-  document.querySelectorAll('.ed-el').forEach(el => makeEditable(el));
-}
-
-function makeEditable(el) {
-  if (el.dataset.edInit) return;
-  el.dataset.edInit = '1'; el.classList.add('ed-ready');
-  const wrap = document.createElement('div'); wrap.className = 'ed-controls';
-  const btnDel = document.createElement('button'); btnDel.className = 'ed-btn-del'; btnDel.innerHTML = '✕';
-  btnDel.onmousedown = e => e.stopPropagation();
-  btnDel.onclick = e => { e.stopPropagation(); el.style.visibility = 'hidden'; el.dataset.hidden = '1'; };
-  wrap.appendChild(btnDel); el.appendChild(wrap);
-  const resizeHandle = document.createElement('div'); resizeHandle.className = 'ed-resize'; el.appendChild(resizeHandle);
-
-  let isDragging = false, startX, startY, origLeft, origTop;
-  el.addEventListener('mousedown', e => {
-    if (e.target.closest('.ed-controls') || e.target === resizeHandle) return;
-    isDragging = true; const page = el.closest('.preview-page'); const pageRect = page.getBoundingClientRect(); const elRect = el.getBoundingClientRect();
-    if (!el.dataset.posInit) { el.dataset.posInit = '1'; el.style.transform = 'none'; el.style.left = ((elRect.left - pageRect.left) / SCALE) + 'px'; el.style.top = ((elRect.top - pageRect.top) / SCALE) + 'px'; }
-    origLeft = parseFloat(el.style.left) || 0; origTop = parseFloat(el.style.top) || 0; startX = e.clientX; startY = e.clientY; e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => { if (!isDragging) return; el.style.left = (origLeft + (e.clientX - startX) / SCALE) + 'px'; el.style.top = (origTop + (e.clientY - startY) / SCALE) + 'px'; });
-  document.addEventListener('mouseup', () => { isDragging = false; });
-
-  let isResizing = false, rsX, rsY, rsW, rsH, rsScale;
-  resizeHandle.addEventListener('mousedown', e => {
-    e.stopPropagation(); e.preventDefault(); isResizing = true; rsX = e.clientX; rsY = e.clientY;
-    const rect = el.getBoundingClientRect(); rsW = rect.width / SCALE; rsH = rect.height / SCALE; rsScale = parseFloat(el.dataset.scale || '1');
-  });
-  document.addEventListener('mousemove', e => {
-    if (!isResizing) return;
-    const dx = (e.clientX - rsX) / SCALE, dy = (e.clientY - rsY) / SCALE;
-    const delta = (Math.abs(dx) > Math.abs(dy) ? dx : dy);
-    const ns = Math.max(0.3, rsScale + delta / 150); el.dataset.scale = ns; el.style.transform = `scale(${ns})`; el.style.transformOrigin = 'top left';
-  });
-  document.addEventListener('mouseup', () => { isResizing = false; });
-}
-
-export function syncEditorToDoc() {
-  [['prevCovLogo', ['covLogoImg', 'covCircle']], ['prevCovName', ['covName']], ['prevCovSlogan', ['covSlogan']], ['prevCovType', ['covDtype']], ['prevCovFoot', ['covFtC', 'covFtN']]].forEach(([prevId, docIds]) => {
-    const prevEl = document.getElementById(prevId); if (!prevEl) return;
-    const hidden = prevEl.style.display === 'none';
-    docIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = hidden ? 'none' : ''; });
-  });
-  const logoEl = document.getElementById('prevCovLogo');
-  if (logoEl?.dataset.scale) { const sc = logoEl.dataset.scale; ['covLogoImg', 'covCircle'].forEach(id => { const el = document.getElementById(id); if (el) el.style.transform = `scale(${sc})`; }); }
-  const nameEl = document.getElementById('prevCovName');
-  if (nameEl?.dataset.scale) { const sc = nameEl.dataset.scale; const el = document.getElementById('covName'); if (el) el.style.transform = `scale(${sc})`; }
-}
-
-// ── Init smeta ────────────────────────────────────────────────────
-
-export function initSmeta() {
-  addRoom('Спальня', '12.92', '36.92', '14.13');
-  addRoom('Кухня - гостиная', '14.69', '42.21', '14.72');
-  addRoom('Прихожая', '3.30', '15.82', '5.03');
-  addRoom('Сан. узел', '3.57', '19.86', '6.92');
-  liveUpdate();
-  // Init editor for right panel right away (not only in modal)
-  setTimeout(initRightPanelEditor, 200);
-}
-
-
-// ══════════════════════════════════════════════════════════════════
-// BLOCK EDITOR — universal drag/resize/edit for .spp-a4 pages
-// ══════════════════════════════════════════════════════════════════
-//
-// ══════════════════════════════════════════════════════════════════
-// BLOCK EDITOR v2 — click-to-select, persistent toolbar, A4 margins
-// ══════════════════════════════════════════════════════════════════
-//
-// Model: click element → select (toolbar stays) → click elsewhere → deselect
-// Double-click text → contenteditable inline edit
-// Drag handle → move anywhere within page
-// A− A+ → font size   ◻− ◻+ → scale   ↺ → rotate 90°   ✕/👁 → hide/show
-
-const BlockEditor = (() => {
-
-  let _selected = null; // currently selected be-block element
-
-  // ── Toolbar HTML ──────────────────────────────────────────────
-  const mkToolbar = () => {
-    const t = document.createElement('div');
-    t.className = 'be-toolbar';
-    t.innerHTML = `
-      <span class="be-handle" title="Перетащить">⠿</span>
-      <span class="be-sep"></span>
-      <button class="be-btn" data-action="fs-" title="Уменьшить шрифт">A−</button>
-      <button class="be-btn" data-action="fs+" title="Увеличить шрифт">A+</button>
-      <span class="be-sep"></span>
-      <button class="be-btn" data-action="sc-" title="Уменьшить масштаб">◻−</button>
-      <button class="be-btn" data-action="sc+" title="Увеличить масштаб">◻+</button>
-      <span class="be-sep"></span>
-      <button class="be-btn" data-action="rot" title="Повернуть на 90°">↺</button>
-      <span class="be-sep"></span>
-      <button class="be-btn be-del" data-action="del" title="Скрыть элемент">✕</button>`;
-    return t;
-  };
-
-  // ── CSS injected once ─────────────────────────────────────────
-  const CSS = `
-    /* ── Block wrapper ── */
-    .be-block {
-      position: relative;
-      cursor: default;
-      border-radius: 2px;
-      transition: outline .1s;
-    }
-    .be-block:hover {
-      outline: 1.5px dashed rgba(74,159,255,0.35);
-      outline-offset: 2px;
-    }
-    .be-block.be-selected {
-      outline: 2px solid #4a9eff !important;
-      outline-offset: 2px;
-    }
-
-    /* ── Toolbar ── */
-    .be-toolbar {
-      display: none;
-      position: absolute;
-      top: -36px; left: 0;
-      z-index: 9999;
-      background: #1a1a2e;
-      border-radius: 8px;
-      padding: 4px 6px;
-      gap: 3px;
-      align-items: center;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-      white-space: nowrap;
-      user-select: none;
-      pointer-events: all;
-    }
-    .be-block.be-selected > .be-toolbar { display: flex; }
-
-    .be-sep {
-      width: 1px; height: 14px;
-      background: rgba(255,255,255,0.15);
-      display: inline-block; flex-shrink: 0;
-    }
-    .be-handle {
-      cursor: grab;
-      color: rgba(255,255,255,0.5);
-      font-size: 15px;
-      padding: 0 3px;
-      line-height: 1;
-    }
-    .be-handle:active { cursor: grabbing; }
-    .be-btn {
-      background: rgba(255,255,255,0.1);
-      border: none;
-      border-radius: 5px;
-      color: #fff;
-      font-size: 11px;
-      font-weight: 500;
-      padding: 3px 7px;
-      cursor: pointer;
-      font-family: 'Onest', sans-serif;
-      line-height: 1.3;
-      transition: background .12s;
-    }
-    .be-btn:hover { background: rgba(255,255,255,0.28); }
-    .be-del { background: rgba(180,40,30,0.55) !important; }
-    .be-del:hover { background: rgba(220,60,45,0.85) !important; }
-
-    /* ── Text editing mode ── */
-    .be-block.be-editing {
-      outline: 2px solid #2171e0 !important;
-      background: rgba(33,113,224,0.04);
-    }
-    .be-block.be-editing > .be-toolbar { display: flex; }
-
-    /* ── Hidden state ── */
-    .be-block.be-hidden {
-      opacity: 0.1;
-    }
-    .be-block.be-hidden:hover {
-      opacity: 0.3;
-      outline: 1.5px dashed #aaa;
-    }
-
-    /* ── A4 margin guides ── */
-    .be-margin-guide {
-      position: absolute;
-      pointer-events: none;
-      z-index: 1;
-      border: 1px dashed rgba(180,180,180,0.4);
-      box-sizing: border-box;
-    }
-  `;
-
-  function injectStyle() {
-    if (document.getElementById('be-style-v2')) return;
-    const s = document.createElement('style');
-    s.id = 'be-style-v2';
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────
-
-  function getFontSize(el) {
-    return parseFloat(getComputedStyle(el).fontSize) || 14;
-  }
-  function getScale(el) { return parseFloat(el.dataset.beScale || '1'); }
-  function getRot(el)   { return parseFloat(el.dataset.beRot   || '0'); }
-
-  function applyTransform(el) {
-    const sc  = getScale(el);
-    const rot = getRot(el);
-    el.style.transform = `rotate(${rot}deg) scale(${sc})`;
-    el.style.transformOrigin = 'top left';
-  }
-
-  // ── Selection management ──────────────────────────────────────
-
-  function select(el) {
-    if (_selected && _selected !== el) deselect(_selected);
-    _selected = el;
-    el.classList.add('be-selected');
-  }
-
-  function deselect(el) {
-    if (!el) return;
-    el.classList.remove('be-selected', 'be-editing');
-    if (el.contentEditable === 'true') {
-      el.contentEditable = 'false';
-    }
-    _selected = null;
-  }
-
-  // Click on page background → deselect
-  function setupPageDeselect(page) {
-    if (page.dataset.beDeselect) return;
-    page.dataset.beDeselect = '1';
-    page.addEventListener('mousedown', e => {
-      if (!e.target.closest('.be-block') && !e.target.closest('.be-toolbar')) {
-        if (_selected) deselect(_selected);
-      }
-    });
-  }
-
-  // ── A4 margin guide ───────────────────────────────────────────
-  // 20px ≈ 2cm at screen scale (794px wide ≈ A4 at 96dpi, 1cm = 37.8px → 2cm = 75.6px)
-  // For preview panel at ~680px wide: scale factor ~0.855, so 2cm ≈ 65px
-  const MARGIN_PX = 66; // ~2cm in preview
-
-  function addMarginGuide(page) {
-    if (page.querySelector('.be-margin-guide')) return;
-    const guide = document.createElement('div');
-    guide.className = 'be-margin-guide';
-    guide.style.cssText = `
-      top: ${MARGIN_PX}px;
-      left: ${MARGIN_PX}px;
-      right: ${MARGIN_PX}px;
-      bottom: ${MARGIN_PX}px;
-    `;
-    page.appendChild(guide);
-  }
-
-  // ── Drag ─────────────────────────────────────────────────────
-
-  function setupDrag(handle, el, page) {
-    if (handle.dataset.beDragInit) return;
-    handle.dataset.beDragInit = '1';
-
-    handle.addEventListener('mousedown', e => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      select(el);
-
-      const pageRect = page.getBoundingClientRect();
-      const elRect   = el.getBoundingClientRect();
-
-      // Snapshot absolute position on first drag
-      if (!el.dataset.bePosInit) {
-        el.dataset.bePosInit = '1';
-        el.style.position = 'absolute';
-        // Remove centering transform before setting pixel position
-        const curTransform = el.style.transform || '';
-        const cleanTransform = curTransform.replace(/translate\([^)]*\)/g, '').trim();
-        el.style.transform = cleanTransform;
-        el.style.left = (elRect.left - pageRect.left) + 'px';
-        el.style.top  = (elRect.top  - pageRect.top)  + 'px';
-        el.style.margin = '0';
-      }
-
-      const ox = parseFloat(el.style.left) || 0;
-      const oy = parseFloat(el.style.top)  || 0;
-      const sx = e.clientX, sy = e.clientY;
-
-      const onMove = mv => {
-        el.style.left = (ox + mv.clientX - sx) + 'px';
-        el.style.top  = (oy + mv.clientY - sy) + 'px';
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-  }
-
-  // ── Attach toolbar to one element ────────────────────────────
-
-  function attach(el, page) {
-    if (!el || el.dataset.beInit) return;
-    el.dataset.beInit = '1';
-    el.classList.add('be-block');
-
-    const toolbar = mkToolbar();
-    // Prevent toolbar click from bubbling to page (which would deselect)
-    toolbar.addEventListener('mousedown', e => e.stopPropagation());
-
-    // ── Click → select ─────────────────────────────────────────
-    el.addEventListener('mousedown', e => {
-      if (e.target.closest('.be-toolbar')) return;
-      e.stopPropagation();
-      select(el);
-    });
-
-    // ── Double-click → edit text ───────────────────────────────
-    const hasTable = !!el.querySelector('table');
-    const hasImg   = !!el.querySelector('img');
-    if (!hasTable && !hasImg) {
-      el.addEventListener('dblclick', e => {
-        if (e.target.closest('.be-toolbar')) return;
-        select(el);
-        el.contentEditable = 'true';
-        el.spellcheck = false;
-        el.classList.add('be-editing');
-        // Place cursor
-        el.focus();
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      });
-      el.addEventListener('keydown', e => {
-        if (e.key === 'Escape') {
-          el.contentEditable = 'false';
-          el.classList.remove('be-editing');
-          el.blur();
-        }
-      });
-      el.addEventListener('blur', () => {
-        el.contentEditable = 'false';
-        el.classList.remove('be-editing');
-      }, true);
-    }
-
-    // ── Toolbar actions ────────────────────────────────────────
-    toolbar.addEventListener('click', e => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      e.stopPropagation();
-      const a = btn.dataset.action;
-
-      if (a === 'del') {
-        const hidden = el.classList.toggle('be-hidden');
-        el.dataset.beHidden = hidden ? '1' : '0';
-        btn.textContent = hidden ? '👁' : '✕';
-        btn.title = hidden ? 'Показать' : 'Скрыть элемент';
-        if (hidden) {
-          // Allow hovering hidden elements to restore
-          el.style.pointerEvents = 'all';
-        }
-        return;
-      }
-      if (a === 'fs-') el.style.fontSize = Math.max(6,  getFontSize(el) - 1) + 'px';
-      if (a === 'fs+') el.style.fontSize = Math.min(80, getFontSize(el) + 1) + 'px';
-      if (a === 'sc-') { el.dataset.beScale = Math.max(0.15, parseFloat((getScale(el) - 0.05).toFixed(2))); applyTransform(el); }
-      if (a === 'sc+') { el.dataset.beScale = Math.min(5,    parseFloat((getScale(el) + 0.05).toFixed(2))); applyTransform(el); }
-      if (a === 'rot') { el.dataset.beRot = (getRot(el) + 90) % 360; applyTransform(el); }
-    });
-
-    // ── Drag setup ─────────────────────────────────────────────
-    const handle = toolbar.querySelector('.be-handle');
-    setupDrag(handle, el, page);
-
-    el.appendChild(toolbar);
-  }
-
-  // ── Init one .spp-a4 page ────────────────────────────────────
-
-  function initPage(page) {
-    if (!page || page.dataset.bePageInit) return;
-    page.dataset.bePageInit = '1';
-    page.style.position = 'relative';
-
-    addMarginGuide(page);
-    setupPageDeselect(page);
-
-    // Direct children
-    Array.from(page.children).forEach(child => {
-      if (child.classList.contains('be-toolbar') || child.classList.contains('be-margin-guide')) return;
-      attach(child, page);
-    });
-
-    // Named sub-elements (individually editable inside wrapper divs)
-    const named = [
-      '#prevCovLogo2', '#prevCovName2', '#prevCovSlogan2',
-      '#prevCovType2',
-      '#prevObjInfo2', '#prevPlanBox2',
-      '.be-editable-title',
-    ];
-    named.forEach(sel => {
-      page.querySelectorAll(sel).forEach(el => attach(el, page));
-    });
-  }
-
-  // ── Public API ────────────────────────────────────────────────
-
-  function init() {
-    injectStyle();
-    document.querySelectorAll('.spp-a4').forEach(initPage);
-  }
-
-  return { init, initPage };
-
-})();
-
-function initRightPanelEditor() {
-  BlockEditor.init();
-  window.BlockEditor = BlockEditor;
-}
-
-export { BlockEditor };
