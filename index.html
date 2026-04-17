@@ -844,10 +844,14 @@
         if (planner) planner.style.display = view === 'planner' ? 'flex'  : 'none';
         if (view === 'planner') window.dispatchEvent(new Event('resize'));
         if (view === 'smeta') {
-          var sb = document.getElementById('sppBody');
-          if (sb) { sb.scrollTop = 0; requestAnimationFrame(function(){ sb.scrollTop = 0; }); }
-        }
-      });
+  var sb = document.getElementById('sppBody');
+  if (sb) {
+    sb.scrollTop = 0;
+    // Гарантированно показываем обложку
+    var coverTab = document.querySelector('.spp-tab[data-page="cover"]');
+    if (coverTab) coverTab.click();
+  }
+}
     });
 
     requestAnimationFrame(function() {
@@ -871,24 +875,56 @@
   }
 })();
 
-// ── SPP TABS — scroll navigation ─────────────────────────
+// ── SPP TABS — переключение страниц ─────────────────────────
 (function() {
   function initSppTabs() {
     var tabs = document.querySelectorAll('.spp-tab');
     var body = document.getElementById('sppBody');
 
+    // Сразу скрываем все страницы
+    document.querySelectorAll('.spp-page').forEach(p => p.style.display = 'none');
+
     tabs.forEach(function(tab) {
       tab.addEventListener('click', function() {
+        // Снимаем active со всех табов
         tabs.forEach(function(t){ t.classList.remove('active'); });
         tab.classList.add('active');
+
+        // Скрываем все страницы
+        document.querySelectorAll('.spp-page').forEach(p => p.style.display = 'none');
+
+        // Показываем нужную
         var target = document.querySelector('.spp-page[data-page="' + tab.dataset.page + '"]');
-        if (target && body) {
-          var bodyRect   = body.getBoundingClientRect();
-          var targetRect = target.getBoundingClientRect();
-          body.scrollTo({ top: body.scrollTop + (targetRect.top - bodyRect.top) - 12, behavior: 'smooth' });
-        }
+        if (target) target.style.display = 'block';
+
+        // Сбрасываем скролл наверх
+        if (body) body.scrollTop = 0;
       });
     });
+
+    // Активируем вкладку "Обложка" по умолчанию
+    var coverTab = document.querySelector('.spp-tab[data-page="cover"]');
+    if (coverTab) {
+      coverTab.classList.add('active');
+      var coverPage = document.querySelector('.spp-page[data-page="cover"]');
+      if (coverPage) coverPage.style.display = 'block';
+    }
+
+    // Reset scroll immediately
+    if (body) body.scrollTop = 0;
+
+    // Init BlockEditor after layout settles
+    setTimeout(function() {
+      if (window.BlockEditor) window.BlockEditor.init();
+    }, 300);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSppTabs);
+  } else {
+    initSppTabs();
+  }
+})();
 
     // Init BlockEditor + reset scroll to top
     // Reset scroll immediately and after everything settles
