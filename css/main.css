@@ -736,9 +736,7 @@ html, body {
   flex-direction: column;
   align-items: center;
 }
-.spp-section.hidden {
-  display: none;
-}
+
 .spp-page { display: none; width: 100%; }
 .spp-page.active { display: block; }
 
