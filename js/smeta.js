@@ -403,6 +403,66 @@ export function liveUpdate() {
       fullPlanPage.style.display = 'none';
     }
   }
+
+  // ── Sync right panel (desktop preview) ──────────────────────────
+  _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, smrRows, smrTot, matRows, matTot });
+}
+
+function _syncRightPanel({ cn, cl, sl, on, client, ex, dt, rooms, tf, tw, tp, smrRows, smrTot, matRows, matTot }) {
+  // Cover
+  const pli2 = document.getElementById('prevLogoImg2'), pc2 = document.getElementById('prevCircle2');
+  if (appState.logoData) { if (pli2) { pli2.src = appState.logoData; pli2.style.display = 'block'; } if (pc2) pc2.style.display = 'none'; }
+  else { if (pli2) pli2.style.display = 'none'; if (pc2) { pc2.style.display = 'flex'; pc2.textContent = cl; } }
+  const pcn2 = document.getElementById('prevCovName2'); if (pcn2 && !pcn2.isContentEditable && !pcn2.dataset.userEdited) pcn2.textContent = cn.toUpperCase();
+  const pcs2 = document.getElementById('prevCovSlogan2'); if (pcs2 && !pcs2.dataset.userEdited) pcs2.textContent = sl;
+  const pfc2 = document.getElementById('prevFootCircle2'); if (pfc2 && !pfc2.dataset.userEdited) pfc2.textContent = cl;
+  const pfn2 = document.getElementById('prevFootName2'); if (pfn2 && !pfn2.dataset.userEdited) pfn2.textContent = cn.toUpperCase();
+  const pct2 = document.getElementById('prevCovType2'); // не трогаем если пользователь редактировал
+
+  // Plan
+  const ppi2 = document.getElementById('prevPlanImg2'), pph2 = document.getElementById('prevPlanPh2');
+  if (appState.planData) { if (ppi2) { ppi2.src = appState.planData; ppi2.style.display = 'block'; } if (pph2) pph2.style.display = 'none'; }
+  else { if (ppi2) ppi2.style.display = 'none'; if (pph2) pph2.style.display = 'block'; }
+  const poi2 = document.getElementById('prevObjInfo2');
+  if (poi2) poi2.innerHTML = `<strong>Объект:</strong> ${esc(on)}<br><strong>Дата осмотра:</strong> ${dt}<br><strong>Заказчик:</strong> ${esc(client)}<br><strong>Исполнитель:</strong> ${esc(ex)}`;
+
+  // Rooms table in plan page
+  const rb2 = document.getElementById('prevRoomsBody2');
+  if (rb2) {
+    rb2.innerHTML = '';
+    rooms.forEach(r => { rb2.innerHTML += `<tr><td style="border:1px solid #e0e0e0;padding:5px 7px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.floor}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.walls}</td><td style="border:1px solid #e0e0e0;padding:5px 7px;text-align:center">${r.perim}</td></tr>`; });
+  }
+
+  // SMR
+  const sb2 = document.getElementById('prevSmrBody2'), se2 = document.getElementById('prevSmrEmpty2');
+  if (sb2) {
+    if (smrRows.length > 0) {
+      if (se2) se2.style.display = 'none';
+      sb2.innerHTML = smrRows.slice(0,25).map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
+        `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(smrTot)}</td></tr>`;
+    } else { if (se2) se2.style.display = 'flex'; sb2.innerHTML = ''; }
+  }
+
+  // Mat
+  const mb2 = document.getElementById('prevMatBody2'), me2 = document.getElementById('prevMatEmpty2');
+  if (mb2) {
+    if (matRows.length > 0) {
+      if (me2) me2.style.display = 'none';
+      mb2.innerHTML = matRows.slice(0,25).map((r, i) => `<tr><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${i+1}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;font-size:10px">${esc(r.name)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${esc(r.unit)}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:center;font-size:10px">${r.qty}</td><td style="border:1px solid #e0e0e0;padding:5px 6px;text-align:right;font-size:10px;font-weight:500">${fmt(r.total)}</td></tr>`).join('') +
+        `<tr><td colspan="4" style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:10px">Итого:</td><td style="border:1px solid #ccc;padding:6px;text-align:right;font-weight:700;background:#f5f5f2;font-size:11px">${fmt(matTot)}</td></tr>`;
+    } else { if (me2) me2.style.display = 'flex'; mb2.innerHTML = ''; }
+  }
+
+  // Final
+  const smrV = getSmrTotal(), matV = getMatTotal();
+  const pfb2 = document.getElementById('prevFinBody2'), pfv2 = document.getElementById('prevFinVal2');
+  if (pfb2) {
+    let rows2 = '', num2 = 0;
+    if (smrV > 0) { num2++; rows2 += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num2}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительно-монтажные работы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf>0?fmt(smrV/tf):'—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(smrV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
+    if (matV > 0) { num2++; rows2 += `<tr><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${num2}</td><td style="border:1px solid #e0e0e0;padding:7px 10px">Строительные и отделочные материалы</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">м²</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:center">${tf.toFixed(2)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right">${tf>0?fmt(matV/tf):'—'}</td><td style="border:1px solid #e0e0e0;padding:7px 10px;text-align:right;font-weight:600">${fmt(matV)}</td><td style="border:1px solid #e0e0e0;padding:7px 10px"></td></tr>`; }
+    pfb2.innerHTML = rows2;
+  }
+  if (pfv2) pfv2.textContent = fmt(smrV + matV);
 }
 
 // ── Preview modal ─────────────────────────────────────────────────
@@ -596,4 +656,146 @@ export function initSmeta() {
   addRoom('Прихожая', '3.30', '15.82', '5.03');
   addRoom('Сан. узел', '3.57', '19.86', '6.92');
   liveUpdate();
+  // Init editor for right panel right away (not only in modal)
+  setTimeout(initRightPanelEditor, 200);
+}
+
+// ── Right panel inline editor ─────────────────────────────────────
+// Enables contenteditable + drag on elements with data-ed attribute
+// inside .spp-a4 pages (the desktop right preview panel)
+
+function initRightPanelEditor() {
+  // Elements that should be inline-editable (text content)
+  const editableSelectors = [
+    '#prevCovName2', '#prevCovSlogan2', '#prevCovType2',
+    '#prevFootName2', '#prevFootCircle2',
+  ];
+  editableSelectors.forEach(sel => {
+    const el = document.querySelector(sel);
+    if (!el || el.dataset.rpEdInit) return;
+    el.dataset.rpEdInit = '1';
+    el.setAttribute('contenteditable', 'true');
+    el.dataset.editable = '1';
+    el.spellcheck = false;
+    el.style.cursor = 'text';
+    el.style.minWidth = '10px';
+    el.style.outline = 'none';
+    el.addEventListener('focus', () => { el.dataset.userEdited = '1'; });
+    el.addEventListener('blur',  () => { el.dataset.userEdited = '1'; });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+  });
+
+  // Elements that can be dragged (position:absolute ones on cover page)
+  const draggableSelectors = [
+    '#prevCovLogo2', '#prevCovName2', '#prevCovSlogan2',
+    '#prevCovType2', '#prevFootCircle2',
+  ];
+  draggableSelectors.forEach(sel => {
+    const el = document.querySelector(sel);
+    if (!el || el.dataset.rpDragInit) return;
+    const page = el.closest('.spp-a4'); if (!page) return;
+    el.dataset.rpDragInit = '1';
+    el.style.cursor = 'move';
+
+    let dragging = false, sx, sy, ox, oy;
+
+    el.addEventListener('mousedown', e => {
+      if (e.target.getAttribute('contenteditable')) {
+        // If it's also contenteditable, only drag when NOT in text cursor mode
+        // Dragging by holding outside text — skip if user clicks the text directly
+        // Use a drag delay: only drag if moved > 4px
+      }
+      const pageRect = page.getBoundingClientRect();
+      const elRect   = el.getBoundingClientRect();
+      if (!el.dataset.posInit) {
+        el.dataset.posInit = '1';
+        el.style.transform = 'none';
+        el.style.position  = 'absolute';
+        el.style.left = (elRect.left - pageRect.left) + 'px';
+        el.style.top  = (elRect.top  - pageRect.top)  + 'px';
+      }
+      ox = parseFloat(el.style.left) || 0;
+      oy = parseFloat(el.style.top)  || 0;
+      sx = e.clientX; sy = e.clientY;
+      dragging = false;
+      const onMove = mv => {
+        const dx = mv.clientX - sx, dy = mv.clientY - sy;
+        if (!dragging && Math.hypot(dx, dy) < 4) return;
+        dragging = true;
+        el.style.left = (ox + dx) + 'px';
+        el.style.top  = (oy + dy) + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // Add hover outline to all editable/draggable elements in right panel
+  document.querySelectorAll('.spp-a4 [data-rp-ed-init], .spp-a4 [data-rp-drag-init]').forEach(el => {
+    el.style.borderRadius = '3px';
+    el.style.transition = 'outline .1s, background .1s';
+    el.setAttribute('title', 'Нажмите для редактирования / перетащите для перемещения');
+  });
+
+  // Size +/- buttons on cover elements
+  _addSizeControls();
+}
+
+function _addSizeControls() {
+  const targets = [
+    { sel: '#prevCovName2',   prop: 'fontSize', min: 8, max: 60, step: 2, def: 20 },
+    { sel: '#prevCovSlogan2', prop: 'fontSize', min: 6, max: 30, step: 1, def: 10 },
+    { sel: '#prevCovType2',   prop: 'fontSize', min: 6, max: 40, step: 1, def: 14 },
+    { sel: '#prevCovLogo2',   prop: 'scale',    min: 0.3, max: 3, step: 0.1, def: 1 },
+  ];
+  targets.forEach(({ sel, prop, min, max, step, def }) => {
+    const el = document.querySelector(sel); if (!el || el.dataset.sizeCtrlInit) return;
+    el.dataset.sizeCtrlInit = '1';
+
+    const ctrl = document.createElement('div');
+    ctrl.className = 'rp-size-ctrl';
+    ctrl.style.cssText = 'display:none;position:absolute;top:-24px;left:0;z-index:100;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.14);padding:2px 4px;gap:2px;align-items:center;font-size:11px;';
+    ctrl.style.display = 'none';
+
+    const btnDel = document.createElement('button');
+    btnDel.textContent = '✕'; btnDel.title = 'Скрыть';
+    btnDel.style.cssText = 'background:#fee;border:none;border-radius:4px;padding:2px 5px;cursor:pointer;color:#c0392b;font-size:11px;';
+    btnDel.onclick = e => { e.stopPropagation(); el.style.visibility = 'hidden'; ctrl.style.display = 'none'; };
+
+    const btnMinus = document.createElement('button');
+    btnMinus.textContent = '−';
+    btnMinus.style.cssText = 'background:#f5f5f5;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;';
+
+    const btnPlus = document.createElement('button');
+    btnPlus.textContent = '+';
+    btnPlus.style.cssText = 'background:#f5f5f5;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:13px;';
+
+    let curVal = def;
+    function applyVal() {
+      if (prop === 'fontSize') {
+        el.style.fontSize = curVal + 'px';
+      } else if (prop === 'scale') {
+        el.style.transform = (el.style.transform || '').replace(/scale\([^)]*\)/, '') + ` scale(${curVal})`;
+      }
+    }
+    btnMinus.onclick = e => { e.stopPropagation(); curVal = Math.max(min, parseFloat((curVal - step).toFixed(2))); applyVal(); };
+    btnPlus.onclick  = e => { e.stopPropagation(); curVal = Math.min(max, parseFloat((curVal + step).toFixed(2))); applyVal(); };
+
+    ctrl.appendChild(btnDel);
+    ctrl.appendChild(btnMinus);
+    ctrl.appendChild(btnPlus);
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block;';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    wrap.appendChild(ctrl);
+
+    wrap.addEventListener('mouseenter', () => { ctrl.style.display = 'flex'; });
+    wrap.addEventListener('mouseleave', () => { ctrl.style.display = 'none'; });
+  });
 }
