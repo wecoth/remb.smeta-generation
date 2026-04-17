@@ -125,8 +125,6 @@
     display:flex;align-items:flex-start;justify-content:center;
     padding:24px;
   }
-  .spp-page { display:none;width:100%; }
-  .spp-page.active { display:block; }
   /* spp-a4 size is in main.css — just keep position here */
   .spp-a4 { position:relative; overflow:visible; }
   .cover-pg.spp-a4 { min-height:500px; }
@@ -545,37 +543,28 @@
 
 <!-- RIGHT: live preview panel -->
 <div class="smeta-preview-panel" id="smetaPreviewPanel">
-  <div class="spp-header">
-    <div class="spp-pill-wrap">
-      <div class="spp-pill" id="sppTabs">
-        <button class="spp-tab active" data-page="cover">
-          <span class="spp-check" data-page="cover" title="Показать в PDF">✓</span>
-          Обложка
-        </button>
-        <button class="spp-tab" data-page="plan">
-          <span class="spp-check" data-page="plan" title="Показать в PDF">✓</span>
-          Планировка
-        </button>
-        <button class="spp-tab" data-page="smr">
-          <span class="spp-check" data-page="smr" title="Показать в PDF">✓</span>
-          СМР
-        </button>
-        <button class="spp-tab" data-page="mat">
-          <span class="spp-check" data-page="mat" title="Показать в PDF">✓</span>
-          Материалы
-        </button>
-        <button class="spp-tab" data-page="final">
-          <span class="spp-check" data-page="final" title="Показать в PDF">✓</span>
-          Итоговая
-        </button>
-        <div class="spp-pill-slider" id="sppPillSlider"></div>
-      </div>
-    </div>
+  <!-- Section visibility checkboxes -->
+  <div class="spp-checks-bar" id="sppChecksBar">
+    <span class="spp-checks-label">В документ:</span>
+    <label class="spp-chk" data-page="cover">
+      <input type="checkbox" checked> Обложка
+    </label>
+    <label class="spp-chk" data-page="plan">
+      <input type="checkbox" checked> Планировка
+    </label>
+    <label class="spp-chk" data-page="smr">
+      <input type="checkbox" checked> СМР
+    </label>
+    <label class="spp-chk" data-page="mat">
+      <input type="checkbox" checked> Материалы
+    </label>
+    <label class="spp-chk" data-page="final">
+      <input type="checkbox" checked> Итоговая
+    </label>
   </div>
   <div class="spp-body" id="sppBody">
 
-    <!-- Cover page -->
-    <div class="spp-page active" data-page="cover">
+    <div class="spp-section" data-page="cover">
       <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden">
         <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
@@ -591,25 +580,16 @@
       </div>
     </div>
 
-    <!-- Planning page -->
-    <div class="spp-page" data-page="plan">
+    <div class="spp-section" data-page="plan">
       <div class="preview-page spp-a4" id="prevPlanning2" data-be-page="plan">
-
-        <!-- Title — editable block -->
         <div class="be-plan-title be-editable-title" style="font-size:22px;font-weight:400;text-align:center;padding:28px 66px 20px;letter-spacing:.5px">Планирование работ:</div>
-
-        <!-- Main grid: 50/50 -->
         <div class="be-plan-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0 66px 28px;min-height:420px">
-
-          <!-- LEFT: drawing/plan image -->
           <div class="be-plan-left" style="padding-right:16px;display:flex;flex-direction:column;border-right:1px solid #eee">
             <div id="prevPlanBox2" style="flex:1;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;border:1px solid #e8e8e8;border-radius:3px">
               <img id="prevPlanImg2" alt="" style="width:100%;height:100%;object-fit:contain;display:none;background:#fff">
               <div id="prevPlanPh2" style="color:#ccc;font-size:40px">⬚</div>
             </div>
           </div>
-
-          <!-- RIGHT: info + rooms table -->
           <div class="be-plan-right" style="padding-left:16px;display:flex;flex-direction:column;gap:12px">
             <div id="prevObjInfo2" style="font-size:11px;line-height:2;color:#333"></div>
             <div class="be-plan-docs" style="font-size:10px;color:#555;line-height:1.9">
@@ -632,13 +612,11 @@
               </table>
             </div>
           </div>
-
-        </div><!-- /be-plan-grid -->
+        </div>
       </div>
     </div>
 
-    <!-- SMR page -->
-    <div class="spp-page" data-page="smr">
+    <div class="spp-section" data-page="smr">
       <div class="preview-page spp-a4" id="prevSmr2" data-be-page="smr">
         <div style="padding:40px 52px;display:flex;flex-direction:column">
           <div class="be-editable-title" style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета строительно-монтажных работ</div>
@@ -657,8 +635,7 @@
       </div>
     </div>
 
-    <!-- Mat page -->
-    <div class="spp-page" data-page="mat">
+    <div class="spp-section" data-page="mat">
       <div class="preview-page spp-a4" id="prevMat2" data-be-page="mat">
         <div style="padding:40px 52px;display:flex;flex-direction:column">
           <div class="be-editable-title" style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета на строительные и отделочные материалы</div>
@@ -677,8 +654,7 @@
       </div>
     </div>
 
-    <!-- Final page -->
-    <div class="spp-page" data-page="final">
+    <div class="spp-section" data-page="final">
       <div class="preview-page spp-a4" id="prevFinal2" data-be-page="final">
         <div style="padding:40px 52px;display:flex;flex-direction:column">
           <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:20px">
@@ -989,72 +965,40 @@
   }
 })();
 
-// ── SPP PILL TABS + CHECKBOXES ───────────────────────────
+// ── SECTION CHECKBOXES ───────────────────────────────────
 (function() {
-  function initSppTabs() {
-    var pill   = document.getElementById('sppTabs');
-    var slider = document.getElementById('sppPillSlider');
-    var tabs   = document.querySelectorAll('.spp-tab');
-    var pages  = document.querySelectorAll('.spp-page');
+  function initChecks() {
+    document.querySelectorAll('.spp-chk').forEach(function(lbl) {
+      var page  = lbl.dataset.page;
+      var input = lbl.querySelector('input');
+      var sec   = document.querySelector('.spp-section[data-page="' + page + '"]');
 
-    function moveSlider(activeTab) {
-      if (!slider || !pill) return;
-      var pillRect = pill.getBoundingClientRect();
-      var tabRect  = activeTab.getBoundingClientRect();
-      slider.style.width     = tabRect.width + 'px';
-      slider.style.transform = 'translateX(' + (tabRect.left - pillRect.left - 3) + 'px)';
-    }
-
-    function switchTab(tab) {
-      var p = tab.dataset.page;
-      tabs.forEach(function(t){ t.classList.remove('active'); });
-      pages.forEach(function(pg){ pg.classList.remove('active'); });
-      tab.classList.add('active');
-      moveSlider(tab);
-      var target = document.querySelector('.spp-page[data-page="' + p + '"]');
-      if (target) {
-        target.classList.add('active');
-        setTimeout(function() {
-          var a4 = target.querySelector('.spp-a4');
-          if (a4 && window.BlockEditor) window.BlockEditor.initPage(a4);
-        }, 50);
+      function update() {
+        if (sec) {
+          sec.classList.toggle('hidden', !input.checked);
+          sec.dataset.excluded = input.checked ? '0' : '1';
+        }
+        // Init block editor for newly shown sections
+        if (input.checked && sec && window.BlockEditor) {
+          var a4 = sec.querySelector('.spp-a4');
+          if (a4) window.BlockEditor.initPage(a4);
+        }
       }
-    }
 
-    tabs.forEach(function(tab) {
-      tab.addEventListener('click', function(e) {
-        if (e.target.classList.contains('spp-check')) return;
-        switchTab(tab);
-      });
+      input.addEventListener('change', update);
+      update(); // apply initial state
     });
 
-    // Checkboxes — toggle page in PDF/preview
-    document.querySelectorAll('.spp-check').forEach(function(chk) {
-      chk.dataset.on = '1';
-      chk.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var on = chk.dataset.on !== '0';
-        chk.dataset.on = on ? '0' : '1';
-        chk.classList.toggle('unchecked', on);
-        var page = chk.closest('.spp-tab').dataset.page;
-        var pageEl = document.querySelector('.spp-page[data-page="' + page + '"]');
-        if (pageEl) pageEl.dataset.excluded = on ? '1' : '0';
-      });
-    });
-
-    requestAnimationFrame(function() {
-      var active = document.querySelector('.spp-tab.active');
-      if (active) {
-        slider.style.transition = 'none';
-        moveSlider(active);
-        requestAnimationFrame(function(){ slider.style.transition = ''; });
-      }
-    });
+    // Init block editor for all visible sections on load
+    setTimeout(function() {
+      if (window.BlockEditor) window.BlockEditor.init();
+    }, 400);
   }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initSppTabs);
+    document.addEventListener('DOMContentLoaded', initChecks);
   } else {
-    initSppTabs();
+    initChecks();
   }
 })();
 </script>
