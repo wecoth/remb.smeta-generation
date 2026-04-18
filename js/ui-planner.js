@@ -12,6 +12,7 @@ import {
   snap, setViewport, setModifiers, toScreen, toWorld,
   findObjectSnapCandidate, findGuideCandidate, getNearestGuideAxis,
   projectPointToGuideLineWorld, getSnappedWallResizePoint,
+  getTrackingLines, snapToTrackingLines,
 } from './snapping.js';
 import {
   redraw, initRenderer, getWallResizeHandles, getOpeningScreenBounds,
@@ -38,6 +39,10 @@ let currentGuideLine = null, currentObjectSnap = null;
 let dragState = null; // { startWorld, lastWorld, wallSnapshots, openingSnapshots }
 // Буфер копирования
 let clipboard = null; // { walls, openings }
+// Stage 3: отслеживание точки привязки (tracking lines)
+let _snapHoverTimer    = null;  // setTimeout handle
+let _snapHoverKey      = null;  // ключ текущей отслеживаемой точки
+let activeTrackingPoint = null; // активированная точка {x, y, type, wallDir?}
 
 // ── DOM refs ──────────────────────────────────────────────────────
 let dom = {};
@@ -221,6 +226,7 @@ function doRedraw() {
 }
 
 function getPlannerState() {
+  const trackingLines = activeTrackingPoint ? getTrackingLines(activeTrackingPoint) : [];
   return {
     scale, selectedItems, tool, isDrawing, drawStart, drawEnd,
     currentGuideLine, currentObjectSnap, hoverOpening, hoverItem,
@@ -230,6 +236,7 @@ function getPlannerState() {
     lengthOverlay: dom.lengthOverlay, lengthLabel: dom.lengthLabel,
     lblLen: dom.lblLen, lblLenVal: dom.lblLenVal,
     mouseScreen, isPanning,
+    activeTrackingPoint, trackingLines, // Stage 3
   };
 }
 
@@ -243,11 +250,59 @@ function resetDrawingState() {
   isDrawing = false; chainMode = false; drawStart = null; drawEnd = null;
   currentGuideLine = null; currentObjectSnap = null;
   lengthInput = ''; lengthMode = false;
+  clearTracking(); // Stage 3: сброс tracking при остановке рисования
   if (dom.lengthOverlay) dom.lengthOverlay.style.display = 'none';
   if (dom.lblLen) dom.lblLen.style.display = 'none';
 }
 
 function clearSelectionBox() { selectBoxStart = null; selectBoxCurrent = null; }
+
+// ── Stage 3: tracking lines helpers ──────────────────────────────
+
+function clearTracking() {
+  clearTimeout(_snapHoverTimer);
+  _snapHoverTimer     = null;
+  _snapHoverKey       = null;
+  activeTrackingPoint = null;
+}
+
+// Вызывается после каждого updateWallObjectSnap.
+// Если курсор задержался на одной точке >400мс — активируем tracking.
+function updateTrackingState(snap) {
+  // Отслеживаем только «твёрдые» точки
+  const trackable = snap && (
+    snap.type === 'endpoint' || snap.type === 'corner' ||
+    snap.type === 'intersection' || snap.type === 'midpoint'
+  );
+  if (!trackable) {
+    // Курсор ушёл с точки — сбрасываем таймер, но НЕ сбрасываем activeTrackingPoint:
+    // линии остаются видимыми, пока не начнём рисовать новую стену или не нажмём Escape.
+    clearTimeout(_snapHoverTimer);
+    _snapHoverTimer = null;
+    _snapHoverKey   = null;
+    return;
+  }
+  const key = `${snap.type}:${Math.round(snap.x)},${Math.round(snap.y)}`;
+  if (key === _snapHoverKey) return; // та же точка — таймер уже тикает
+  // Новая точка — перезапускаем таймер
+  clearTimeout(_snapHoverTimer);
+  _snapHoverKey = key;
+  _snapHoverTimer = setTimeout(() => {
+    // Определяем направление стены для этой точки (нужно для луча-продолжения)
+    let wallDir = null;
+    if (snap.wallId) {
+      const wall = appState.walls.find(w => w.id === snap.wallId);
+      if (wall) {
+        const dx = (wall.cx2 ?? wall.x2) - (wall.cx1 ?? wall.x1);
+        const dy = (wall.cy2 ?? wall.y2) - (wall.cy1 ?? wall.y1);
+        const len = Math.hypot(dx, dy);
+        if (len > 1) wallDir = { x: dx / len, y: dy / len };
+      }
+    }
+    activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir };
+    doRedraw();
+  }, 400);
+}
 
 function clearSelection() {
   selectedItems = []; wallResizeState = null;
@@ -308,6 +363,7 @@ export function setTool(t) {
   wallResizeState = null; // Bug #3 fix
   if (t !== 'wall') resetDrawingState();
   clearSelectionBox(); hoverOpening = null; hoverItem = null; currentObjectSnap = null;
+  clearTracking(); // Stage 3
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tool' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
   const labels = { select: 'Выбор', wall: 'Стена', window: 'Окно', door: 'Дверь' };
@@ -438,6 +494,15 @@ function getWallPreviewEnd(world) {
     const nearest = getNearestGuideAxis(screenPt, currentGuideLine);
     const axisGuide = nearest ? { anchor: currentGuideLine.anchor, dir: nearest.dir } : currentGuideLine;
     rawEnd = { ...rawEnd, ...projectPointToGuideLineWorld(rawEnd, axisGuide) };
+  }
+
+  // Stage 3: привязка к линиям отслеживания (если нет другого снэпа и нет guide line)
+  if (activeTrackingPoint && !snappedBase.snapType && !currentGuideLine) {
+    const tLines = getTrackingLines(activeTrackingPoint);
+    const tSnap  = snapToTrackingLines(rawEnd, screenPt, tLines, 16);
+    if (tSnap) {
+      rawEnd = { ...rawEnd, x: tSnap.x, y: tSnap.y, snapType: 'tracking' };
+    }
   }
   if (lengthMode && lengthInput && drawStart) {
     const targetLen = parseFloat(lengthInput);
@@ -637,8 +702,13 @@ function onMouseMove(e) {
     canvas.style.cursor = 'grabbing'; doRedraw(); return;
   }
 
-  if (tool === 'wall') updateWallObjectSnap(world, pos);
-  else currentObjectSnap = null;
+  if (tool === 'wall') {
+    updateWallObjectSnap(world, pos);
+    updateTrackingState(currentObjectSnap); // Stage 3: обновляем таймер tracking
+  } else {
+    currentObjectSnap = null;
+    clearTracking(); // Stage 3: сбрасываем tracking в других инструментах
+  }
 
   // Drag перемещение выделенных объектов
   if (tool === 'select' && dragState) {
