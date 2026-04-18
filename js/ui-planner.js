@@ -1,5 +1,6 @@
 // ─── UI-PLANNER.JS ─────────────────────────────────────────────────
-import { appState } from './state.js';
+import { appState, updateState } from './state.js';
+import { EventBus } from './eventBus.js';
 import {
   addWall, deleteSelectedItems, findClosestWall, findClosestWallSel,
   getWallContourPoint, updateWallGeometry, setWallLength, getWallLength,
@@ -45,6 +46,15 @@ export function initPlanner(domRefs) {
   dom = domRefs;
   canvas = domRefs.canvas;
   canvasWrap = domRefs.canvasWrap;
+
+  // ── EventBus: центральная подписка на изменение стен ─────────────
+  // Все операции, затрагивающие стены/проёмы, испускают 'walls:changed'.
+  // Этот единственный handler заменяет разбросанные вызовы
+  // computeRooms() + updateExpl() по всему файлу.
+  EventBus.on('walls:changed', () => {
+    computeRooms(getWallHeightFallback());
+    updateExpl(dom.explBody, dom.roomCount);
+  });
 
   initRenderer(canvas, canvas.getContext('2d'), () => scale);
 
@@ -115,8 +125,7 @@ export function initPlanner(domRefs) {
     if (!selectedItems.length) return;
     deleteSelectedItems(selectedItems);
     clearSelection();
-    computeRooms(getWallHeightFallback());
-    updateExpl(dom.explBody, dom.roomCount);
+    EventBus.emit('walls:changed');
     recordHistory();
     doRedraw();
   });
@@ -128,18 +137,22 @@ export function initPlanner(domRefs) {
   // New project
   dom.btnNew?.addEventListener('click', () => {
     if (!confirm('Создать новый проект? Текущий чертёж будет очищен.')) return;
-    appState.walls = []; appState.openings = []; appState.rooms = [];
-    appState.idWall = 1; appState.idOpen = 1; appState.roomNameOverrides = {};
+    // updateState() вместо прямого присвоения — Proxy сам испустит state:*:changed
+    updateState('walls', []);
+    updateState('openings', []);
+    updateState('rooms', []);
+    updateState('idWall', 1);
+    updateState('idOpen', 1);
+    updateState('roomNameOverrides', {});
     hoverOpening = null; wallResizeState = null;
     resetDrawingState(); clearSelectionBox(); clearSelection();
-    updateExpl(dom.explBody, dom.roomCount);
+    EventBus.emit('walls:changed');
     recordHistory(); doRedraw();
   });
 
-  // Recalc rooms
+  // Recalc rooms — ручная кнопка, напрямую через шину
   dom.btnRecalc?.addEventListener('click', () => {
-    computeRooms(getWallHeightFallback());
-    updateExpl(dom.explBody, dom.roomCount);
+    EventBus.emit('walls:changed');
     doRedraw();
   });
 
@@ -155,8 +168,7 @@ export function initPlanner(domRefs) {
     inp.addEventListener('change', () => {
       // Bug #10 fix: clamp negative values
       if (Number(inp.value) < Number(inp.min || 0)) inp.value = inp.min || 0;
-      computeRooms(getWallHeightFallback());
-      updateExpl(dom.explBody, dom.roomCount);
+      EventBus.emit('walls:changed');
       doRedraw();
     });
     inp.addEventListener('focus', e => e.target.select());
@@ -170,7 +182,7 @@ export function initPlanner(domRefs) {
   dom.explBody?.addEventListener('change', e => {
     if (!e.target.matches('.room-name-input')) return;
     renameRoom(e.target.dataset.roomKey, e.target.value || e.target.dataset.roomDefault || '');
-    updateExpl(dom.explBody, dom.roomCount);
+    EventBus.emit('walls:changed');
     doRedraw();
     recordHistory();
   });
@@ -271,8 +283,7 @@ function updateHistoryBtns() {
 function onHistoryRestore() {
   hoverOpening = null; hoverItem = null; mouseScreen = null; wallResizeState = null;
   resetDrawingState(); clearSelectionBox(); clearSelection();
-  computeRooms(getWallHeightFallback());
-  updateExpl(dom.explBody, dom.roomCount);
+  EventBus.emit('walls:changed');
   updateHistoryBtns(); doRedraw();
 }
 
@@ -345,13 +356,15 @@ function updateEditPanel() {
     // Bug #9 fix: attach change listeners for thickness/height
     dom.editContent.querySelector('[data-wall-thick-input]')?.addEventListener('change', e => {
       const v = Math.max(50, Number(e.target.value) || 200); // Bug #10 fix
-      w.thickness = v; invalidateJointCache(); computeRooms(getWallHeightFallback());
-      updateExpl(dom.explBody, dom.roomCount); recordHistory(); doRedraw();
+      w.thickness = v; invalidateJointCache();
+      EventBus.emit('walls:changed');
+      recordHistory(); doRedraw();
     });
     dom.editContent.querySelector('[data-wall-height-input]')?.addEventListener('change', e => {
       const v = Math.max(1000, Number(e.target.value) || 2700); // Bug #10 fix
-      w.height = v; computeRooms(getWallHeightFallback());
-      updateExpl(dom.explBody, dom.roomCount); recordHistory(); doRedraw();
+      w.height = v;
+      EventBus.emit('walls:changed');
+      recordHistory(); doRedraw();
     });
   } else if (it.type === 'opening') {
     const op = appState.openings.find(o => o.id === it.id); if (!op) return;
@@ -376,8 +389,7 @@ function commitWallLengthInput(inputEl) {
   const val = Math.max(20, parseFloat(inputEl.value) || 0);
   inputEl.value = val;
   setWallLength(wall, val, wallLengthAnchor);
-  computeRooms(getWallHeightFallback());
-  updateExpl(dom.explBody, dom.roomCount);
+  EventBus.emit('walls:changed');
   recordHistory(); doRedraw();
 }
 
@@ -456,13 +468,14 @@ function finalizeWall(end) {
   const thick = parseFloat(dom.inpWallThick?.value) || 200;
   const height = parseFloat(dom.inpWallHeight?.value) || 2700;
   addWall(drawStart, end, thick, height, wallOffset);
-  computeRooms(getWallHeightFallback());
-  updateExpl(dom.explBody, dom.roomCount);
+  EventBus.emit('walls:changed');
   drawStart = { x: end.x, y: end.y }; drawEnd = { x: end.x, y: end.y };
   currentGuideLine = null; currentObjectSnap = null;
   lengthInput = ''; lengthMode = false; chainMode = true; isDrawing = true;
   recordHistory(); doRedraw(); return true;
 }
+
+// ── Snap helpers ──────────────────────────────────────────────────
 
 function updateWallObjectSnap(worldPoint, screenPoint) {
   if (tool !== 'wall') { currentObjectSnap = null; return; }
@@ -517,7 +530,7 @@ function onMouseDown(e) {
   } else if (tool === 'window' || tool === 'door') {
     if (hoverOpening) {
       addOpening(hoverOpening.wall, hoverOpening.t, hoverOpening.width, hoverOpening.height, tool, hoverOpening);
-      computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount);
+      EventBus.emit('walls:changed');
       recordHistory(); doRedraw();
     }
   } else if (tool === 'select') {
@@ -584,13 +597,12 @@ function getTopologicallyConnected(seedWallIds) {
   return visited;
 }
 
-// Bug #1 fix: debounce computeRooms during wall resize
+// Bug #1 fix: debounce реактивного пересчёта во время resize стены
 let _resizeDebounce = null;
 function debouncedComputeRooms() {
   clearTimeout(_resizeDebounce);
   _resizeDebounce = setTimeout(() => {
-    computeRooms(getWallHeightFallback());
-    updateExpl(dom.explBody, dom.roomCount);
+    EventBus.emit('walls:changed');
     doRedraw();
   }, 80);
 }
@@ -686,14 +698,14 @@ function onMouseUp(e) {
     });
     dragState = null;
     canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
-    if (moved) { computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount); recordHistory(); }
+    if (moved) { EventBus.emit('walls:changed'); recordHistory(); }
     doRedraw(); return;
   }
   if (wallResizeState) {
     const shouldRecord = wallResizeState.changed; wallResizeState = null;
     canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
     if (shouldRecord) {
-      computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount);
+      EventBus.emit('walls:changed');
       recordHistory();
     }
     doRedraw(); return;
@@ -767,7 +779,7 @@ function onKeyDown(e) {
       appState.openings.push(...newOpenings);
       invalidateJointCache();
       setSelection(newWalls.map(w => ({ type: 'wall', id: w.id })));
-      computeRooms(getWallHeightFallback()); updateExpl(dom.explBody, dom.roomCount);
+      EventBus.emit('walls:changed');
       recordHistory(); doRedraw();
     }
     e.preventDefault(); return;
