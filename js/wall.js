@@ -308,6 +308,39 @@ export function recalculateContourFromBase(wall) {
   invalidateJointCache();
 }
 
+// ── Stage 4: сопряжение стен ─────────────────────────────────────
+
+// Возвращает true, если две стены лежат на одной прямой (коллинеарны) и касаются.
+// Используется в render.js чтобы не рисовать шов между двумя сегментами одной прямой.
+export function areWallsCollinear(w1, w2, angleTol = 0.035, thicknessTol = 5) {
+  // Разная толщина — разные стены, шов нужен
+  if (Math.abs(w1.thickness - w2.thickness) > thicknessTol) return false;
+
+  // Проверяем касание концевых точек (по базовой линии)
+  const a1 = { x: w1.cx1 ?? w1.x1, y: w1.cy1 ?? w1.y1 };
+  const a2 = { x: w1.cx2 ?? w1.x2, y: w1.cy2 ?? w1.y2 };
+  const b1 = { x: w2.cx1 ?? w2.x1, y: w2.cy1 ?? w2.y1 };
+  const b2 = { x: w2.cx2 ?? w2.x2, y: w2.cy2 ?? w2.y2 };
+
+  const TOUCH = 8; // мм
+  const touches = (
+    Math.hypot(a2.x - b1.x, a2.y - b1.y) < TOUCH ||
+    Math.hypot(a1.x - b2.x, a1.y - b2.y) < TOUCH ||
+    Math.hypot(a1.x - b1.x, a1.y - b1.y) < TOUCH ||
+    Math.hypot(a2.x - b2.x, a2.y - b2.y) < TOUCH
+  );
+  if (!touches) return false;
+
+  // Проверяем угол: коллинеарные = почти одинаковое направление (или противоположное)
+  const angle1 = Math.atan2(a2.y - a1.y, a2.x - a1.x);
+  const angle2 = Math.atan2(b2.y - b1.y, b2.x - b1.x);
+  // Нормализуем разницу в [0, π]
+  let diff = Math.abs(angle1 - angle2) % Math.PI;
+  if (diff > Math.PI / 2) diff = Math.PI - diff;
+
+  return diff < angleTol;
+}
+
 // ── Wall update ──────────────────────────────────────────────────
 
 export function updateWallGeometry(wall, nextStart, nextEnd, options = {}) {
@@ -384,6 +417,9 @@ export function addWall(start, end, thick, height, wallOffset) {
     cx2: end.x,   cy2: end.y,
     thickness: thick, height, offset: wallOffset,
     horizontalOffset: 0, // зарезервировано для будущего смещения по нормали (Stage 1+)
+    // Stage 4: приоритет сопряжения. Чем выше — тем «главнее» стена при T-стыке.
+    // Стены с равным приоритетом сопрягаются симметрично.
+    priority: appState.idWall - 1, // порядковый номер как начальный приоритет
   };
   appState.walls.push(wall);
   invalidateJointCache();
