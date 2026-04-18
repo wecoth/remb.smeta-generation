@@ -4,7 +4,7 @@ import { EventBus } from './eventBus.js';
 import {
   addWall, deleteSelectedItems, findClosestWall, findClosestWallSel,
   getWallContourPoint, updateWallGeometry, setWallLength, getWallLength,
-  invalidateJointCache,
+  invalidateJointCache, recalculateContourFromBase,
 } from './wall.js';
 import { addOpening, findClosestOpening, updateDoorOpening } from './opening.js';
 import { computeRooms, updateExpl, getComputedRooms, renameRoom } from './room.js';
@@ -356,7 +356,8 @@ function updateEditPanel() {
     // Bug #9 fix: attach change listeners for thickness/height
     dom.editContent.querySelector('[data-wall-thick-input]')?.addEventListener('change', e => {
       const v = Math.max(50, Number(e.target.value) || 200); // Bug #10 fix
-      w.thickness = v; invalidateJointCache();
+      w.thickness = v;
+      recalculateContourFromBase(w); // Stage 1: базовая линия фиксирована, пересчитываем ось
       EventBus.emit('walls:changed');
       recordHistory(); doRedraw();
     });
