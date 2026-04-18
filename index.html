@@ -166,6 +166,15 @@
     /* Cancel modal scale inherited from .preview-page */
     transform:none !important;
     margin-bottom:0 !important;
+    /* Always block — override cover-pg flex */
+    display:block !important;
+    flex-shrink:0;
+  }
+
+  /* Cover page specific height — absolute children need explicit height */
+  .spp-a4.cover-pg {
+    height:700px;
+    min-height:700px;
   }
 
   /* Blueprint page fills full height */
@@ -633,7 +642,7 @@
 
     <!-- 1. Cover page -->
     <div class="spp-page" data-page="cover">
-      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden;min-height:620px">
+      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden">
         <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
           <div id="prevCircle2" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
@@ -916,6 +925,11 @@
         var view = btn.dataset.view;
         if (smeta)   smeta.style.display   = view === 'smeta'   ? 'block' : 'none';
         if (planner) planner.style.display = view === 'planner' ? 'flex'  : 'none';
+        // Reset preview scroll to top when switching to smeta
+        if (view === 'smeta') {
+          var sppBody = document.getElementById('sppBody');
+          if (sppBody) sppBody.scrollTop = 0;
+        }
         // Trigger resize for canvas
         if (view === 'planner') window.dispatchEvent(new Event('resize'));
       });
