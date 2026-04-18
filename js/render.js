@@ -2,10 +2,8 @@
 import { appState, DRAW_COLORS, ROOM_COLORS, ROOM_STROKES } from './state.js';
 import {
   getWallWorldGeometry, getWallCornerPoints, getWallLength,
-  getWallContourPoint, isWallEndpointCoveredByAnotherWall,
-  buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
-  getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
-  areWallsCollinear,
+  getWallContourPoint,
+  getUnifiedWallsPolygon, getWallPolygon,
 } from './wall.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
@@ -144,7 +142,6 @@ export function redraw(ps) {
   drawGrid();
   drawRoomFills(ps.selectedItems);
   drawWalls(ps.selectedItems);
-  drawWallJoints(ps.selectedItems);
   drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   drawWallDimensions();
   drawOpeningLeaders(exteriorWallIds);
@@ -241,119 +238,126 @@ function drawGrid() {
 
 function drawRoomFills(selectedItems) {
   const scale = _getScale();
-  // Небольшое перекрытие ячеек устраняет белую полосу у стен.
-  // Ячейки flood fill не доходят до внутренней поверхности стены
-  // из-за inflate bitmap — overlap компенсирует этот зазор.
-  const OVERLAP_MM = 32; // больше inflate 25мм — убирает зазоры на диагоналях
   for (let i = 0; i < appState.rooms.length; i++) {
-    const r = appState.rooms[i]; if (!r.cells?.length) continue;
+    const r = appState.rooms[i];
     _ctx.save();
-    _ctx.beginPath();
-    for (const c of r.cells) {
-      const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
-      const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
-      const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
-      _ctx.rect(p.x, p.y, w, h);
+
+    if (r.polygon && r.polygon.length > 0) {
+      // Векторный режим: комната задана полигоном из polygon-clipping
+      _ctx.beginPath();
+      for (const poly of r.polygon) {
+        for (const ring of poly) {
+          if (!ring.length) continue;
+          const p0 = toScreen(ring[0][0], ring[0][1]);
+          _ctx.moveTo(p0.x, p0.y);
+          for (let j = 1; j < ring.length; j++) {
+            const p = toScreen(ring[j][0], ring[j][1]);
+            _ctx.lineTo(p.x, p.y);
+          }
+          _ctx.closePath();
+        }
+      }
+      _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length];
+      _ctx.fill('evenodd');
+    } else if (r.cells?.length) {
+      // Растровый fallback (совместимость со старыми данными)
+      const OVERLAP_MM = 32;
+      _ctx.beginPath();
+      for (const c of r.cells) {
+        const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
+        const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
+        const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
+        _ctx.rect(p.x, p.y, w, h);
+      }
+      _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length];
+      _ctx.fill();
     }
-    _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
-   
-    if (scale > 0.08) { // Bug #6 fix
+
+    if (scale > 0.08) {
       const sc = toScreen(r.center.x, r.center.y);
       _ctx.fillStyle = DRAW_COLORS.roomLabel;
-      _ctx.font = `600 ${(scale * 200).toFixed(1)}px Onest, Inter, sans-serif`; // статичный в мировых ед.
-      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
+      _ctx.font = `600 ${(scale * 200).toFixed(1)}px Onest, Inter, sans-serif`;
+      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+      _ctx.fillText(r.name, sc.x, sc.y);
       _ctx.font = `500 ${(scale * 160).toFixed(1)}px Onest, Inter, sans-serif`;
-      _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
+      _ctx.fillStyle = DRAW_COLORS.roomMeta;
+      _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
     }
     _ctx.restore();
   }
 }
 
 function drawWalls(selectedItems) {
-  const scale = _getScale();
-  const jmap = buildWallJointMap();
-  const jrects = getWallJointRects();
+  const unified = getUnifiedWallsPolygon();
 
-  // Предварительно вычисляем clip-точки для всех стен
-  const wallData = appState.walls.map(w => {
-    const g = sg(w);
-    const isSel = sel('wall', w.id, selectedItems);
-    const style = wallStyle(isSel);
-    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
-    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
-    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
-    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
-    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
-    const sp = getWallContourPoint(w, 'start');
-    const ep = getWallContourPoint(w, 'end');
-    const hasStartJR = myJoints.some(jr =>
-      sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
-    const hasEndJR = myJoints.some(jr =>
-      ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
-
-    // Stage 4: коллинеарных соседей исключаем из clip-расчёта —
-    // у параллельных граней нет точки пересечения, clip всё равно вернул бы null,
-    // но явное исключение делает намерение понятным.
-    // Не-коллинеарных соседей сортируем по приоритету: более «главная» стена
-    // клипает нашу грань первой, т.е. её линия «побеждает» при T-стыке.
-    const filterAndSort = items =>
-      items
-        .filter(it => !areWallsCollinear(w, it.wall))
-        .sort((a, b) => (b.wall.priority ?? 0) - (a.wall.priority ?? 0))
-        .map(i => i.wall);
-
-    const wclipS = (sj && !hasStartJR) ? getWorldFaceClips(w, filterAndSort(sjItems), 'start') : null;
-    const wclipE = (ej && !hasEndJR)   ? getWorldFaceClips(w, filterAndSort(ejItems), 'end')   : null;
-
-    // Screen-координаты 4 углов с учётом clip
-    const ptA = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : g.a;
-    const ptB = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : g.b;
-    const ptC = wclipE?.dc ? toScreen(wclipE.dc.x, wclipE.dc.y) : g.c;
-    const ptD = wclipS?.dc ? toScreen(wclipS.dc.x, wclipS.dc.y) : g.d;
-    return { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD };
-  });
-
-  // Pass 1: fill обрезанным полигоном
-  for (const { style, ptA, ptB, ptC, ptD } of wallData) {
+  // ── Pass 1: единый монолитный контур всех стен ──────────────────
+  if (unified.length > 0) {
+    // Заливка (цвет + штриховка)
     fillWall(() => {
       _ctx.beginPath();
-      _ctx.moveTo(ptA.x, ptA.y); _ctx.lineTo(ptB.x, ptB.y);
-      _ctx.lineTo(ptC.x, ptC.y); _ctx.lineTo(ptD.x, ptD.y);
-      _ctx.closePath();
-    }, style.fill);
-  }
+      for (const poly of unified) {
+        for (const ring of poly) {
+          if (!ring.length) continue;
+          const p0 = toScreen(ring[0][0], ring[0][1]);
+          _ctx.moveTo(p0.x, p0.y);
+          for (let i = 1; i < ring.length; i++) {
+            const p = toScreen(ring[i][0], ring[i][1]);
+            _ctx.lineTo(p.x, p.y);
+          }
+          _ctx.closePath();
+        }
+      }
+    }, DRAW_COLORS.wallFill);
 
-  // Pass 2: fill joint rects (ортогональные углы)
-  for (const jr of jrects) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr-rl, rb-rt); }, style.fill);
-  }
-
-  // Pass 3: stroke outlines
-  for (const { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD } of wallData) {
+    // Обводка единого контура
     _ctx.save();
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
+    _ctx.strokeStyle = DRAW_COLORS.wallStroke;
+    _ctx.lineWidth = 1;
+    _ctx.lineJoin = 'miter';
+    _ctx.miterLimit = 10;
     _ctx.beginPath();
-    drawClippedFace(ptA, ptB, myJoints); // грань ab
-    drawClippedFace(ptD, ptC, myJoints); // грань dc
-
-    // Stage 4: торцевые заглушки не рисуем если:
-    //   a) конец стыкуется с другой стеной (sj/ej), ИЛИ
-    //   b) конец касается коллинеарной стены — шов был бы виден поперёк непрерывной стены
-    const jmapStart = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
-    const jmapEnd   = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
-    const collinearAtStart = jmapStart.some(it => areWallsCollinear(w, it.wall));
-    const collinearAtEnd   = jmapEnd.some(it => areWallsCollinear(w, it.wall));
-
-    if (!ej && !collinearAtEnd)   { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
-    if (!sj && !collinearAtStart) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
+    for (const poly of unified) {
+      for (const ring of poly) {
+        if (!ring.length) continue;
+        const p0 = toScreen(ring[0][0], ring[0][1]);
+        _ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < ring.length; i++) {
+          const p = toScreen(ring[i][0], ring[i][1]);
+          _ctx.lineTo(p.x, p.y);
+        }
+        _ctx.closePath();
+      }
+    }
     _ctx.stroke();
+    _ctx.restore();
+  }
 
+  // ── Pass 2: выделение выбранных стен поверх единого контура ─────
+  // Рисуем индивидуальный прямоугольник каждой выделенной стены
+  // чтобы пользователь понимал, какой элемент выбран.
+  for (const item of selectedItems) {
+    if (item.type !== 'wall') continue;
+    const wall = appState.walls.find(w => w.id === item.id);
+    if (!wall) continue;
+    const g = sg(wall);
+
+    fillWall(() => {
+      _ctx.beginPath();
+      _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
+      _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y);
+      _ctx.closePath();
+    }, DRAW_COLORS.wallFillSelected);
+
+    _ctx.save();
+    _ctx.strokeStyle = DRAW_COLORS.wallStrokeSelected;
+    _ctx.lineWidth = 1.5;
+    _ctx.lineJoin = 'miter';
+    _ctx.miterLimit = 10;
+    _ctx.beginPath();
+    _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
+    _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y);
+    _ctx.closePath();
+    _ctx.stroke();
     _ctx.restore();
   }
 }
@@ -453,34 +457,9 @@ function drawClippedFace(sa, ea, joints) {
   }
 }
 
-function drawWallJoints(selectedItems) {
-  for (const jr of getWallJointRects()) {
-    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
-    const style = wallStyle(isSel);
-    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
-    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
-    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    // Заливка стыка
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
-    // Контур — только boundary edges (внешние грани стыка)
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke;
-    _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
-    _ctx.beginPath();
-    for (const path of getJointBoundaryPaths(jr)) {
-      if (!path.length) continue;
-      const s = toScreen(path[0].x, path[0].y);
-      _ctx.moveTo(s.x, s.y);
-      for (let i = 1; i < path.length; i++) {
-        const p = toScreen(path[i].x, path[i].y);
-        _ctx.lineTo(p.x, p.y);
-      }
-    }
-    _ctx.stroke();
-    _ctx.restore();
-  }
-}
+// drawWallJoints — удалена. Стыки теперь скрыты благодаря polygon-union в drawWalls.
+// Функция оставлена как заглушка для совместимости на случай если где-то вызывается.
+function drawWallJoints(_selectedItems) { /* no-op */ }
 
 function drawOpenings(selectedItems, dh, ds) {
   for (const op of appState.openings) {
