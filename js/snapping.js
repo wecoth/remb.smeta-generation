@@ -20,12 +20,13 @@ export function toWorld(sx, sy) { return { x: (sx - _panX) / _scale, y: (sy - _p
 
 // ── Snap type helpers ────────────────────────────────────────────
 export function getSnapTypePriority(type) {
-  return { corner: 0, endpoint: 1, intersection: 2, midpoint: 3, wallFace: 4, wallAxis: 5, perpendicular: 6 }[type] ?? 9;
+  return { corner: 0, endpoint: 1, intersection: 2, midpoint: 3, tracking: 3, wallFace: 4, wallAxis: 5, perpendicular: 6 }[type] ?? 9;
 }
 export function getSnapLabel(type) {
   return { corner: 'Угол', endpoint: 'Точка стены', midpoint: 'Середина',
     intersection: 'Пересечение', perpendicular: 'Перпендикуляр',
-    wallFace: 'Край стены', wallAxis: 'Ось стены' }[type] || '';
+    wallFace: 'Край стены', wallAxis: 'Ось стены',
+    tracking: 'Линия отслеживания' }[type] || '';
 }
 
 // ── Main object snap ─────────────────────────────────────────────
@@ -265,4 +266,73 @@ export function getSnappedWallResizePoint(fixedPoint, worldPoint, screenPoint, s
     }
   }
   return nextPoint;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// STAGE 3: ЛИНИИ ОТСЛЕЖИВАНИЯ (TRACKING LINES)
+// Как в Renga: задержал курсор на точке >400мс → фиолетовые лучи.
+// Лучи: продолжение стены, перпендикуляр, горизонталь, вертикаль.
+// ══════════════════════════════════════════════════════════════════
+
+// Возвращает массив лучей от активированной точки отслеживания.
+// Каждый луч: { anchor, dir, lineType }
+// lineType: 'axis' | 'continuation' | 'perpendicular'
+export function getTrackingLines(trackingPoint) {
+  if (!trackingPoint) return [];
+  const anchor = { x: trackingPoint.x, y: trackingPoint.y };
+  const lines = [];
+
+  // Всегда: горизонталь и вертикаль (глобальные оси)
+  lines.push({ anchor, dir: { x: 1, y: 0 }, lineType: 'axis' });
+  lines.push({ anchor, dir: { x: 0, y: 1 }, lineType: 'axis' });
+
+  // Продолжение стены + перпендикуляр (если у точки известно направление стены)
+  if (trackingPoint.wallDir) {
+    const d = trackingPoint.wallDir;
+    lines.push({ anchor, dir: { x: d.x, y: d.y }, lineType: 'continuation' });
+    lines.push({ anchor, dir: { x: -d.y, y: d.x }, lineType: 'perpendicular' });
+  }
+
+  return lines;
+}
+
+// Пытается привязать worldPoint к линиям отслеживания.
+// Приоритет: пересечение двух линий > проекция на ближайшую линию.
+// Возвращает { x, y, snapType:'tracking', lineType } или null.
+export function snapToTrackingLines(worldPoint, screenPoint, trackingLines, tolerance = 14) {
+  if (!trackingLines?.length) return null;
+
+  // 1. Ищем пересечения всех пар линий — самая ценная привязка
+  let bestIntersection = null, bestIDist = tolerance;
+  for (let i = 0; i < trackingLines.length; i++) {
+    for (let j = i + 1; j < trackingLines.length; j++) {
+      const hit = _trackingLineIntersect(trackingLines[i], trackingLines[j]);
+      if (!hit) continue;
+      const s = toScreen(hit.x, hit.y);
+      const d = Math.hypot(screenPoint.x - s.x, screenPoint.y - s.y);
+      if (d < bestIDist) { bestIDist = d; bestIntersection = hit; }
+    }
+  }
+  if (bestIntersection) {
+    return { x: bestIntersection.x, y: bestIntersection.y, snapType: 'tracking', lineType: 'intersection' };
+  }
+
+  // 2. Проекция на ближайшую линию
+  let bestPt = null, bestDist = tolerance;
+  for (const line of trackingLines) {
+    const proj = projectPointToGuideLineWorld(worldPoint, line);
+    const s = toScreen(proj.x, proj.y);
+    const d = Math.hypot(screenPoint.x - s.x, screenPoint.y - s.y);
+    if (d < bestDist) { bestDist = d; bestPt = { x: proj.x, y: proj.y, snapType: 'tracking', lineType: line.lineType }; }
+  }
+  return bestPt;
+}
+
+// Пересечение двух бесконечных лучей в мировых координатах
+function _trackingLineIntersect(a, b) {
+  const denom = a.dir.x * b.dir.y - a.dir.y * b.dir.x;
+  if (Math.abs(denom) < 0.0001) return null; // параллельны
+  const dx = b.anchor.x - a.anchor.x, dy = b.anchor.y - a.anchor.y;
+  const t = (dx * b.dir.y - dy * b.dir.x) / denom;
+  return { x: a.anchor.x + a.dir.x * t, y: a.anchor.y + a.dir.y * t };
 }
