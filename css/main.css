@@ -225,7 +225,7 @@ html, body {
   background: #F5F5F3; border: 1px solid rgba(0,0,0,0.09); border-radius: 7px;
   display: flex; align-items: center; justify-content: center;
   padding: 7px 4px; cursor: pointer; transition: all 0.12s;
-  color: #444444; font-size: 14px; font-weight: 500; font-family: inherit;
+  color: #444444; font-size: 14px; font-weight: 500; font-family: GOST 2.304;
   line-height: 1;
 }
 .tool-btn svg { display: none; }
@@ -241,7 +241,7 @@ html, body {
   border-radius: 5px; background: #F8F8F6; overflow: hidden; transition: border-color 0.12s;
 }
 .param-input-wrap:focus-within { border-color: #555555; background: #FFFFFF; }
-.param-input { flex: 1; border: none; background: transparent; font-family: inherit; font-size: 14px; color: #111111; padding: 5px 7px; outline: none; font-weight: 400; user-select: text; min-width: 0; }
+.param-input { flex: 1; border: none; background: transparent; font-family: GOST 2.304; font-size: 14px; color: #111111; padding: 5px 7px; outline: none; font-weight: 400; user-select: text; min-width: 0; }
 .param-input-unit { font-size: 14px; color: #AAAAAA; padding: 0 7px 0 0; white-space: nowrap; }
 
 .hint-box {
@@ -302,7 +302,7 @@ html, body {
 
 .delete-btn {
   width: 100%; padding: 8px; background: #fff5f5; border: 1.5px solid #fecaca;
-  border-radius: 7px; color: #dc2626; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.12s; margin-top: 4px; font-family: inherit;
+  border-radius: 7px; color: #dc2626; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.12s; margin-top: 4px; font-family: GOST 2.304;
 }
 .delete-btn:hover { background: #fee2e2; border-color: #f87171; }
 
@@ -311,7 +311,7 @@ html, body {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 5px 3px 4px; background: #F5F5F3; border: 1px solid rgba(0,0,0,0.10);
   border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; color: #666666;
-  transition: all 0.12s; font-family: inherit;
+  transition: all 0.12s; font-family: GOST 2.304;
 }
 .offset-btn svg { width: 22px; height: 18px; }
 .offset-btn:hover { background: #ECECEA; color: #111111; }
@@ -322,7 +322,7 @@ html, body {
 .choice-btn {
   padding: 5px 6px; border: 1px solid rgba(0,0,0,0.10); background: #F5F5F3;
   border-radius: 6px; font-size: 14px; font-weight: 500; color: #666666;
-  cursor: pointer; transition: all 0.12s; font-family: inherit;
+  cursor: pointer; transition: all 0.12s; font-family: GOST 2.304;
 }
 .choice-btn:hover { background: #ECECEA; color: #111111; }
 .choice-btn.active { background: #F0F0EE; border-color: #888888; color: #111111; font-weight: 600; }
@@ -333,7 +333,7 @@ html, body {
 .zoom-btn {
   width: 30px; height: 30px; background: var(--white); border: 1.5px solid var(--line2); border-radius: 7px;
   font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer;
-  color: var(--muted); box-shadow: var(--shadow-sm); transition: all 0.12s; font-family: inherit;
+  color: var(--muted); box-shadow: var(--shadow-sm); transition: all 0.12s; font-family: GOST 2.304;
 }
 .zoom-btn:hover { background: var(--card); color: var(--ink); }
 
