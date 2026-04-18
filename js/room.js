@@ -1,5 +1,14 @@
 // ─── ROOM.JS ──────────────────────────────────────────────────────
 import { appState, ROOM_STROKES } from './state.js';
+import { EventBus } from './eventBus.js';
+
+// ── Высота стен по умолчанию — обновляется из ui-planner.js ──────
+// Хранится здесь, чтобы room.js мог автономно пересчитывать комнаты.
+let _wallHeightFallback = 2700;
+
+export function setWallHeight(h) {
+  _wallHeightFallback = (h && h > 0) ? h : 2700;
+}
 
 // ── Room key ──────────────────────────────────────────────────────
 export function getRoomKey(pixels, cellMm) {
@@ -233,6 +242,10 @@ export function computeRooms(wallHeightFallback = 2700) {
       wallArea:     metrics.wallAreaNetM2,
       openingsArea: metrics.openingsAreaM2,
       metrics,
+      // Stage 2: список id стен, формирующих границу комнаты.
+      // Нужен для будущего recomputeAffectedRooms — не пересчитывать все комнаты,
+      // только те, у которых wallIds пересекается с изменившимися стенами.
+      wallIds: [...boundaryWalls.keys()],
     });
   }
 
@@ -258,6 +271,9 @@ export function computeRooms(wallHeightFallback = 2700) {
       }
     }
   }
+  // Оповещаем подписчиков — комнаты пересчитаны, DOM можно обновлять.
+  // ui-planner.js слушает 'rooms:computed' и вызывает updateExpl.
+  EventBus.emit('rooms:computed');
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -622,3 +638,12 @@ export function getComputedRooms() {
     };
   });
 }
+
+// ── Stage 2: автономная реактивность ────────────────────────────
+// room.js сам подписывается на изменение стен и пересчитывает комнаты.
+// Убирает необходимость вызывать computeRooms() из ui-planner.js вручную.
+// Цепочка: walls:changed → computeRooms → rooms:computed → updateExpl (в ui-planner)
+EventBus.on('walls:changed', () => {
+  computeRooms(_wallHeightFallback);
+  // computeRooms уже сам вызывает EventBus.emit('rooms:computed') в конце
+});
