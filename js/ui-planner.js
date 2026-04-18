@@ -415,10 +415,9 @@ function updateEditPanel() {
       const v = Math.max(50, Number(e.target.value) || 200);
       const before = BaseCommand.snapWall(w);
       w.thickness = v;
-      recalculateContourFromBase(w); // пересчитывает x1/y1/x2/y2 от базовой линии, инвалидирует кэш
+      recalculateContourFromBase(w);
       const after = BaseCommand.snapWall(w);
       executeCommand(new UpdateWallCommand(w.id, before, after, 'Изменение толщины'));
-      EventBus.emit('walls:changed'); // пересчёт комнат + union кэш
       doRedraw();
     });
     // Stage 5: высота — UpdateWallCommand
@@ -428,7 +427,6 @@ function updateEditPanel() {
       w.height = v;
       const after = BaseCommand.snapWall(w);
       executeCommand(new UpdateWallCommand(w.id, before, after, 'Изменение высоты'));
-      EventBus.emit('walls:changed'); // высота влияет на метрики комнат
       doRedraw();
     });
   } else if (it.type === 'opening') {
