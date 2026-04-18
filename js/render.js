@@ -5,6 +5,7 @@ import {
   getWallContourPoint, isWallEndpointCoveredByAnotherWall,
   buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
+  areWallsCollinear,
 } from './wall.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
@@ -289,8 +290,21 @@ function drawWalls(selectedItems) {
       sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
     const hasEndJR = myJoints.some(jr =>
       ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
-    const wclipS = (sj && !hasStartJR) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
-    const wclipE = (ej && !hasEndJR)   ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
+
+    // Stage 4: коллинеарных соседей исключаем из clip-расчёта —
+    // у параллельных граней нет точки пересечения, clip всё равно вернул бы null,
+    // но явное исключение делает намерение понятным.
+    // Не-коллинеарных соседей сортируем по приоритету: более «главная» стена
+    // клипает нашу грань первой, т.е. её линия «побеждает» при T-стыке.
+    const filterAndSort = items =>
+      items
+        .filter(it => !areWallsCollinear(w, it.wall))
+        .sort((a, b) => (b.wall.priority ?? 0) - (a.wall.priority ?? 0))
+        .map(i => i.wall);
+
+    const wclipS = (sj && !hasStartJR) ? getWorldFaceClips(w, filterAndSort(sjItems), 'start') : null;
+    const wclipE = (ej && !hasEndJR)   ? getWorldFaceClips(w, filterAndSort(ejItems), 'end')   : null;
+
     // Screen-координаты 4 углов с учётом clip
     const ptA = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : g.a;
     const ptB = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : g.b;
@@ -327,8 +341,17 @@ function drawWalls(selectedItems) {
     _ctx.beginPath();
     drawClippedFace(ptA, ptB, myJoints); // грань ab
     drawClippedFace(ptD, ptC, myJoints); // грань dc
-    if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
-    if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
+
+    // Stage 4: торцевые заглушки не рисуем если:
+    //   a) конец стыкуется с другой стеной (sj/ej), ИЛИ
+    //   b) конец касается коллинеарной стены — шов был бы виден поперёк непрерывной стены
+    const jmapStart = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
+    const jmapEnd   = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
+    const collinearAtStart = jmapStart.some(it => areWallsCollinear(w, it.wall));
+    const collinearAtEnd   = jmapEnd.some(it => areWallsCollinear(w, it.wall));
+
+    if (!ej && !collinearAtEnd)   { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
+    if (!sj && !collinearAtStart) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
 
     _ctx.restore();
