@@ -673,14 +673,16 @@ html, body {
 /* A4 page in right panel — scales to fit available width */
 .spp-a4 {
   width: 100%;
-  max-width: 740px;
-  min-height: 480px;
-  margin: 0 auto;
-  background: var(--white);
-  box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
-  border-radius: 2px;
-  font-family: 'Merriweather', serif;
+  max-width: 860px;          /* ограничиваем максимальную ширину */
+  aspect-ratio: 297 / 210;   /* альбомная ориентация */
+  background: #fff;
+  box-shadow: 0 3px 20px rgba(0,0,0,.13);
+  border-radius: 4px;
   position: relative;
+  overflow: hidden;           /* чтобы содержимое не вылезало */
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
 }
 
 /* Inline edit on spp-a4 elements */
