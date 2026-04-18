@@ -99,82 +99,6 @@ export function getWallSnapSegments(wall) {
   ];
 }
 
-/**
- * Строит полилинии (цепочки осевых линий) из всех стен.
- * Возвращает массив полилиний, где каждая полилиния — массив точек {x, y}.
- */
-export function buildWallPolylines() {
-  const walls = appState.walls;
-  if (walls.length === 0) return [];
-
-  const visited = new Set();
-  const polylines = [];
-
-  // Граф связей: ключ — координаты точки, значение — массив стен, инцидентных этой точке
-  const graph = new Map();
-  const addEdge = (x, y, wall) => {
-    const key = `${Math.round(x)},${Math.round(y)}`;
-    if (!graph.has(key)) graph.set(key, []);
-    graph.get(key).push({ wall, coord: { x, y } });
-  };
-
-  for (const wall of walls) {
-    const start = { x: wall.cx1, y: wall.cy1 };
-    const end   = { x: wall.cx2, y: wall.cy2 };
-    addEdge(start.x, start.y, wall);
-    addEdge(end.x, end.y, wall);
-  }
-
-  // Обход графа для выделения цепочек
-  for (const wall of walls) {
-    if (visited.has(wall.id)) continue;
-
-    const polyline = [];
-    let currentWall = wall;
-    let currentPoint = 'start';
-    let currentCoord = { x: wall.cx1, y: wall.cy1 };
-
-    while (currentWall && !visited.has(currentWall.id)) {
-      visited.add(currentWall.id);
-
-      // Добавляем начальную точку текущей стены (если это не дубль)
-      if (polyline.length === 0 || 
-          Math.hypot(polyline[polyline.length-1].x - currentCoord.x, 
-                     polyline[polyline.length-1].y - currentCoord.y) > 1) {
-        polyline.push({ x: currentCoord.x, y: currentCoord.y });
-      }
-
-      // Добавляем конечную точку
-      const otherCoord = currentPoint === 'start' 
-        ? { x: currentWall.cx2, y: currentWall.cy2 }
-        : { x: currentWall.cx1, y: currentWall.cy1 };
-      polyline.push({ x: otherCoord.x, y: otherCoord.y });
-
-      // Ищем соседнюю стену на этом конце
-      const endKey = `${Math.round(otherCoord.x)},${Math.round(otherCoord.y)}`;
-      const neighbors = graph.get(endKey) || [];
-      const next = neighbors.find(n => n.wall.id !== currentWall.id && !visited.has(n.wall.id));
-
-      if (next) {
-        currentWall = next.wall;
-        currentCoord = next.coord;
-        // Определяем, какой конец стены совпадает с точкой соединения
-        const distToStart = Math.hypot(currentWall.cx1 - currentCoord.x, currentWall.cy1 - currentCoord.y);
-        const distToEnd   = Math.hypot(currentWall.cx2 - currentCoord.x, currentWall.cy2 - currentCoord.y);
-        currentPoint = distToStart < distToEnd ? 'start' : 'end';
-      } else {
-        break;
-      }
-    }
-
-    if (polyline.length >= 2) {
-      polylines.push(polyline);
-    }
-  }
-
-  return polylines;
-}
-
 // ── Surface tests ─────────────────────────────────────────────────
 
 export function isPointInsideWallSurface(point, wall, padding = 0.75) {
@@ -682,16 +606,16 @@ export function buildWallPolylines() {
   return polylines;
 }
 
-let _unionCache = null;
-let _unionCacheKey = '';
+// Переменные кэша уже объявлены выше (в invalidateJointCache), не дублируем.
 
 /**
- * Объединение всех стен в единый монолитный полигон через offset по осевым линиям.
- * Кэшируется и инвалидируется при любом изменении стен.
+ * Возвращает единый монолитный полигон всех стен путём offset'а осевых линий.
+ * Использует js-angusj-clipper для создания митерных стыков.
  */
 export function getUnifiedWallsPolygon() {
   if (appState.walls.length === 0) return [];
 
+  // Ключ кэша: все параметры стен, влияющие на геометрию
   const key = appState.walls.map(w =>
     `${w.id}:${Math.round(w.cx1)},${Math.round(w.cy1)},${Math.round(w.cx2)},${Math.round(w.cy2)},${w.thickness},${w.offset}`
   ).join('|');
@@ -703,27 +627,34 @@ export function getUnifiedWallsPolygon() {
     const allPolygons = [];
 
     for (const polyline of polylines) {
-      const line = polyline.map(p => [p.x, p.y]);
-      
-      // Берём толщину и offset из первой стены цепочки (можно улучшить)
+      // Находим параметры (толщина, offset) по первой стене в цепочке
+      const firstCoord = polyline[0];
       const firstWall = appState.walls.find(w => 
-        Math.hypot(w.cx1 - polyline[0].x, w.cy1 - polyline[0].y) < 1 ||
-        Math.hypot(w.cx2 - polyline[0].x, w.cy2 - polyline[0].y) < 1
+        (Math.hypot(w.cx1 - firstCoord.x, w.cy1 - firstCoord.y) < 1) ||
+        (Math.hypot(w.cx2 - firstCoord.x, w.cy2 - firstCoord.y) < 1)
       );
-      const thickness = firstWall ? firstWall.thickness : 200;
-      const offsetMode = firstWall ? firstWall.offset : 'center';
-      
-      let offsetDistance = 0;
-      if (offsetMode === 'left') offsetDistance = -thickness / 2;
-      else if (offsetMode === 'right') offsetDistance = thickness / 2;
+      if (!firstWall) continue;
 
-      const offsetPoly = polygonClipping.offset(
-        [line], 
-        offsetDistance, 
-        { join: 'miter', miterLimit: 2, endType: 'openSquare' }
-      );
+      const thickness = firstWall.thickness;
+      const offsetMode = firstWall.offset || 'center';
       
-      if (offsetPoly.length > 0) allPolygons.push(...offsetPoly);
+      let delta = 0;
+      if (offsetMode === 'left') delta = -thickness / 2;
+      else if (offsetMode === 'right') delta = thickness / 2;
+
+      // Преобразуем точки в формат Clipper: { X, Y }
+      const path = polyline.map(p => ({ X: p.x, Y: p.y }));
+
+      // Создаём offset-объект и применяем
+      const co = new ClipperLib.ClipperOffset();
+      co.AddPath(path, ClipperLib.JoinType.jtMiter, ClipperLib.EndType.etOpenSquare);
+      const offsetPaths = co.Execute(delta);
+
+      // Конвертируем результат обратно в формат polygon-clipping: [[[x,y], ...]]
+      for (const offsetPath of offsetPaths) {
+        const ring = offsetPath.map(pt => [pt.X, pt.Y]);
+        allPolygons.push([ring]);
+      }
     }
 
     _unionCache = allPolygons;
