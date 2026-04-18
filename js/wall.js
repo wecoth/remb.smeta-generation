@@ -88,7 +88,11 @@ export function getWallWorldBounds(wall) {
 export function getWallSnapSegments(wall) {
   const g = getWallWorldGeometry(wall);
   return [
-    { type: 'wallAxis', segment: { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 } },
+    // wallAxis всегда по базовой линии (cx1/cy1) — не сдвигается при смене offset/thickness
+    { type: 'wallAxis', segment: {
+        x1: wall.cx1 ?? wall.x1, y1: wall.cy1 ?? wall.y1,
+        x2: wall.cx2 ?? wall.x2, y2: wall.cy2 ?? wall.y2,
+    }},
     { type: 'wallFace', segment: { x1: g.a.x, y1: g.a.y, x2: g.b.x, y2: g.b.y } },
     { type: 'wallFace', segment: { x1: g.d.x, y1: g.d.y, x2: g.c.x, y2: g.c.y } },
   ];
@@ -287,6 +291,23 @@ export function getJointBoundaryPaths(jointRect) {
   return paths;
 }
 
+// ── Baseline (Stage 1: Renga-style) ─────────────────────────────
+// Пересчитывает x1/y1/x2/y2 (смещённую ось) от базовой линии (cx1/cy1 → cx2/cy2).
+// Вызывать при изменении thickness или offset — базовая линия при этом НЕ двигается.
+export function recalculateContourFromBase(wall) {
+  const cx1 = wall.cx1 ?? wall.x1;
+  const cy1 = wall.cy1 ?? wall.y1;
+  const cx2 = wall.cx2 ?? wall.x2;
+  const cy2 = wall.cy2 ?? wall.y2;
+  const angle      = Math.atan2(cy2 - cy1, cx2 - cx1);
+  const offsetMode = wall.offset || 'center';
+  const s = applyWallOffset(cx1, cy1, angle, offsetMode, wall.thickness);
+  const e = applyWallOffset(cx2, cy2, angle, offsetMode, wall.thickness);
+  wall.x1 = s.x; wall.y1 = s.y;
+  wall.x2 = e.x; wall.y2 = e.y;
+  invalidateJointCache();
+}
+
 // ── Wall update ──────────────────────────────────────────────────
 
 export function updateWallGeometry(wall, nextStart, nextEnd, options = {}) {
@@ -355,11 +376,14 @@ export function addWall(start, end, thick, height, wallOffset) {
   const e2 = applyWallOffset(end.x,   end.y,   angle, wallOffset, thick);
   const wall = {
     id: appState.idWall++,
+    // Смещённая ось (зависит от offset/thickness — пересчитывается recalculateContourFromBase)
     x1: s.x,  y1: s.y,
     x2: e2.x, y2: e2.y,
+    // Базовая линия (то что рисовал пользователь — никогда не сдвигается)
     cx1: start.x, cy1: start.y,
     cx2: end.x,   cy2: end.y,
     thickness: thick, height, offset: wallOffset,
+    horizontalOffset: 0, // зарезервировано для будущего смещения по нормали (Stage 1+)
   };
   appState.walls.push(wall);
   invalidateJointCache();
