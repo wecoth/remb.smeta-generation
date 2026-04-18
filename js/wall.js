@@ -1,7 +1,6 @@
 // ─── WALL.JS ──────────────────────────────────────────────────────
 import { appState } from './state.js';
 import { clamp, applyWallOffset, segmentIntersection } from './geometry.js';
-import polygonClipping from 'https://esm.sh/polygon-clipping';
 
 // ── Contour helpers ──────────────────────────────────────────────
 
@@ -164,8 +163,6 @@ let _jointRectsCacheKey = '';
 
 export function invalidateJointCache() {
   _jointRectsCache = null;
-  _unionCache = null;
-  _unionCacheKey = '';
 }
 
 export function getWallJointRects(jointMap = null) {
@@ -514,52 +511,4 @@ export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
     if (dist < bestDist) { best = op; bestDist = dist; }
   }
   return best;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// POLYGON UNION — для рендеринга единого контура и векторных комнат
-// ═══════════════════════════════════════════════════════════════════
-
-/**
- * Возвращает полигон стены в формате polygon-clipping:
- * Polygon = Ring[] = [[[x,y],[x,y],[x,y],[x,y]]]
- * Углы: a(top-left), b(top-right), c(bottom-right), d(bottom-left)
- * при взгляде вдоль оси стены.
- */
-export function getWallPolygon(wall) {
-  const g = getWallWorldGeometry(wall);
-  return [[[g.a.x, g.a.y], [g.b.x, g.b.y], [g.c.x, g.c.y], [g.d.x, g.d.y]]];
-}
-
-// Кэш объединённого полигона всех стен
-let _unionCache = null;
-let _unionCacheKey = '';
-
-/**
- * Возвращает объединение всех стен в формате MultiPolygon (polygon-clipping).
- * Результат кэшируется — инвалидируется через invalidateJointCache().
- * 
- * Возвращает [] если стен нет.
- * Возвращает [[...]] — MultiPolygon, массив Polygon-ов.
- */
-export function getUnifiedWallsPolygon() {
-  if (appState.walls.length === 0) return [];
-
-  // Ключ кэша: геометрия каждой стены
-  const key = appState.walls.map(w =>
-    `${w.id}:${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`
-  ).join('|');
-
-  if (_unionCache !== null && _unionCacheKey === key) return _unionCache;
-
-  try {
-    const polys = appState.walls.map(getWallPolygon);
-    _unionCache = polygonClipping.union(...polys);
-  } catch (e) {
-    console.warn('[REMB] polygon union failed:', e);
-    // Fallback: возвращаем каждую стену как отдельный полигон
-    _unionCache = appState.walls.map(getWallPolygon);
-  }
-  _unionCacheKey = key;
-  return _unionCache;
 }
