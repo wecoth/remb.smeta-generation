@@ -7,7 +7,7 @@ import {
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
   getUnifiedWallsPolygon, getWallPolygon,
 } from './wall.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
+import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn, getViewport } from './snapping.js';
 import { exteriorWallIds } from './room.js';
 
 let _canvas, _ctx, _hatchPat = null;
@@ -994,16 +994,16 @@ export function renderToImage(outW, outH, withDimensions = false) {
   const savedCtx      = _ctx;
   const savedGetScale = _getScale;
   const savedHatch    = _hatchPat;
+  const savedViewport = getViewport();        // ← сохраняем viewport
 
   // Переключаем на offscreen
   _canvas    = oc;
   _ctx       = octx;
   _getScale  = () => scale;
   _hatchPat  = null;
-  // Масштабируем шрифты пропорционально ширине output (базовый = 800px)
   _fontScale = Math.max(1, outW / 800);
 
-  // Устанавливаем viewport — _setViewportFn это setViewport из snapping.js
+  // Устанавливаем временный viewport для offscreen
   _setViewportFn(scale, panX, panY);
 
   // Белый фон
@@ -1032,14 +1032,15 @@ export function renderToImage(outW, outH, withDimensions = false) {
     drawOpeningLeaders(exteriorWallIds);
   }
 
-  // Восстанавливаем состояние
+  // Восстанавливаем оригинальное состояние
   _canvas    = savedCanvas;
   _ctx       = savedCtx;
   _getScale  = savedGetScale;
   _hatchPat  = savedHatch;
   _fontScale = 1;
-  const vp   = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
-  _setViewportFn(vp.scale, vp.panX, vp.panY);
+
+  // Восстанавливаем viewport из сохранённых значений
+  _setViewportFn(savedViewport.scale, savedViewport.panX, savedViewport.panY);
 
   return oc.toDataURL('image/png');
 }
