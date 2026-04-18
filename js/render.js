@@ -156,6 +156,9 @@ export function redraw(ps) {
   }
   if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
+  if (ps.tool === 'wall' && ps.trackingLines?.length) {
+    drawTrackingLines(ps.activeTrackingPoint, ps.trackingLines);
+  }
   if (ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
   if (ps.tool === 'wall' && ps.currentGuideLine)  drawGuideLine(ps.currentGuideLine);
   if (ps.tool === 'wall' && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
@@ -584,6 +587,41 @@ function drawSelectedHandles(tool, selectedItems, wallResizeState) {
   }
 }
 
+// ── Stage 3: линии отслеживания (фиолетовые) ─────────────────────
+// Рисует бесконечные лучи от активированной точки + фиолетовую точку-якорь.
+function drawTrackingLines(activeTrackingPoint, trackingLines) {
+  if (!activeTrackingPoint || !trackingLines?.length) return;
+  const anchor = toScreen(activeTrackingPoint.x, activeTrackingPoint.y);
+  const SPAN   = Math.max(_canvas.width, _canvas.height) * 2;
+
+  _ctx.save();
+
+  // Лучи
+  _ctx.strokeStyle = 'rgba(109, 40, 217, 0.5)';
+  _ctx.lineWidth   = 1;
+  _ctx.lineCap     = 'round';
+  for (const line of trackingLines) {
+    // Направление одинаково в мировых и экранных координатах (нет поворота вьюпорта)
+    _ctx.setLineDash(line.lineType === 'axis' ? [3, 8] : [6, 6]);
+    _ctx.beginPath();
+    _ctx.moveTo(anchor.x - line.dir.x * SPAN, anchor.y - line.dir.y * SPAN);
+    _ctx.lineTo(anchor.x + line.dir.x * SPAN, anchor.y + line.dir.y * SPAN);
+    _ctx.stroke();
+  }
+
+  // Точка-якорь (фиолетовый кружок с белой обводкой)
+  _ctx.setLineDash([]);
+  _ctx.beginPath();
+  _ctx.arc(anchor.x, anchor.y, 5.5, 0, Math.PI * 2);
+  _ctx.fillStyle   = 'rgba(109, 40, 217, 0.9)';
+  _ctx.fill();
+  _ctx.strokeStyle = '#fff';
+  _ctx.lineWidth   = 1.5;
+  _ctx.stroke();
+
+  _ctx.restore();
+}
+
 // ── Stage 1: базовая линия (жёлтый пунктир как в Renga) ──────────
 // Показывается только для выделенных стен. Это cx1/cy1 → cx2/cy2 —
 // линия, которую рисовал пользователь и которая не двигается при
@@ -912,6 +950,13 @@ function drawObjectSnap(snap) {
     _ctx.beginPath(); _ctx.moveTo(p.x - ux * 7, p.y - uy * 7); _ctx.lineTo(p.x + ux * 7, p.y + uy * 7);
     _ctx.moveTo(p.x - nx * 4, p.y - ny * 4); _ctx.lineTo(p.x + nx * 4, p.y + ny * 4); _ctx.stroke();
     _ctx.beginPath(); _ctx.arc(p.x, p.y, snap.type === 'wallFace' ? 4.5 : 3.5, 0, Math.PI * 2); _ctx.fill(); _ctx.stroke();
+  }
+  else if (snap.type === 'tracking') {
+    // Ромб — как в Renga для точки на линии отслеживания
+    _ctx.beginPath();
+    _ctx.moveTo(p.x, p.y - 7); _ctx.lineTo(p.x + 7, p.y);
+    _ctx.lineTo(p.x, p.y + 7); _ctx.lineTo(p.x - 7, p.y);
+    _ctx.closePath(); _ctx.fill(); _ctx.stroke();
   }
   drawAlignedTextBox(snap.label, { x: p.x, y: p.y - 18 }, 0, { textColor: color, background: 'rgba(255,255,255,0.96)' });
   _ctx.restore();
