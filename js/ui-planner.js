@@ -7,7 +7,7 @@ import {
   invalidateJointCache, recalculateContourFromBase,
 } from './wall.js';
 import { addOpening, findClosestOpening, updateDoorOpening } from './opening.js';
-import { computeRooms, updateExpl, getComputedRooms, renameRoom } from './room.js';
+import { computeRooms, updateExpl, getComputedRooms, renameRoom, setWallHeight } from './room.js';
 import {
   snap, setViewport, setModifiers, toScreen, toWorld,
   findObjectSnapCandidate, findGuideCandidate, getNearestGuideAxis,
@@ -47,12 +47,12 @@ export function initPlanner(domRefs) {
   canvas = domRefs.canvas;
   canvasWrap = domRefs.canvasWrap;
 
-  // ── EventBus: центральная подписка на изменение стен ─────────────
-  // Все операции, затрагивающие стены/проёмы, испускают 'walls:changed'.
-  // Этот единственный handler заменяет разбросанные вызовы
-  // computeRooms() + updateExpl() по всему файлу.
-  EventBus.on('walls:changed', () => {
-    computeRooms(getWallHeightFallback());
+  // ── Stage 2: реактивная экспликация ──────────────────────────────
+  // room.js сам подписывается на walls:changed и пересчитывает комнаты.
+  // Здесь подписываемся только на итоговое событие — обновляем DOM.
+  // Цепочка: walls:changed → [room.js] computeRooms → rooms:computed → updateExpl
+  setWallHeight(parseFloat(dom.inpWallHeight?.value) || 2700); // начальное значение
+  EventBus.on('rooms:computed', () => {
     updateExpl(dom.explBody, dom.roomCount);
   });
 
@@ -168,6 +168,8 @@ export function initPlanner(domRefs) {
     inp.addEventListener('change', () => {
       // Bug #10 fix: clamp negative values
       if (Number(inp.value) < Number(inp.min || 0)) inp.value = inp.min || 0;
+      // Stage 2: синхронизируем высоту стен в room.js при изменении
+      if (inp === dom.inpWallHeight) setWallHeight(parseFloat(inp.value) || 2700);
       EventBus.emit('walls:changed');
       doRedraw();
     });
@@ -182,7 +184,9 @@ export function initPlanner(domRefs) {
   dom.explBody?.addEventListener('change', e => {
     if (!e.target.matches('.room-name-input')) return;
     renameRoom(e.target.dataset.roomKey, e.target.value || e.target.dataset.roomDefault || '');
-    EventBus.emit('walls:changed');
+    // Stage 2: renameRoom уже обновил имена в appState.rooms — не нужно
+    // пересчитывать весь flood-fill, просто обновляем DOM экспликации.
+    EventBus.emit('rooms:computed');
     doRedraw();
     recordHistory();
   });
