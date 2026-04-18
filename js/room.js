@@ -1,9 +1,6 @@
 // ─── ROOM.JS ──────────────────────────────────────────────────────
 import { appState, ROOM_STROKES } from './state.js';
 import { EventBus } from './eventBus.js';
-import { getUnifiedWallsPolygon } from './wall.js';
-import polygonClipping from 'https://esm.sh/polygon-clipping';
-import { projectPointOntoSegment } from './geometry.js';
 
 // ── Высота стен по умолчанию — обновляется из ui-planner.js ──────
 // Хранится здесь, чтобы room.js мог автономно пересчитывать комнаты.
@@ -48,129 +45,223 @@ const CELL_MM = 50;
 export let exteriorWallIds = new Set();
 
 export function computeRooms(wallHeightFallback = 2700) {
-  _wallHeightFallback = wallHeightFallback > 0 ? wallHeightFallback : 2700;
   appState.rooms = [];
-  if (appState.walls.length < 3) { EventBus.emit('rooms:computed'); return; }
+  if (appState.walls.length < 3) return;
 
-  // ── 1. Получаем объединённый полигон всех стен ─────────────────
-  const unified = getUnifiedWallsPolygon();
-  if (!unified || unified.length === 0) { EventBus.emit('rooms:computed'); return; }
-
-  // ── 2. Bounding box всех стен (с запасом) ──────────────────────
+  // ── 1. Bbox ────────────────────────────────────────────────────
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const w of appState.walls) {
-    const half = w.thickness / 2;
+    const half = w.thickness / 2 + 5;
     minX = Math.min(minX, w.x1 - half, w.x2 - half);
     minY = Math.min(minY, w.y1 - half, w.y2 - half);
     maxX = Math.max(maxX, w.x1 + half, w.x2 + half);
     maxY = Math.max(maxY, w.y1 + half, w.y2 + half);
   }
-  const PAD = 2000; // 2м — достаточно чтобы внешняя пустота касалась края
+  const PAD = CELL_MM * 2;
   minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
 
-  // ── 3. Пустоты = большой прямоугольник минус все стены ─────────
-  // outerRect — Polygon в формате polygon-clipping: Ring[] = [Position[]]
-  const outerRect = [[[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]];
+  const cols = Math.ceil((maxX - minX) / CELL_MM) + 1;
+  const rows = Math.ceil((maxY - minY) / CELL_MM) + 1;
+  if (cols > 2000 || rows > 2000) return;
 
-  let voids;
-  try {
-    // difference(subject, ...clippers): subject = Polygon, clippers = MultiPolygon или Polygon
-    // unified — результат union, это MultiPolygon (Polygon[])
-    // Передаём unified как один аргумент (spread по отдельным polygon-ам)
-    voids = polygonClipping.difference(outerRect, ...unified);
-  } catch (e) {
-    console.warn('[REMB] room vector detection failed:', e);
-    EventBus.emit('rooms:computed');
-    return;
+  // ── 2. Растеризация стен ───────────────────────────────────────
+  // Тело стены — тонко (inflate=1мм), точная площадь.
+  // Caps на концах — закрывают торцевые зазоры в вершинах.
+  // Диагональные щели вдоль тела — закрываются отдельным проходом.
+  const bitmap = new Uint8Array(cols * rows);
+  for (const w of appState.walls) {
+    rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
-  if (!voids || voids.length === 0) { EventBus.emit('rooms:computed'); return; }
+  // ── 3. Закрываем диагональные щели вдоль тел стен ─────────────
+  // Два пикселя стены, касающихся только по диагонали:
+  //   ██░   ░██
+  //   ░██   ██░
+  // Заполняем один из свободных — щель закрыта.
+  for (let gy = 0; gy < rows - 1; gy++) {
+    for (let gx = 0; gx < cols - 1; gx++) {
+      const tl = bitmap[ gy      * cols + gx    ];
+      const tr = bitmap[ gy      * cols + gx + 1];
+      const bl = bitmap[(gy + 1) * cols + gx    ];
+      const br = bitmap[(gy + 1) * cols + gx + 1];
+      if (tl && br && !tr && !bl) bitmap[gy * cols + gx + 1] = 1;
+      if (tr && bl && !tl && !br) bitmap[gy * cols + gx    ] = 1;
+    }
+  }
 
-  // ── 4. Определяем exterior walls через raster-проверку ─────────
-  // (быстрее и надёжнее чем векторный анализ для данной задачи)
-  exteriorWallIds = _computeExteriorWallIds(unified, minX, minY, maxX, maxY);
+  // ── 4. BFS flood fill, 4-связность ────────────────────────────
+  const regionId          = new Int32Array(cols * rows);
+  let nextId = 1;
+  const regionPixels      = new Map();
+  const regionTouchesEdge = new Set();
 
-  // ── 5. Обрабатываем каждую пустоту ─────────────────────────────
-  const MIN_AREA_MM2 = 100000; // 0.1 м² — фильтр шума
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const idx = gy * cols + gx;
+      if (bitmap[idx] !== 0 || regionId[idx] !== 0) continue;
 
-  for (const voidPoly of voids) {
-    // voidPoly — Polygon = Ring[]
-    // Внешнее кольцо — первый элемент: Ring = Position[]
+      const id = nextId++;
+      const pixels = [];
+      const queue  = [idx];
+      regionId[idx] = id;
+      let touchesEdge = false;
 
-    // Проверяем, касается ли пустота края bbox — если да, это внешнее пространство
-    if (_polyTouchesBbox(voidPoly, minX, minY, maxX, maxY, PAD * 0.8)) continue;
+      while (queue.length) {
+        const ci = queue.pop();
+        const cx = ci % cols, cy = (ci / cols) | 0;
+        pixels.push([cx, cy]);
+        if (cx === 0 || cy === 0 || cx === cols - 1 || cy === rows - 1) touchesEdge = true;
+        for (const [nx, ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]) {
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const ni = ny * cols + nx;
+          if (bitmap[ni] !== 0 || regionId[ni] !== 0) continue;
+          regionId[ni] = id;
+          queue.push(ni);
+        }
+      }
+      regionPixels.set(id, pixels);
+      if (touchesEdge) regionTouchesEdge.add(id);
+    }
+  }
 
-    // Площадь и центроид по внешнему кольцу
-    const outerRing = voidPoly[0];
-    const area = Math.abs(_ringArea(outerRing));
-    if (area < MIN_AREA_MM2) continue;
+  // ── Определяем exterior регион (самый большой touchesEdge) ────
+  let exteriorRegionId = -1;
+  let exteriorMaxSize  = 0;
+  for (const id of regionTouchesEdge) {
+    const sz = regionPixels.get(id)?.length ?? 0;
+    if (sz > exteriorMaxSize) { exteriorMaxSize = sz; exteriorRegionId = id; }
+  }
 
-    const center = _ringCentroid(outerRing);
+  const exteriorPixelSet = new Set();
+  if (exteriorRegionId > 0) {
+    for (const [gx, gy] of (regionPixels.get(exteriorRegionId) || [])) {
+      exteriorPixelSet.add(gy * cols + gx);
+    }
+  }
 
-    // Граничные стены: стены, вплотную примыкающие к этой пустоте
-    const boundaryWalls = _findBoundaryWalls(outerRing, appState.walls);
+  // ── Определяем стены граничащие с exterior ────────────────────
+  exteriorWallIds = new Set();
+  for (const wall of appState.walls) {
+    const mx = (wall.x1 + wall.x2) / 2;
+    const my = (wall.y1 + wall.y2) / 2;
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (len < 1) continue;
+    const wnx = -(wall.y2 - wall.y1) / len;
+    const wny =  (wall.x2 - wall.x1) / len;
+    const checkDist = wall.thickness / 2 + CELL_MM * 1.5;
+    for (const sign of [1, -1]) {
+      const px = mx + wnx * sign * checkDist;
+      const py = my + wny * sign * checkDist;
+      const gx = Math.round((px - minX) / CELL_MM - 0.5);
+      const gy = Math.round((py - minY) / CELL_MM - 0.5);
+      if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+      if (exteriorPixelSet.has(gy * cols + gx)) {
+        exteriorWallIds.add(wall.id);
+        break;
+      }
+    }
+  }
 
-    // Высота комнаты
-    let roomHeightMm = _wallHeightFallback;
-    for (const w of boundaryWalls) {
-      if (w.height && w.height > 0 && w.height < roomHeightMm) roomHeightMm = w.height;
+  // ── 5. Метрики ─────────────────────────────────────────────────
+  const minRoomArea = 100000; // 0.1 м²
+
+  for (const [id, pixels] of regionPixels) {
+    if (regionTouchesEdge.has(id)) continue;
+
+    const areaMm2 = pixels.length * CELL_MM * CELL_MM;
+    if (areaMm2 < minRoomArea) continue;
+
+    // Центроид
+    let sumX = 0, sumY = 0;
+    for (const [gx, gy] of pixels) { sumX += gx; sumY += gy; }
+    const centerWorld = {
+      x: minX + (sumX / pixels.length + 0.5) * CELL_MM,
+      y: minY + (sumY / pixels.length + 0.5) * CELL_MM,
+    };
+
+    // Граничные стены
+    const boundaryWalls = new Map();
+    for (const [gx, gy] of pixels) {
+      for (const [nx, ny] of [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]]) {
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        if (bitmap[ny * cols + nx] === 1) {
+          const wx = minX + (nx + 0.5) * CELL_MM, wy = minY + (ny + 0.5) * CELL_MM;
+          const wall = findWallAtPoint(wx, wy);
+          if (wall && !boundaryWalls.has(wall.id)) boundaryWalls.set(wall.id, wall);
+        }
+      }
+    }
+
+    // Высота
+    let roomHeightMm = wallHeightFallback;
+    for (const wall of boundaryWalls.values()) {
+      if (wall.height && wall.height < roomHeightMm) roomHeightMm = wall.height;
     }
 
     // Проёмы
-    const boundaryWallIds = new Set(boundaryWalls.map(w => w.id));
-    const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
+    const roomOpenings = appState.openings.filter(op => boundaryWalls.has(op.wallId));
 
     // Входная дверь
     const entranceDoorId = detectEntranceDoor(roomOpenings, exteriorWallIds);
 
     // Метрики
     const metrics = computeRoomMetrics(
-      boundaryWalls, roomOpenings, roomHeightMm, center, entranceDoorId
+      [...boundaryWalls.values()], roomOpenings,
+      roomHeightMm, centerWorld, entranceDoorId
     );
 
-    // boundarySegments для совместимости с render.js (wallInteriorSide, openingLeaders)
-    const boundarySegments = boundaryWalls.map(wall => ({
-      orientation: Math.abs(wall.y2 - wall.y1) < Math.abs(wall.x2 - wall.x1) ? 'h' : 'v',
-      x1: Math.min(wall.x1, wall.x2), y1: Math.min(wall.y1, wall.y2),
-      x2: Math.max(wall.x1, wall.x2), y2: Math.max(wall.y1, wall.y2),
-      length: Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1),
-      wall,
+    // cells для render.js
+    const cells = pixels.map(([gx, gy]) => ({
+      x1: minX + gx * CELL_MM,       y1: minY + gy * CELL_MM,
+      x2: minX + (gx + 1) * CELL_MM, y2: minY + (gy + 1) * CELL_MM,
     }));
 
-    // Ключ комнаты: центроид, округлённый до 50мм (совместимость с roomNameOverrides)
-    const key = `${Math.round(center.x / 50) * 50},${Math.round(center.y / 50) * 50}`;
+    // boundarySegments для render.js
+    const boundarySegments = [];
+    for (const wall of boundaryWalls.values()) {
+      boundarySegments.push({
+        orientation: Math.abs(wall.y2 - wall.y1) < Math.abs(wall.x2 - wall.x1) ? 'h' : 'v',
+        x1: Math.min(wall.x1, wall.x2), y1: Math.min(wall.y1, wall.y2),
+        x2: Math.max(wall.x1, wall.x2), y2: Math.max(wall.y1, wall.y2),
+        length: Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1),
+        wall,
+      });
+    }
+
+    const key         = getRoomKey(pixels, CELL_MM);
     const defaultName = roomDefaultName(appState.rooms.length);
 
     appState.rooms.push({
-      key,
-      // Векторный полигон для рендеринга (r.polygon используется в drawRoomFills)
-      polygon: [voidPoly],
-      // cells: null (не используется в векторном режиме)
-      cells: null,
-      boundarySegments,
-      center,
+      key, cells, boundarySegments, center: centerWorld,
       defaultName,
       name: appState.roomNameOverrides[key] || defaultName,
-      area:         area / 1e6,
-      volume:       area * roomHeightMm / 1e9,
+      area:         areaMm2 / 1e6,
+      volume:       areaMm2 * roomHeightMm / 1e9,
       height:       roomHeightMm / 1000,
       perimeter:    metrics.perimeterFloorM,
       wallArea:     metrics.wallAreaNetM2,
       openingsArea: metrics.openingsAreaM2,
       metrics,
-      wallIds:      [...boundaryWallIds],
+      // Stage 2: список id стен, формирующих границу комнаты.
+      // Нужен для будущего recomputeAffectedRooms — не пересчитывать все комнаты,
+      // только те, у которых wallIds пересекается с изменившимися стенами.
+      wallIds: [...boundaryWalls.keys()],
     });
   }
 
-  // ── 6. Делим площадь пола под дверными проёмами пополам ────────
+  // ── 6. Делим площадь пола под дверными проёмами пополам ───────
   for (const op of appState.openings) {
     if (op.type !== 'door') continue;
     const wall = appState.walls.find(w => w.id === op.wallId);
     if (!wall || wall.thickness < 1) continue;
+
     const borderingIndices = [];
     for (let i = 0; i < appState.rooms.length; i++) {
-      if (appState.rooms[i].wallIds.includes(op.wallId)) borderingIndices.push(i);
+      if (appState.rooms[i].boundarySegments.some(bs => bs.wall.id === op.wallId)) {
+        borderingIndices.push(i);
+      }
     }
+
     if (borderingIndices.length === 2) {
       const halfM2 = (op.width * wall.thickness) / 2 / 1e6;
       for (const idx of borderingIndices) {
@@ -180,138 +271,9 @@ export function computeRooms(wallHeightFallback = 2700) {
       }
     }
   }
-
+  // Оповещаем подписчиков — комнаты пересчитаны, DOM можно обновлять.
+  // ui-planner.js слушает 'rooms:computed' и вызывает updateExpl.
   EventBus.emit('rooms:computed');
-}
-
-// ── Вспомогательные функции для векторного room detection ─────────
-
-/** Площадь кольца (Shoelace formula). Знак зависит от ориентации. */
-function _ringArea(ring) {
-  let area = 0;
-  const n = ring.length;
-  for (let i = 0; i < n; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[(i + 1) % n];
-    area += x1 * y2 - x2 * y1;
-  }
-  return area / 2;
-}
-
-/** Центроид кольца (Shoelace centroid). */
-function _ringCentroid(ring) {
-  let cx = 0, cy = 0, area = 0;
-  const n = ring.length;
-  for (let i = 0; i < n; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[(i + 1) % n];
-    const cross = x1 * y2 - x2 * y1;
-    area += cross;
-    cx += (x1 + x2) * cross;
-    cy += (y1 + y2) * cross;
-  }
-  area /= 2;
-  if (Math.abs(area) < 0.001) {
-    // Fallback: средняя точка кольца
-    let sx = 0, sy = 0;
-    for (const [x, y] of ring) { sx += x; sy += y; }
-    return { x: sx / n, y: sy / n };
-  }
-  return { x: cx / (6 * area), y: cy / (6 * area) };
-}
-
-/**
- * Проверяет, касается ли полигон (Polygon = Ring[]) краёв bounding box.
- * Если касается — это внешняя пустота (exterior space), не комната.
- */
-function _polyTouchesBbox(poly, minX, minY, maxX, maxY, tol = 100) {
-  for (const ring of poly) {
-    for (const [x, y] of ring) {
-      if (x <= minX + tol || x >= maxX - tol ||
-          y <= minY + tol || y >= maxY - tol) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Находит стены, вплотную примыкающие к кольцу пустоты (комнаты).
- * Стена считается граничной, если хотя бы одна вершина кольца
- * находится в пределах tolerance от оси стены.
- */
-function _findBoundaryWalls(outerRing, walls) {
-  const result = [];
-  for (const wall of walls) {
-    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (wlen < 1) continue;
-    const tol = wall.thickness / 2 + 15; // 15мм допуск
-    const seg = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 };
-    let found = false;
-    for (const [x, y] of outerRing) {
-      const proj = projectPointOntoSegment({ x, y }, seg);
-      if (proj.distance <= tol) { found = true; break; }
-    }
-    if (found) result.push(wall);
-  }
-  return result;
-}
-
-/**
- * Определяет exterior walls через простую проверку:
- * стена внешняя, если её середина находится на краю объединённого контура.
- * Используем упрощённый подход: ищем стены, хотя бы один конец которых
- * НЕ покрыт другой стеной (т.е. торец открыт наружу).
- * 
- * Более точно: стена внешняя если точка на расстоянии thickness/2 + 10мм
- * по нормали от оси стены НЕ попадает внутрь объединённого полигона.
- */
-function _computeExteriorWallIds(unified, _minX, _minY, _maxX, _maxY) {
-  const result = new Set();
-  for (const wall of appState.walls) {
-    const mx = (wall.x1 + wall.x2) / 2;
-    const my = (wall.y1 + wall.y2) / 2;
-    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (len < 1) continue;
-    const nx = -(wall.y2 - wall.y1) / len;
-    const ny =  (wall.x2 - wall.x1) / len;
-    const probe = wall.thickness / 2 + 30;
-
-    // Проверяем обе стороны нормали
-    for (const sign of [1, -1]) {
-      const px = mx + nx * sign * probe;
-      const py = my + ny * sign * probe;
-      // Точка px,py — снаружи, если НЕ попадает ни в один из полигонов union
-      let insideUnion = false;
-      for (const poly of unified) {
-        if (_pointInPolygon(px, py, poly)) { insideUnion = true; break; }
-      }
-      if (!insideUnion) { result.add(wall.id); break; }
-    }
-  }
-  return result;
-}
-
-/** Point-in-polygon test (ray casting) для Polygon = Ring[] */
-function _pointInPolygon(x, y, poly) {
-  // Внешнее кольцо: inside если нечётное число пересечений
-  let inside = _raycastRing(x, y, poly[0]);
-  // Дырки: вычитаем
-  for (let i = 1; i < poly.length; i++) {
-    if (_raycastRing(x, y, poly[i])) inside = !inside;
-  }
-  return inside;
-}
-
-function _raycastRing(x, y, ring) {
-  let inside = false;
-  const n = ring.length;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const [xi, yi] = ring[i], [xj, yj] = ring[j];
-    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
 }
 
 // ══════════════════════════════════════════════════════════════════
