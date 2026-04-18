@@ -2,12 +2,12 @@
 import { appState, updateState } from './state.js';
 import { EventBus } from './eventBus.js';
 import {
-  addWall, deleteSelectedItems, findClosestWall, findClosestWallSel,
+  addWall, findClosestWall, findClosestWallSel,
   getWallContourPoint, updateWallGeometry, setWallLength, getWallLength,
   invalidateJointCache, recalculateContourFromBase,
 } from './wall.js';
 import { addOpening, findClosestOpening, updateDoorOpening } from './opening.js';
-import { computeRooms, updateExpl, getComputedRooms, renameRoom, setWallHeight } from './room.js';
+import { updateExpl, getComputedRooms, renameRoom, setWallHeight } from './room.js';
 import {
   snap, setViewport, setModifiers, toScreen, toWorld,
   findObjectSnapCandidate, findGuideCandidate, getNearestGuideAxis,
@@ -15,10 +15,20 @@ import {
   getTrackingLines, snapToTrackingLines,
 } from './snapping.js';
 import {
-  redraw, initRenderer, getWallResizeHandles, getOpeningScreenBounds,
-  hitTestWallResizeHandle, boundsIntersect, drawAlignedTextBox,
+  redraw, initRenderer, getOpeningScreenBounds,
+  hitTestWallResizeHandle, boundsIntersect,
 } from './render.js';
-import { recordHistory, undoHistory, redoHistory, canUndo, canRedo } from './history.js';
+
+// ── Stage 5: Command Pattern ──────────────────────────────────────
+import { executeCommand, undo, redo, canUndo, canRedo, clearHistory } from './commands/CommandHistory.js';
+import { BaseCommand }         from './commands/BaseCommand.js';
+import { CreateWallCommand }   from './commands/CreateWallCommand.js';
+import { DeleteItemsCommand }  from './commands/DeleteItemsCommand.js';
+import { AddOpeningCommand }   from './commands/AddOpeningCommand.js';
+import { UpdateWallCommand }   from './commands/UpdateWallCommand.js';
+import { MoveWallsCommand }    from './commands/MoveWallsCommand.js';
+import { PasteCommand }        from './commands/PasteCommand.js';
+import { RenameRoomCommand }   from './commands/RenameRoomCommand.js';
 
 // ── Module state ──────────────────────────────────────────────────
 let canvas, canvasWrap;
@@ -40,9 +50,9 @@ let dragState = null; // { startWorld, lastWorld, wallSnapshots, openingSnapshot
 // Буфер копирования
 let clipboard = null; // { walls, openings }
 // Stage 3: отслеживание точки привязки (tracking lines)
-let _snapHoverTimer    = null;  // setTimeout handle
-let _snapHoverKey      = null;  // ключ текущей отслеживаемой точки
-let activeTrackingPoint = null; // активированная точка {x, y, type, wallDir?}
+let _snapHoverTimer    = null;
+let _snapHoverKey      = null;
+let activeTrackingPoint = null;
 
 // ── DOM refs ──────────────────────────────────────────────────────
 let dom = {};
@@ -52,14 +62,14 @@ export function initPlanner(domRefs) {
   canvas = domRefs.canvas;
   canvasWrap = domRefs.canvasWrap;
 
-  // ── Stage 2: реактивная экспликация ──────────────────────────────
-  // room.js сам подписывается на walls:changed и пересчитывает комнаты.
-  // Здесь подписываемся только на итоговое событие — обновляем DOM.
-  // Цепочка: walls:changed → [room.js] computeRooms → rooms:computed → updateExpl
-  setWallHeight(parseFloat(dom.inpWallHeight?.value) || 2700); // начальное значение
+  // Stage 2: цепочка walls:changed → computeRooms → rooms:computed → updateExpl
+  setWallHeight(parseFloat(dom.inpWallHeight?.value) || 2700);
   EventBus.on('rooms:computed', () => {
     updateExpl(dom.explBody, dom.roomCount);
   });
+
+  // Stage 5: кнопки undo/redo обновляются автоматически при любом изменении истории
+  EventBus.on('history:changed', updateHistoryBtns);
 
   initRenderer(canvas, canvas.getContext('2d'), () => scale);
 
@@ -106,7 +116,7 @@ export function initPlanner(domRefs) {
     doRedraw();
   });
 
-  // Edit panel (delegation — bug #8 fix)
+  // Edit panel (delegation)
   dom.editContent?.addEventListener('click', e => {
     if (selectedItems.length !== 1) return;
     const wall = selectedItems[0].type === 'wall' ? appState.walls.find(w => w.id === selectedItems[0].id) : null;
@@ -128,21 +138,18 @@ export function initPlanner(domRefs) {
   // Delete button
   dom.btnDeleteSelected?.addEventListener('click', () => {
     if (!selectedItems.length) return;
-    deleteSelectedItems(selectedItems);
+    executeCommand(new DeleteItemsCommand(selectedItems));
     clearSelection();
-    EventBus.emit('walls:changed');
-    recordHistory();
     doRedraw();
   });
 
   // Undo/Redo buttons
-  dom.btnUndo?.addEventListener('click', () => { undoHistory(onHistoryRestore); updateHistoryBtns(); });
-  dom.btnRedo?.addEventListener('click', () => { redoHistory(onHistoryRestore); updateHistoryBtns(); });
+  dom.btnUndo?.addEventListener('click', () => { undo(); onHistoryRestore(); });
+  dom.btnRedo?.addEventListener('click', () => { redo(); onHistoryRestore(); });
 
   // New project
   dom.btnNew?.addEventListener('click', () => {
     if (!confirm('Создать новый проект? Текущий чертёж будет очищен.')) return;
-    // updateState() вместо прямого присвоения — Proxy сам испустит state:*:changed
     updateState('walls', []);
     updateState('openings', []);
     updateState('rooms', []);
@@ -151,11 +158,12 @@ export function initPlanner(domRefs) {
     updateState('roomNameOverrides', {});
     hoverOpening = null; wallResizeState = null;
     resetDrawingState(); clearSelectionBox(); clearSelection();
+    clearHistory();
     EventBus.emit('walls:changed');
-    recordHistory(); doRedraw();
+    doRedraw();
   });
 
-  // Recalc rooms — ручная кнопка, напрямую через шину
+  // Recalc rooms (ручная кнопка)
   dom.btnRecalc?.addEventListener('click', () => {
     EventBus.emit('walls:changed');
     doRedraw();
@@ -166,14 +174,12 @@ export function initPlanner(domRefs) {
   dom.btnZoomOut?.addEventListener('click',   () => { scale = Math.max(0.03, scale / 1.25); syncViewport(); doRedraw(); });
   dom.btnZoomReset?.addEventListener('click', () => { scale = 0.12; panX = 200; panY = 150; syncViewport(); doRedraw(); });
 
-  // Wall param inputs — Bug #9 fix: also update edit panel when thickness/height changes
+  // Wall param inputs
   const paramInputs = [dom.inpWallThick, dom.inpWallHeight, dom.inpWindowWidth, dom.inpWindowHeight, dom.inpDoorWidth, dom.inpDoorHeight];
   paramInputs.forEach(inp => {
     if (!inp) return;
     inp.addEventListener('change', () => {
-      // Bug #10 fix: clamp negative values
       if (Number(inp.value) < Number(inp.min || 0)) inp.value = inp.min || 0;
-      // Stage 2: синхронизируем высоту стен в room.js при изменении
       if (inp === dom.inpWallHeight) setWallHeight(parseFloat(inp.value) || 2700);
       EventBus.emit('walls:changed');
       doRedraw();
@@ -188,12 +194,10 @@ export function initPlanner(domRefs) {
   });
   dom.explBody?.addEventListener('change', e => {
     if (!e.target.matches('.room-name-input')) return;
-    renameRoom(e.target.dataset.roomKey, e.target.value || e.target.dataset.roomDefault || '');
-    // Stage 2: renameRoom уже обновил имена в appState.rooms — не нужно
-    // пересчитывать весь flood-fill, просто обновляем DOM экспликации.
-    EventBus.emit('rooms:computed');
+    const key     = e.target.dataset.roomKey;
+    const newName = e.target.value || e.target.dataset.roomDefault || '';
+    executeCommand(new RenameRoomCommand(key, newName));
     doRedraw();
-    recordHistory();
   });
 
   // Import rooms from planner into smeta
@@ -205,8 +209,7 @@ export function initPlanner(domRefs) {
 
   setTool('select');
   syncDoorButtons();
-  recordHistory();
-  updateHistoryBtns();
+  clearHistory();   // Stage 5: вместо recordHistory() — очистка стека (нет «пустого» снапшота)
   doRedraw();
 }
 
@@ -236,7 +239,7 @@ function getPlannerState() {
     lengthOverlay: dom.lengthOverlay, lengthLabel: dom.lengthLabel,
     lblLen: dom.lblLen, lblLenVal: dom.lblLenVal,
     mouseScreen, isPanning,
-    activeTrackingPoint, trackingLines, // Stage 3
+    activeTrackingPoint, trackingLines,
   };
 }
 
@@ -250,7 +253,7 @@ function resetDrawingState() {
   isDrawing = false; chainMode = false; drawStart = null; drawEnd = null;
   currentGuideLine = null; currentObjectSnap = null;
   lengthInput = ''; lengthMode = false;
-  clearTracking(); // Stage 3: сброс tracking при остановке рисования
+  clearTracking();
   if (dom.lengthOverlay) dom.lengthOverlay.style.display = 'none';
   if (dom.lblLen) dom.lblLen.style.display = 'none';
 }
@@ -266,29 +269,22 @@ function clearTracking() {
   activeTrackingPoint = null;
 }
 
-// Вызывается после каждого updateWallObjectSnap.
-// Если курсор задержался на одной точке >400мс — активируем tracking.
 function updateTrackingState(snap) {
-  // Отслеживаем только «твёрдые» точки
   const trackable = snap && (
     snap.type === 'endpoint' || snap.type === 'corner' ||
     snap.type === 'intersection' || snap.type === 'midpoint'
   );
   if (!trackable) {
-    // Курсор ушёл с точки — сбрасываем таймер, но НЕ сбрасываем activeTrackingPoint:
-    // линии остаются видимыми, пока не начнём рисовать новую стену или не нажмём Escape.
     clearTimeout(_snapHoverTimer);
     _snapHoverTimer = null;
     _snapHoverKey   = null;
     return;
   }
   const key = `${snap.type}:${Math.round(snap.x)},${Math.round(snap.y)}`;
-  if (key === _snapHoverKey) return; // та же точка — таймер уже тикает
-  // Новая точка — перезапускаем таймер
+  if (key === _snapHoverKey) return;
   clearTimeout(_snapHoverTimer);
   _snapHoverKey = key;
   _snapHoverTimer = setTimeout(() => {
-    // Определяем направление стены для этой точки (нужно для луча-продолжения)
     let wallDir = null;
     if (snap.wallId) {
       const wall = appState.walls.find(w => w.id === snap.wallId);
@@ -340,9 +336,9 @@ function updateHistoryBtns() {
 }
 
 function onHistoryRestore() {
+  // Команды сами эмитят walls:changed в undo/execute — здесь только UI-сброс
   hoverOpening = null; hoverItem = null; mouseScreen = null; wallResizeState = null;
   resetDrawingState(); clearSelectionBox(); clearSelection();
-  EventBus.emit('walls:changed');
   updateHistoryBtns(); doRedraw();
 }
 
@@ -360,10 +356,10 @@ function isEditableTarget(target) {
 
 export function setTool(t) {
   tool = t;
-  wallResizeState = null; // Bug #3 fix
+  wallResizeState = null;
   if (t !== 'wall') resetDrawingState();
   clearSelectionBox(); hoverOpening = null; hoverItem = null; currentObjectSnap = null;
-  clearTracking(); // Stage 3
+  clearTracking();
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tool' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.add('active');
   const labels = { select: 'Выбор', wall: 'Стена', window: 'Окно', door: 'Дверь' };
@@ -413,19 +409,25 @@ function updateEditPanel() {
         <div class="param-input-wrap"><input class="param-input" type="number" min="1000" max="6000" step="100" value="${w.height}" data-wall-height-input><span class="param-input-unit">мм</span></div>
       </div>
       <div class="edit-note">Длину можно ввести вручную или потянуть маркеры на концах стены.</div>`;
-    // Bug #9 fix: attach change listeners for thickness/height
+
+    // Stage 5: толщина — UpdateWallCommand (before/after через BaseCommand.snapWall)
     dom.editContent.querySelector('[data-wall-thick-input]')?.addEventListener('change', e => {
-      const v = Math.max(50, Number(e.target.value) || 200); // Bug #10 fix
+      const v = Math.max(50, Number(e.target.value) || 200);
+      const before = BaseCommand.snapWall(w);
       w.thickness = v;
-      recalculateContourFromBase(w); // Stage 1: базовая линия фиксирована, пересчитываем ось
-      EventBus.emit('walls:changed');
-      recordHistory(); doRedraw();
+      recalculateContourFromBase(w);
+      const after = BaseCommand.snapWall(w);
+      executeCommand(new UpdateWallCommand(w.id, before, after, 'Изменение толщины'));
+      doRedraw();
     });
+    // Stage 5: высота — UpdateWallCommand
     dom.editContent.querySelector('[data-wall-height-input]')?.addEventListener('change', e => {
-      const v = Math.max(1000, Number(e.target.value) || 2700); // Bug #10 fix
+      const v = Math.max(1000, Number(e.target.value) || 2700);
+      const before = BaseCommand.snapWall(w);
       w.height = v;
-      EventBus.emit('walls:changed');
-      recordHistory(); doRedraw();
+      const after = BaseCommand.snapWall(w);
+      executeCommand(new UpdateWallCommand(w.id, before, after, 'Изменение высоты'));
+      doRedraw();
     });
   } else if (it.type === 'opening') {
     const op = appState.openings.find(o => o.id === it.id); if (!op) return;
@@ -446,12 +448,13 @@ function updateEditPanel() {
 
 function commitWallLengthInput(inputEl) {
   const wall = getSelectedWall(); if (!wall) return;
-  // Bug #10 fix: clamp to ≥ 20
   const val = Math.max(20, parseFloat(inputEl.value) || 0);
   inputEl.value = val;
+  const before = BaseCommand.snapWall(wall);
   setWallLength(wall, val, wallLengthAnchor);
-  EventBus.emit('walls:changed');
-  recordHistory(); doRedraw();
+  const after = BaseCommand.snapWall(wall);
+  executeCommand(new UpdateWallCommand(wall.id, before, after, 'Изменение длины'));
+  doRedraw();
 }
 
 function syncDoorButtons() {
@@ -470,7 +473,6 @@ function getWallPreviewEnd(world) {
   const screenPt = mouseScreen ? { ...mouseScreen } : toScreen(world.x, world.y);
   const snappedBase = snap(world.x, world.y, { screenPoint: screenPt, includePerpendicular: !!drawStart, startPoint: drawStart });
   let rawEnd = { ...snappedBase };
-  // Угловая привязка к 0°/90°/180°/270° — пропускаем только точные снэпы (endpoint/corner/intersection)
   const hardSnap = snappedBase.snapType === 'endpoint' || snappedBase.snapType === 'corner' || snappedBase.snapType === 'intersection';
   if (!hardSnap && !shiftDown && drawStart) {
     const dx = rawEnd.x - drawStart.x, dy = rawEnd.y - drawStart.y, len = Math.hypot(dx, dy);
@@ -481,7 +483,6 @@ function getWallPreviewEnd(world) {
         if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
           angle = sa;
           rawEnd = { x: drawStart.x + Math.cos(angle) * len, y: drawStart.y + Math.sin(angle) * len };
-          // Сбрасываем слабый снэп — угловая привязка важнее
           if (snappedBase.snapType === 'wallFace' || snappedBase.snapType === 'wallAxis') {
             rawEnd.snapType = null;
           }
@@ -496,7 +497,7 @@ function getWallPreviewEnd(world) {
     rawEnd = { ...rawEnd, ...projectPointToGuideLineWorld(rawEnd, axisGuide) };
   }
 
-  // Stage 3: привязка к линиям отслеживания (если нет другого снэпа и нет guide line)
+  // Stage 3: tracking lines
   if (activeTrackingPoint && !snappedBase.snapType && !currentGuideLine) {
     const tLines = getTrackingLines(activeTrackingPoint);
     const tSnap  = snapToTrackingLines(rawEnd, screenPt, tLines, 16);
@@ -534,15 +535,18 @@ function getWallPreviewEnd(world) {
 function finalizeWall(end) {
   if (!drawStart) return false;
   const len = Math.hypot(end.x - drawStart.x, end.y - drawStart.y);
-  if (len <= 20) return false; // Bug #4 fix
-  const thick = parseFloat(dom.inpWallThick?.value) || 200;
+  if (len <= 20) return false;
+
+  const thick  = parseFloat(dom.inpWallThick?.value) || 200;
   const height = parseFloat(dom.inpWallHeight?.value) || 2700;
-  addWall(drawStart, end, thick, height, wallOffset);
-  EventBus.emit('walls:changed');
+
+  // Stage 5: CreateWallCommand делает addWall + EventBus.emit('walls:changed') внутри
+  executeCommand(new CreateWallCommand(drawStart, end, thick, height, wallOffset));
+
   drawStart = { x: end.x, y: end.y }; drawEnd = { x: end.x, y: end.y };
   currentGuideLine = null; currentObjectSnap = null;
   lengthInput = ''; lengthMode = false; chainMode = true; isDrawing = true;
-  recordHistory(); doRedraw(); return true;
+  doRedraw(); return true;
 }
 
 // ── Snap helpers ──────────────────────────────────────────────────
@@ -599,37 +603,43 @@ function onMouseDown(e) {
     }
   } else if (tool === 'window' || tool === 'door') {
     if (hoverOpening) {
-      addOpening(hoverOpening.wall, hoverOpening.t, hoverOpening.width, hoverOpening.height, tool, hoverOpening);
-      EventBus.emit('walls:changed');
-      recordHistory(); doRedraw();
+      // Stage 5: AddOpeningCommand делает addOpening + EventBus.emit внутри
+      executeCommand(new AddOpeningCommand(hoverOpening));
+      doRedraw();
     }
   } else if (tool === 'select') {
     const handle = hitTestWallResizeHandle(pos, tool, selectedItems);
     if (handle) {
-      wallResizeState = { wallId: handle.wall.id, endpoint: handle.endpoint,
-        fixedPoint: getWallContourPoint(handle.wall, handle.endpoint === 'start' ? 'end' : 'start'), changed: false };
+      wallResizeState = {
+        wallId:    handle.wall.id,
+        endpoint:  handle.endpoint,
+        fixedPoint: getWallContourPoint(handle.wall, handle.endpoint === 'start' ? 'end' : 'start'),
+        changed:   false,
+        // Stage 5: снапшот геометрии ДО начала resize
+        geomBefore: BaseCommand.snapWall(handle.wall),
+      };
       selectBoxStart = null; selectBoxCurrent = null; selectClickCandidate = null;
       canvas.style.cursor = 'grabbing'; return;
     }
     const hit = hitTestObject(world.x, world.y);
     if (hit) {
-      // Если клик по выделенному объекту — запускаем drag
       const isSelected = selectedItems.some(i => i.type === hit.type && i.id === hit.id);
       if (isSelected && selectedItems.length > 0) {
-        // Собираем все стены связанные топологически с выделенными
         const seedIds = selectedItems.filter(i => i.type === 'wall').map(i => i.id);
         const connectedIds = getTopologicallyConnected(seedIds);
         const wallSnapshots = [...connectedIds].map(id => {
           const w = appState.walls.find(v => v.id === id);
-          return w ? { id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
-            cx1: w.cx1 ?? w.x1, cy1: w.cy1 ?? w.y1, cx2: w.cx2 ?? w.x2, cy2: w.cy2 ?? w.y2 } : null;
+          return w ? BaseCommand.snapWallPos(w) : null;
         }).filter(Boolean);
         dragState = { startWorld: { x: world.x, y: world.y }, lastWorld: { x: world.x, y: world.y }, wallSnapshots };
         selectBoxStart = null; selectBoxCurrent = null; selectClickCandidate = null;
         canvas.style.cursor = 'grabbing'; return;
       }
-      selectClickCandidate = hit; clearSelectionBox(); }
-    else { if (!shiftDown) clearSelection(); selectClickCandidate = null; selectBoxStart = { x: pos.x, y: pos.y }; selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw(); }
+      selectClickCandidate = hit; clearSelectionBox();
+    } else {
+      if (!shiftDown) clearSelection(); selectClickCandidate = null;
+      selectBoxStart = { x: pos.x, y: pos.y }; selectBoxCurrent = { x: pos.x, y: pos.y }; doRedraw();
+    }
   }
 }
 
@@ -639,9 +649,8 @@ function hitTestObject(wx, wy) {
   return null;
 }
 
-// Возвращает Set id всех стен, топологически связанных с заданными через общие контурные точки
 function getTopologicallyConnected(seedWallIds) {
-  const SNAP = 2; // мм, порог совпадения точек
+  const SNAP = 2;
   const visited = new Set(seedWallIds);
   const queue = [...seedWallIds];
   while (queue.length) {
@@ -667,7 +676,6 @@ function getTopologicallyConnected(seedWallIds) {
   return visited;
 }
 
-// Bug #1 fix: debounce реактивного пересчёта во время resize стены
 let _resizeDebounce = null;
 function debouncedComputeRooms() {
   clearTimeout(_resizeDebounce);
@@ -697,20 +705,19 @@ function onMouseMove(e) {
     if (Math.hypot(ne.x - ns.x, ne.y - ns.y) >= 20) {
       const changed = updateWallGeometry(wall, ns, ne, { preserveFrom: wallResizeState.endpoint === 'start' ? 'end' : 'start' });
       wallResizeState.changed = wallResizeState.changed || changed;
-      debouncedComputeRooms(); // Bug #1 fix
+      debouncedComputeRooms();
     }
     canvas.style.cursor = 'grabbing'; doRedraw(); return;
   }
 
   if (tool === 'wall') {
     updateWallObjectSnap(world, pos);
-    updateTrackingState(currentObjectSnap); // Stage 3: обновляем таймер tracking
+    updateTrackingState(currentObjectSnap);
   } else {
     currentObjectSnap = null;
-    clearTracking(); // Stage 3: сбрасываем tracking в других инструментах
+    clearTracking();
   }
 
-  // Drag перемещение выделенных объектов
   if (tool === 'select' && dragState) {
     for (const snap of dragState.wallSnapshots) {
       const wall = appState.walls.find(w => w.id === snap.id);
@@ -726,7 +733,6 @@ function onMouseMove(e) {
     canvas.style.cursor = 'grabbing'; doRedraw(); return;
   }
 
-  // Hover подсветка в режиме select
   if (tool === 'select' && !selectBoxStart && !wallResizeState) {
     const hit = hitTestObject(world.x, world.y);
     if (hit?.type !== hoverItem?.type || hit?.id !== hoverItem?.id) {
@@ -766,25 +772,45 @@ function onMouseMove(e) {
 }
 
 function onMouseUp(e) {
+  // Drag (перемещение выделенных стен)
   if (dragState) {
     const moved = dragState.wallSnapshots.some(snap => {
       const wall = appState.walls.find(w => w.id === snap.id);
       return wall && (Math.abs(wall.x1 - snap.x1) > 2 || Math.abs(wall.y1 - snap.y1) > 2);
     });
+    if (moved) {
+      // Stage 5: MoveWallsCommand (re-apply final positions, идемпотентно)
+      const afterPositions = dragState.wallSnapshots.map(snap => {
+        const wall = appState.walls.find(w => w.id === snap.id);
+        return wall ? BaseCommand.snapWallPos(wall) : null;
+      }).filter(Boolean);
+      executeCommand(new MoveWallsCommand(dragState.wallSnapshots, afterPositions));
+    }
     dragState = null;
     canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
-    if (moved) { EventBus.emit('walls:changed'); recordHistory(); }
     doRedraw(); return;
   }
+
+  // Resize маркером
   if (wallResizeState) {
-    const shouldRecord = wallResizeState.changed; wallResizeState = null;
-    canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+    const shouldRecord = wallResizeState.changed;
     if (shouldRecord) {
-      EventBus.emit('walls:changed');
-      recordHistory();
+      const wall = appState.walls.find(w => w.id === wallResizeState.wallId);
+      if (wall) {
+        // Stage 5: UpdateWallCommand (re-apply after-снапшот, идемпотентно)
+        executeCommand(new UpdateWallCommand(
+          wall.id,
+          wallResizeState.geomBefore,
+          BaseCommand.snapWall(wall),
+          'Изменение размера стены',
+        ));
+      }
     }
+    wallResizeState = null;
+    canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
     doRedraw(); return;
   }
+
   if (tool === 'select' && selectClickCandidate) {
     const hit = selectClickCandidate; selectClickCandidate = null;
     if (shiftDown) toggleSelection(hit.type, hit.id);
@@ -828,6 +854,8 @@ function onWheel(e) {
 
 function onKeyDown(e) {
   const editable = isEditableTarget(e.target);
+
+  // Ctrl+C — копирование
   if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
     if (selectedItems.length) {
       const wallIds = new Set(selectedItems.filter(i => i.type === 'wall').map(i => i.id));
@@ -837,35 +865,30 @@ function onKeyDown(e) {
     }
     e.preventDefault(); return;
   }
+
+  // Ctrl+V — вставка (Stage 5: PasteCommand)
   if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
     if (clipboard?.walls?.length) {
-      const offset = 300; // смещение при вставке
-      const idMap = {};
-      const newWalls = clipboard.walls.map(w => {
-        const newId = appState.idWall++;
-        idMap[w.id] = newId;
-        return { ...w, id: newId, x1: w.x1+offset, y1: w.y1+offset, x2: w.x2+offset, y2: w.y2+offset,
-          cx1: (w.cx1??w.x1)+offset, cy1: (w.cy1??w.y1)+offset, cx2: (w.cx2??w.x2)+offset, cy2: (w.cy2??w.y2)+offset };
-      });
-      const newOpenings = (clipboard.openings || []).map(o => ({
-        ...o, id: appState.idOpen++, wallId: idMap[o.wallId] ?? o.wallId,
-      }));
-      appState.walls.push(...newWalls);
-      appState.openings.push(...newOpenings);
-      invalidateJointCache();
-      setSelection(newWalls.map(w => ({ type: 'wall', id: w.id })));
-      EventBus.emit('walls:changed');
-      recordHistory(); doRedraw();
+      const cmd = new PasteCommand(clipboard);
+      executeCommand(cmd);
+      setSelection(cmd.getPastedWallIds().map(id => ({ type: 'wall', id })));
+      doRedraw();
     }
     e.preventDefault(); return;
   }
+
+  // Ctrl+Z — undo / redo (Stage 5)
   if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-    e.preventDefault(); if (e.shiftKey) { redoHistory(onHistoryRestore); } else { undoHistory(onHistoryRestore); }
-    updateHistoryBtns(); return;
+    e.preventDefault();
+    if (e.shiftKey) { redo(); } else { undo(); }
+    onHistoryRestore(); return;
   }
+
+  // Ctrl+Y — redo (Stage 5)
   if (!editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-    e.preventDefault(); redoHistory(onHistoryRestore); updateHistoryBtns(); return;
+    e.preventDefault(); redo(); onHistoryRestore(); return;
   }
+
   if (e.key === 'Shift') { shiftDown = true; setModifiers(true, ctrlDown); updateSnapBadge(); }
   if (e.key === 'Control') { ctrlDown = true; setModifiers(shiftDown, true); updateSnapBadge(); }
   if (e.key === 'Escape') {
@@ -879,7 +902,7 @@ function onKeyDown(e) {
     if (/^[0-9]$/.test(e.key)) { lengthMode = true; lengthInput += e.key; e.preventDefault(); doRedraw(); }
     else if (e.key === 'Backspace' && lengthMode) {
       lengthInput = lengthInput.slice(0, -1); if (!lengthInput) lengthMode = false; e.preventDefault(); doRedraw();
-    } else if (e.key === 'Enter' && lengthMode && lengthInput) { // Bug #7 fix: only if lengthInput non-empty
+    } else if (e.key === 'Enter' && lengthMode && lengthInput) {
       const targetLen = parseFloat(lengthInput);
       if (!isNaN(targetLen) && targetLen > 0 && drawEnd && drawStart) {
         const end = getWallPreviewEnd(drawEnd); finalizeWall(end);
