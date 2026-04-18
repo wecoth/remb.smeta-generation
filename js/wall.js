@@ -72,6 +72,31 @@ export function getWallWorldGeometry(wall) {
   };
 }
 
+/**
+ * Удлиняет полигон стены на заданное расстояние с обоих концов вдоль её направления.
+ * Используется для создания митерных стыков: стена немного выходит за свою базовую линию,
+ * чтобы перекрыть соседнюю стену в месте примыкания.
+ */
+function extendPolygon(wall, extendStartMm, extendEndMm) {
+  const g = getWallWorldGeometry(wall);
+  const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+  if (len < 1) return [[[g.a.x, g.a.y], [g.b.x, g.b.y], [g.c.x, g.c.y], [g.d.x, g.d.y]]];
+
+  const ux = (wall.x2 - wall.x1) / len;
+  const uy = (wall.y2 - wall.y1) / len;
+
+  // Сдвигаем углы вдоль направления стены
+  const shiftStart = { x: ux * extendStartMm, y: uy * extendStartMm };
+  const shiftEnd   = { x: ux * extendEndMm,   y: uy * extendEndMm };
+
+  const a = { x: g.a.x - shiftStart.x, y: g.a.y - shiftStart.y };
+  const b = { x: g.b.x + shiftEnd.x,   y: g.b.y + shiftEnd.y };
+  const c = { x: g.c.x + shiftEnd.x,   y: g.c.y + shiftEnd.y };
+  const d = { x: g.d.x - shiftStart.x, y: g.d.y - shiftStart.y };
+
+  return [[[a.x, a.y], [b.x, b.y], [c.x, c.y], [d.x, d.y]]];
+}
+
 export function getWallCornerPoints(wall) {
   const g = getWallWorldGeometry(wall);
   return [g.a, g.b, g.c, g.d];
@@ -592,8 +617,42 @@ export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
  * Углы a,b,c,d — из getWallWorldGeometry.
  */
 export function getWallPolygon(wall) {
-  const g = getWallWorldGeometry(wall);
-  return [[[g.a.x, g.a.y], [g.b.x, g.b.y], [g.c.x, g.c.y], [g.d.x, g.d.y]]];
+  // Определяем, насколько нужно удлинить каждый конец, исходя из соседних стен.
+  const startExt = getExtensionForEndpoint(wall, 'start');
+  const endExt   = getExtensionForEndpoint(wall, 'end');
+  return extendPolygon(wall, startExt, endExt);
+}
+
+/**
+ * Вычисляет, на сколько мм нужно удлинить конец стены, чтобы её полигон
+ * полностью перекрыл соседнюю стену в точке стыка при заданном offset.
+ */
+function getExtensionForEndpoint(wall, endpoint) {
+  const jointMap = buildWallJointMap();
+  const items = getWallJointItemsForEndpoint(jointMap, wall, endpoint);
+  if (items.length < 2) return 0; // нет соседей или только сама стена
+
+  // Находим соседнюю стену (не саму себя)
+  const neighbor = items.find(item => item.wall.id !== wall.id)?.wall;
+  if (!neighbor) return 0;
+
+  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+  const neighborAngle = Math.atan2(neighbor.y2 - neighbor.y1, neighbor.x2 - neighbor.x1);
+
+  // Угол между стенами
+  let delta = Math.abs(angle - neighborAngle);
+  delta = Math.min(delta, 2 * Math.PI - delta);
+
+  const halfT = wall.thickness / 2;
+
+  // Если стены почти параллельны, удлиняем на половину толщины
+  if (delta < 0.1 || Math.abs(delta - Math.PI) < 0.1) {
+    return halfT;
+  }
+
+  // Для произвольного угла: длина митера = толщина / (2 * sin(угол/2))
+  const miterLength = halfT / Math.sin(delta / 2);
+  return Math.min(miterLength, halfT * 3); // ограничиваем, чтобы не было слишком длинных "усов"
 }
 
 // ── Кэш union-полигона ───────────────────────────────────────────
