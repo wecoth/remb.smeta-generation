@@ -1,5 +1,8 @@
 // ─── SHARED APPLICATION STATE ─────────────────────────────────────
-export const appState = {
+import { EventBus } from './eventBus.js';
+
+// Внутреннее хранилище — сырой объект без Proxy
+const _state = {
   // ── Planner ──
   walls: [],       // {id, x1,y1,x2,y2, cx1,cy1,cx2,cy2, thickness, height, offset}
   openings: [],    // {id, wallId, t, width, height, type, hinge?, swing?}
@@ -16,7 +19,39 @@ export const appState = {
   activeTab: 'smeta',  // 'planner' | 'smeta'
 };
 
-// ── Draw colours (canvas) — kept here so render + snapping share them ──
+// Proxy-обёртка: любое прямое присвоение свойства верхнего уровня
+// автоматически испускает событие 'state:<prop>:changed'.
+//
+// Важно: мутации вложенных объектов/массивов (push, splice, obj.field = ...)
+// через Proxy НЕ перехватываются — это известное ограничение ES Proxy.
+// Для таких случаев вызывай updateState() или EventBus.emit() вручную.
+//
+// Примеры:
+//   appState.walls = []         → emit('state:walls:changed', [])  ✓
+//   appState.idWall++           → emit('state:idWall:changed', 2)  ✓
+//   appState.walls.push(wall)   → НЕТ события, нужен EventBus.emit ручной
+export const appState = new Proxy(_state, {
+  set(target, prop, value) {
+    target[prop] = value;
+    EventBus.emit(`state:${String(prop)}:changed`, value);
+    return true;
+  },
+
+  get(target, prop) {
+    return target[prop];
+  },
+});
+
+// ── Утилита для явного реактивного обновления ──────────────────────
+// Используй когда хочешь заменить всё значение (иммутабельный стиль):
+//   updateState('walls', [...appState.walls, newWall])
+//
+// Proxy сам испустит событие state:<key>:changed.
+export function updateState(key, newValue) {
+  appState[key] = newValue;
+}
+
+// ── Draw colours (canvas) — shared between render + snapping ──────
 export const DRAW_COLORS = {
   wallFill:            '#cfd4da',
   wallFillSelected:    '#b9c0c8',
