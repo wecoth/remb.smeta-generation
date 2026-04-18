@@ -1,7 +1,6 @@
 // ─── WALL.JS ──────────────────────────────────────────────────────
 import { appState } from './state.js';
 import { clamp, applyWallOffset, segmentIntersection } from './geometry.js';
-import polygonClipping from 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm';
 
 // ── Contour helpers ──────────────────────────────────────────────
 
@@ -452,46 +451,4 @@ export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
     if (dist < bestDist) { best = op; bestDist = dist; }
   }
   return best;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// POLYGON UNION — для вычисления комнат (не влияет на отрисовку)
-// ═══════════════════════════════════════════════════════════════════
-import polygonClipping from 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm';
-
-export function getWallPolygon(wall) {
-  const g = getWallWorldGeometry(wall);
-  return [[[g.a.x, g.a.y], [g.b.x, g.b.y], [g.c.x, g.c.y], [g.d.x, g.d.y]]];
-}
-
-let _unionCache = null;
-let _unionCacheKey = '';
-
-export function getUnifiedWallsPolygon() {
-  if (appState.walls.length === 0) return [];
-
-  const key = appState.walls.map(w =>
-    `${w.id}:${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`
-  ).join('|');
-
-  if (_unionCache !== null && _unionCacheKey === key) return _unionCache;
-
-  try {
-    const polys = appState.walls.map(getWallPolygon);
-    _unionCache = polygonClipping.union(...polys);
-  } catch (e) {
-    console.warn('[REMB] union failed:', e);
-    _unionCache = appState.walls.map(getWallPolygon);
-  }
-
-  _unionCacheKey = key;
-  return _unionCache;
-}
-
-// Сбрасываем кэш при изменении стен
-const originalInvalidate = invalidateJointCache;
-export function invalidateJointCache() {
-  originalInvalidate();
-  _unionCache = null;
-  _unionCacheKey = '';
 }
