@@ -13,7 +13,7 @@ import {
   captureCanvas,
 } from './smeta.js';
 import { autosaveToLocalStorage, loadFromLocalStorage, downloadProject, uploadProject } from './storage.js';
-import { recordHistory, clearHistory } from './history.js';
+import { clearHistory } from './commands/CommandHistory.js';
 
 // ── Expose smeta module globally (for inline oninput/onclick) ──────
 window._smetaModule = {
@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (err) { alert('Ошибка загрузки: ' + err.message); return; }
       computeRooms(parseFloat(document.getElementById('inpWallHeight')?.value) || 2700);
       updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
-      clearHistory(); recordHistory(); forceRedraw();
+      clearHistory(); forceRedraw();
     });
   });
 
