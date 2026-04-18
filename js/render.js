@@ -272,8 +272,10 @@ function drawRoomFills(selectedItems) {
 function drawWalls(selectedItems) {
   if (!appState.walls.length) return;
 
-  // ── Pass 1: fill всех стен (естественное наложение = визуальный union) ──
-  // Заливки стен перекрываются без зазоров — внутренние швы не видны.
+  // ── Joint map: точно знаем где стены соединяются (1мм точность) ─
+  const jmap = buildWallJointMap();
+
+  // ── Pass 1: fill всех стен ──────────────────────────────────────
   for (const wall of appState.walls) {
     const g = sg(wall);
     const isSel = sel('wall', wall.id, selectedItems);
@@ -285,49 +287,48 @@ function drawWalls(selectedItems) {
     }, isSel ? DRAW_COLORS.wallFillSelected : DRAW_COLORS.wallFill);
   }
 
-  // ── Pass 2: stroke только внешних рёбер (midpoint-тест) ──────────────
-  // Для каждого из 4 рёбер стены проверяем: лежит ли середина ребра
-  // ВНУТРИ другой стены? Если да — ребро внутреннее, не рисуем.
-  // Это убирает швы на L, T, X стыках любой геометрии включая диагонали.
+  // ── Pass 2: stroke только внешних рёбер ────────────────────────
+  //
+  // Торцы (короткие стороны bc, da):
+  //   Используем joint map + isWallEndpointCoveredByAnotherWall.
+  //   Точность 1мм. Без произвольных допусков.
+  //   - joint map: конец стены совпадает с концом другой стены (L, T концевой)
+  //   - isCovered: конец стены лежит на ТЕЛЕ другой стены (T-стык посередине)
+  //
+  // Боковые грани (длинные стороны ab, cd):
+  //   Тест midpoint с padding=0. Подавляет грань если её середина
+  //   оказывается внутри другой стены (перекрытие при T-стыках).
+
   _ctx.save();
-  _ctx.lineJoin = 'miter';
-  _ctx.miterLimit = 10;
-  _ctx.lineCap = 'butt';
+  _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10; _ctx.lineCap = 'butt';
 
   for (const wall of appState.walls) {
     const isSel = sel('wall', wall.id, selectedItems);
-    const gw = getWallWorldGeometry(wall);  // world-coords
-    const gs = sg(wall);                    // screen-coords
+    const gw = getWallWorldGeometry(wall);
+    const gs = sg(wall);
 
-    // 4 ребра: ab, bc, cd, da
-    const edges = [
-      { wx1: gw.a.x, wy1: gw.a.y, wx2: gw.b.x, wy2: gw.b.y, sx1: gs.a.x, sy1: gs.a.y, sx2: gs.b.x, sy2: gs.b.y },
-      { wx1: gw.b.x, wy1: gw.b.y, wx2: gw.c.x, wy2: gw.c.y, sx1: gs.b.x, sy1: gs.b.y, sx2: gs.c.x, sy2: gs.c.y },
-      { wx1: gw.c.x, wy1: gw.c.y, wx2: gw.d.x, wy2: gw.d.y, sx1: gs.c.x, sy1: gs.c.y, sx2: gs.d.x, sy2: gs.d.y },
-      { wx1: gw.d.x, wy1: gw.d.y, wx2: gw.a.x, wy2: gw.a.y, sx1: gs.d.x, sy1: gs.d.y, sx2: gs.a.x, sy2: gs.a.y },
-    ];
+    // Торцы: подавляем если конец соединён с другой стеной
+    const sjItems = getWallJointItemsForEndpoint(jmap, wall, 'start').filter(i => i.wall.id !== wall.id);
+    const ejItems = getWallJointItemsForEndpoint(jmap, wall, 'end').filter(i => i.wall.id !== wall.id);
+    const suppressStart = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(wall, 'start');
+    const suppressEnd   = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(wall, 'end');
+
+    // Боковые грани: подавляем если midpoint внутри другой стены
+    const mAB = { x: (gw.a.x + gw.b.x) / 2, y: (gw.a.y + gw.b.y) / 2 };
+    const mCD = { x: (gw.c.x + gw.d.x) / 2, y: (gw.c.y + gw.d.y) / 2 };
+    const suppressAB = appState.walls.some(o => o.id !== wall.id && isPointInsideWallSurface(mAB, o, 0));
+    const suppressCD = appState.walls.some(o => o.id !== wall.id && isPointInsideWallSurface(mCD, o, 0));
 
     _ctx.strokeStyle = isSel ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.wallStroke;
     _ctx.lineWidth = isSel ? 1.5 : 1;
+    _ctx.beginPath();
 
-    for (const e of edges) {
-      // Midpoint в мировых координатах
-      const mx = (e.wx1 + e.wx2) / 2;
-      const my = (e.wy1 + e.wy2) / 2;
+    if (!suppressAB)    { _ctx.moveTo(gs.a.x, gs.a.y); _ctx.lineTo(gs.b.x, gs.b.y); } // грань ab
+    if (!suppressEnd)   { _ctx.moveTo(gs.b.x, gs.b.y); _ctx.lineTo(gs.c.x, gs.c.y); } // торец bc
+    if (!suppressCD)    { _ctx.moveTo(gs.c.x, gs.c.y); _ctx.lineTo(gs.d.x, gs.d.y); } // грань cd
+    if (!suppressStart) { _ctx.moveTo(gs.d.x, gs.d.y); _ctx.lineTo(gs.a.x, gs.a.y); } // торец da
 
-      // Ребро внутреннее, если его середина находится внутри другой стены.
-      // padding = 0: точка на границе считается "внутри" — чистые стыки.
-      const isInternal = appState.walls.some(
-        other => other.id !== wall.id && isPointInsideWallSurface({ x: mx, y: my }, other, 0)
-      );
-
-      if (!isInternal) {
-        _ctx.beginPath();
-        _ctx.moveTo(e.sx1, e.sy1);
-        _ctx.lineTo(e.sx2, e.sy2);
-        _ctx.stroke();
-      }
-    }
+    _ctx.stroke();
   }
   _ctx.restore();
 }
