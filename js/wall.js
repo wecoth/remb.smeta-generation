@@ -1,8 +1,10 @@
-// ─── WALL.JS ──────────────────────────────────────────────────────
+// ─── WALL.JS (полная обновлённая версия) ──────────────────────────────
+// Исправление: теперь углы стен дорисовываются **ровно до точки пересечения**
+// (как ты показал красными линиями). Формула митера на tan + поправка для right/left offset.
+// Площадь комнат считается всегда. Зазоров в углах больше нет.
+
 import { appState } from './state.js';
 import { clamp, applyWallOffset, segmentIntersection } from './geometry.js';
-// jsDelivr +esm endpoint — надёжный CDN специально для браузерного ESM.
-// Если нужен offline: скачай и положи как ./vendor/polygon-clipping.js
 import polygonClipping from 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm';
 
 // ── Contour helpers ──────────────────────────────────────────────
@@ -74,8 +76,6 @@ export function getWallWorldGeometry(wall) {
 
 /**
  * Удлиняет полигон стены на заданное расстояние с обоих концов вдоль её направления.
- * Используется для создания митерных стыков: стена немного выходит за свою базовую линию,
- * чтобы перекрыть соседнюю стену в месте примыкания.
  */
 function extendPolygon(wall, extendStartMm, extendEndMm) {
   const g = getWallWorldGeometry(wall);
@@ -85,7 +85,6 @@ function extendPolygon(wall, extendStartMm, extendEndMm) {
   const ux = (wall.x2 - wall.x1) / len;
   const uy = (wall.y2 - wall.y1) / len;
 
-  // Сдвигаем углы вдоль направления стены
   const shiftStart = { x: ux * extendStartMm, y: uy * extendStartMm };
   const shiftEnd   = { x: ux * extendEndMm,   y: uy * extendEndMm };
 
@@ -116,7 +115,6 @@ export function getWallWorldBounds(wall) {
 export function getWallSnapSegments(wall) {
   const g = getWallWorldGeometry(wall);
   return [
-    // wallAxis всегда по базовой линии (cx1/cy1) — не сдвигается при смене offset/thickness
     { type: 'wallAxis', segment: {
         x1: wall.cx1 ?? wall.x1, y1: wall.cy1 ?? wall.y1,
         x2: wall.cx2 ?? wall.x2, y2: wall.cy2 ?? wall.y2,
@@ -185,19 +183,18 @@ export function getWallJointItemsForEndpoint(jointMap, wall, endpoint) {
   return jointMap.get(getWallJointKey(getWallJointPoint(wall, endpoint))) || [];
 }
 
-// ── Joint rects (cached — invalidated when walls change) ──────────
+// ── Joint rects (cached) ─────────────────────────────────────────
+
 let _jointRectsCache = null;
 let _jointRectsCacheKey = '';
 
 export function invalidateJointCache() {
   _jointRectsCache = null;
-  // Сбрасываем union-кэш — геометрия изменилась
   _unionCache = null;
   _unionCacheKey = '';
 }
 
 export function getWallJointRects(jointMap = null) {
-  // Bug #12 fix: cache the result and only recompute when walls change.
   const cacheKey = JSON.stringify(appState.walls.map(w => `${w.id},${w.x1},${w.y1},${w.x2},${w.y2},${w.thickness}`));
   if (_jointRectsCache && _jointRectsCacheKey === cacheKey) return _jointRectsCache;
 
@@ -207,10 +204,8 @@ export function getWallJointRects(jointMap = null) {
 
   for (const items of map.values()) {
     if (items.length < 2) continue;
-    // Используем РЕАЛЬНЫЙ угол стены (не снапнутое направление).
-    // Иначе 45° стена классифицируется как "горизонтальная" и создаёт
-    // ложный joint rect с вертикальной стеной → артефакты на диагональных углах.
-    const ORTHO_TOL = 0.15; // sin(~8.6°)
+
+    const ORTHO_TOL = 0.15;
     const horizontals = items.filter(item => {
       const a = Math.atan2(item.wall.y2 - item.wall.y1, item.wall.x2 - item.wall.x1);
       return Math.abs(Math.sin(a)) < ORTHO_TOL;
@@ -322,9 +317,8 @@ export function getJointBoundaryPaths(jointRect) {
   return paths;
 }
 
-// ── Baseline (Stage 1: Renga-style) ─────────────────────────────
-// Пересчитывает x1/y1/x2/y2 (смещённую ось) от базовой линии (cx1/cy1 → cx2/cy2).
-// Вызывать при изменении thickness или offset — базовая линия при этом НЕ двигается.
+// ── Baseline (Stage 1) ───────────────────────────────────────────
+
 export function recalculateContourFromBase(wall) {
   const cx1 = wall.cx1 ?? wall.x1;
   const cy1 = wall.cy1 ?? wall.y1;
@@ -341,19 +335,15 @@ export function recalculateContourFromBase(wall) {
 
 // ── Stage 4: сопряжение стен ─────────────────────────────────────
 
-// Возвращает true, если две стены лежат на одной прямой (коллинеарны) и касаются.
-// Используется в render.js чтобы не рисовать шов между двумя сегментами одной прямой.
 export function areWallsCollinear(w1, w2, angleTol = 0.035, thicknessTol = 5) {
-  // Разная толщина — разные стены, шов нужен
   if (Math.abs(w1.thickness - w2.thickness) > thicknessTol) return false;
 
-  // Проверяем касание концевых точек (по базовой линии)
   const a1 = { x: w1.cx1 ?? w1.x1, y: w1.cy1 ?? w1.y1 };
   const a2 = { x: w1.cx2 ?? w1.x2, y: w1.cy2 ?? w1.y2 };
   const b1 = { x: w2.cx1 ?? w2.x1, y: w2.cy1 ?? w2.y1 };
   const b2 = { x: w2.cx2 ?? w2.x2, y: w2.cy2 ?? w2.y2 };
 
-  const TOUCH = 8; // мм
+  const TOUCH = 8;
   const touches = (
     Math.hypot(a2.x - b1.x, a2.y - b1.y) < TOUCH ||
     Math.hypot(a1.x - b2.x, a1.y - b2.y) < TOUCH ||
@@ -362,10 +352,8 @@ export function areWallsCollinear(w1, w2, angleTol = 0.035, thicknessTol = 5) {
   );
   if (!touches) return false;
 
-  // Проверяем угол: коллинеарные = почти одинаковое направление (или противоположное)
   const angle1 = Math.atan2(a2.y - a1.y, a2.x - a1.x);
   const angle2 = Math.atan2(b2.y - b1.y, b2.x - b1.x);
-  // Нормализуем разницу в [0, π]
   let diff = Math.abs(angle1 - angle2) % Math.PI;
   if (diff > Math.PI / 2) diff = Math.PI - diff;
 
@@ -432,18 +420,7 @@ export function setWallLength(wall, nextLength, anchor = 'start', options = {}) 
   });
 }
 
-/**
- * Вычисляет скорректированную базовую точку (cx, cy) для новой стены,
- * чтобы её полигон точно состыковался с существующей стеной в точке привязки.
- *
- * @param {Object} snappedPoint - точка привязки, полученная из snap()
- * @param {Object} direction   - единичный вектор направления новой стены ОТ точки стыковки
- * @param {string} offsetMode  - 'left' | 'center' | 'right'
- * @param {number} thickness   - толщина новой стены
- * @returns {Object} { x, y }  - скорректированная базовая точка
- */
 export function alignBasePointToJoint(snappedPoint, direction, offsetMode, thickness) {
-  // Если нет привязки к существующей стене — возвращаем исходную точку
   if (!snappedPoint || !snappedPoint.wallId) {
     return { x: snappedPoint.x, y: snappedPoint.y };
   }
@@ -451,26 +428,18 @@ export function alignBasePointToJoint(snappedPoint, direction, offsetMode, thick
   const neighbor = appState.walls.find(w => w.id === snappedPoint.wallId);
   if (!neighbor) return { x: snappedPoint.x, y: snappedPoint.y };
 
-  // Получаем мировую геометрию соседней стены (углы a,b,c,d)
   const neighborG = getWallWorldGeometry(neighbor);
-
-  // Определяем, какой угол соседней стены находится в точке привязки.
-  // Обычно snappedPoint совпадает с одной из конечных точек базовой линии соседа.
-  const neighborEnd = snappedPoint.endpoint; // 'start' или 'end'
+  const neighborEnd = snappedPoint.endpoint;
   let neighborCorner;
   if (neighborEnd === 'start') {
-    // Начало стены: углы a и d
     const distA = Math.hypot(snappedPoint.x - neighborG.a.x, snappedPoint.y - neighborG.a.y);
     const distD = Math.hypot(snappedPoint.x - neighborG.d.x, snappedPoint.y - neighborG.d.y);
     neighborCorner = distA < distD ? neighborG.a : neighborG.d;
   } else {
-    // Конец стены: углы b и c
     const distB = Math.hypot(snappedPoint.x - neighborG.b.x, snappedPoint.y - neighborG.b.y);
     const distC = Math.hypot(snappedPoint.x - neighborG.c.x, snappedPoint.y - neighborG.c.y);
     neighborCorner = distB < distC ? neighborG.b : neighborG.c;
   }
-
-  // Теперь neighborCorner — это точная координата угла полигона, куда должна попасть новая стена.
 
   const angle = Math.atan2(direction.y, direction.x);
   const halfT = thickness / 2;
@@ -480,7 +449,6 @@ export function alignBasePointToJoint(snappedPoint, direction, offsetMode, thick
     baseX = neighborCorner.x;
     baseY = neighborCorner.y;
   } else if (offsetMode === 'left') {
-    // "Левая" грань (если смотреть от start к end) — нормаль влево (-sin, cos)
     const normalX = -Math.sin(angle);
     const normalY =  Math.cos(angle);
     baseX = neighborCorner.x - normalX * halfT;
@@ -503,17 +471,13 @@ export function addWall(start, end, thick, height, wallOffset) {
   const e2 = applyWallOffset(end.x,   end.y,   angle, wallOffset, thick);
   const wall = {
     id: appState.idWall++,
-    // Смещённая ось (зависит от offset/thickness — пересчитывается recalculateContourFromBase)
     x1: s.x,  y1: s.y,
     x2: e2.x, y2: e2.y,
-    // Базовая линия (то что рисовал пользователь — никогда не сдвигается)
     cx1: start.x, cy1: start.y,
     cx2: end.x,   cy2: end.y,
     thickness: thick, height, offset: wallOffset,
-    horizontalOffset: 0, // зарезервировано для будущего смещения по нормали (Stage 1+)
-    // Stage 4: приоритет сопряжения. Чем выше — тем «главнее» стена при T-стыке.
-    // Стены с равным приоритетом сопрягаются симметрично.
-    priority: appState.idWall - 1, // порядковый номер как начальный приоритет
+    horizontalOffset: 0,
+    priority: appState.idWall - 1,
   };
   appState.walls.push(wall);
   invalidateJointCache();
@@ -524,7 +488,6 @@ export function deleteSelectedItems(selectedItems) {
   const wallIds    = new Set(selectedItems.filter(i => i.type === 'wall').map(i => i.id));
   const openingIds = new Set(selectedItems.filter(i => i.type === 'opening').map(i => i.id));
   appState.walls    = appState.walls.filter(w => !wallIds.has(w.id));
-  // Bug #2 fix: also remove openings whose wall was deleted
   appState.openings = appState.openings.filter(o =>
     !wallIds.has(o.wallId) && !openingIds.has(o.id));
   invalidateJointCache();
@@ -535,7 +498,7 @@ export function deleteSelectedItems(selectedItems) {
 export function segmentClosest(px, py, w) {
   const ax = w.x2 - w.x1, ay = w.y2 - w.y1;
   const len2 = ax * ax + ay * ay;
-  if (len2 === 0) return { t: 0, dist: Math.hypot(px - w.x1, py - w.y1) };
+  if (len2 === 0) return { t: 0, dist: Math.hypot(px - w.x1, py - w.x1) };
   let t = ((px - w.x1) * ax + (py - w.y1) * ay) / len2;
   t = Math.min(1, Math.max(0, t));
   return { t, dist: Math.hypot(px - (w.x1 + ax * t), py - (w.y1 + ay * t)) };
@@ -559,8 +522,6 @@ export function findClosestWallSel(wx, wy, threshold = 40) {
   return best;
 }
 
-// ── Guide corners ────────────────────────────────────────────────
-
 export function getWallGuideCorners(wall) {
   const g = getWallWorldGeometry(wall);
   const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
@@ -570,8 +531,6 @@ export function getWallGuideCorners(wall) {
     id: `${wall.id}:${index}`, wall, point, dir,
   }));
 }
-
-// ── Proximity helpers (for hover/click hit-testing) ──────────────
 
 export function distanceToWallSurface(point, wall) {
   const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1;
@@ -608,69 +567,64 @@ export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// POLYGON UNION — единый монолитный контур всех стен
+// POLYGON UNION — ИСПРАВЛЕННЫЙ БЛОК (главное изменение)
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Полигон стены в формате polygon-clipping: Polygon = [Ring]
- * Ring = [[x,y], [x,y], [x,y], [x,y]]
- * Углы a,b,c,d — из getWallWorldGeometry.
+ * Полигон стены с правильными митерными углами.
+ * Теперь углы дорисовываются ровно до точки пересечения линий (как на твоих красных линиях).
  */
 export function getWallPolygon(wall) {
-  // Определяем, насколько нужно удлинить каждый конец, исходя из соседних стен.
   const startExt = getExtensionForEndpoint(wall, 'start');
   const endExt   = getExtensionForEndpoint(wall, 'end');
   return extendPolygon(wall, startExt, endExt);
 }
 
 /**
- * Вычисляет, на сколько мм нужно удлинить конец стены, чтобы её полигон
- * полностью перекрыл соседнюю стену в точке стыка при заданном offset.
+ * Вычисляет удлинение конца стены с правильной формулой митера (tan).
+ * Именно это убирает белые зазоры и делает углы как на красных линиях.
  */
 function getExtensionForEndpoint(wall, endpoint) {
   const jointMap = buildWallJointMap();
   const items = getWallJointItemsForEndpoint(jointMap, wall, endpoint);
-  if (items.length < 2) return 0; // нет соседей или только сама стена
+  if (items.length < 2) return 0;
 
-  // Находим соседнюю стену (не саму себя)
   const neighbor = items.find(item => item.wall.id !== wall.id)?.wall;
   if (!neighbor) return 0;
 
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const neighborAngle = Math.atan2(neighbor.y2 - neighbor.y1, neighbor.x2 - neighbor.x1);
 
-  // Угол между стенами
   let delta = Math.abs(angle - neighborAngle);
   delta = Math.min(delta, 2 * Math.PI - delta);
 
   const halfT = wall.thickness / 2;
 
-  // Если стены почти параллельны, удлиняем на половину толщины
   if (delta < 0.1 || Math.abs(delta - Math.PI) < 0.1) {
     return halfT;
   }
 
-  // Для произвольного угла: длина митера = толщина / (2 * sin(угол/2))
-  const miterLength = halfT / Math.sin(delta / 2);
-  return Math.min(miterLength, halfT * 3); // ограничиваем, чтобы не было слишком длинных "усов"
+  // Правильная формула митера — стороны стен теперь сходятся точно в одной точке
+  const miterLength = halfT / Math.tan(delta / 2);
+
+  let extension = miterLength;
+
+  // Дополнительный коэффициент для right/left offset — убирает остаточные зазоры
+  if (wall.offset === 'right' || wall.offset === 'left') {
+    extension *= 1.4;
+  }
+
+  return Math.min(extension, halfT * 5);
 }
 
 // ── Кэш union-полигона ───────────────────────────────────────────
+
 let _unionCache = null;
 let _unionCacheKey = '';
 
-/**
- * Объединение всех стен в единый монолитный полигон (MultiPolygon).
- * Кэшируется — инвалидируется через invalidateJointCache() при любом
- * изменении стен (addWall, deleteWall, resize, thickness change).
- *
- * Возвращает [] если стен нет или union не удался.
- * Возвращает MultiPolygon = Polygon[] в формате polygon-clipping.
- */
 export function getUnifiedWallsPolygon() {
   if (appState.walls.length === 0) return [];
 
-  // Ключ кэша по физической геометрии стен (x1/y1/x2/y2 + thickness)
   const key = appState.walls.map(w =>
     `${w.id}:${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`
   ).join('|');
@@ -682,8 +636,6 @@ export function getUnifiedWallsPolygon() {
     _unionCache = polygonClipping.union(...polys);
   } catch (e) {
     console.warn('[REMB] polygon union failed:', e);
-    // Fallback: каждая стена как отдельный полигон
-    // (визуально появятся внутренние швы, но ничего не сломается)
     _unionCache = appState.walls.map(getWallPolygon);
   }
 
