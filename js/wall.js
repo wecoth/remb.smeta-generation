@@ -407,6 +407,69 @@ export function setWallLength(wall, nextLength, anchor = 'start', options = {}) 
   });
 }
 
+/**
+ * Вычисляет скорректированную базовую точку (cx, cy) для новой стены,
+ * чтобы её полигон точно состыковался с существующей стеной в точке привязки.
+ *
+ * @param {Object} snappedPoint - точка привязки, полученная из snap()
+ * @param {Object} direction   - единичный вектор направления новой стены ОТ точки стыковки
+ * @param {string} offsetMode  - 'left' | 'center' | 'right'
+ * @param {number} thickness   - толщина новой стены
+ * @returns {Object} { x, y }  - скорректированная базовая точка
+ */
+export function alignBasePointToJoint(snappedPoint, direction, offsetMode, thickness) {
+  // Если нет привязки к существующей стене — возвращаем исходную точку
+  if (!snappedPoint || !snappedPoint.wallId) {
+    return { x: snappedPoint.x, y: snappedPoint.y };
+  }
+
+  const neighbor = appState.walls.find(w => w.id === snappedPoint.wallId);
+  if (!neighbor) return { x: snappedPoint.x, y: snappedPoint.y };
+
+  // Получаем мировую геометрию соседней стены (углы a,b,c,d)
+  const neighborG = getWallWorldGeometry(neighbor);
+
+  // Определяем, какой угол соседней стены находится в точке привязки.
+  // Обычно snappedPoint совпадает с одной из конечных точек базовой линии соседа.
+  const neighborEnd = snappedPoint.endpoint; // 'start' или 'end'
+  let neighborCorner;
+  if (neighborEnd === 'start') {
+    // Начало стены: углы a и d
+    const distA = Math.hypot(snappedPoint.x - neighborG.a.x, snappedPoint.y - neighborG.a.y);
+    const distD = Math.hypot(snappedPoint.x - neighborG.d.x, snappedPoint.y - neighborG.d.y);
+    neighborCorner = distA < distD ? neighborG.a : neighborG.d;
+  } else {
+    // Конец стены: углы b и c
+    const distB = Math.hypot(snappedPoint.x - neighborG.b.x, snappedPoint.y - neighborG.b.y);
+    const distC = Math.hypot(snappedPoint.x - neighborG.c.x, snappedPoint.y - neighborG.c.y);
+    neighborCorner = distB < distC ? neighborG.b : neighborG.c;
+  }
+
+  // Теперь neighborCorner — это точная координата угла полигона, куда должна попасть новая стена.
+
+  const angle = Math.atan2(direction.y, direction.x);
+  const halfT = thickness / 2;
+
+  let baseX, baseY;
+  if (offsetMode === 'center') {
+    baseX = neighborCorner.x;
+    baseY = neighborCorner.y;
+  } else if (offsetMode === 'left') {
+    // "Левая" грань (если смотреть от start к end) — нормаль влево (-sin, cos)
+    const normalX = -Math.sin(angle);
+    const normalY =  Math.cos(angle);
+    baseX = neighborCorner.x - normalX * halfT;
+    baseY = neighborCorner.y - normalY * halfT;
+  } else { // 'right'
+    const normalX = -Math.sin(angle);
+    const normalY =  Math.cos(angle);
+    baseX = neighborCorner.x + normalX * halfT;
+    baseY = neighborCorner.y + normalY * halfT;
+  }
+
+  return { x: baseX, y: baseY };
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────
 
 export function addWall(start, end, thick, height, wallOffset) {
