@@ -5,7 +5,6 @@ import {
   getWallContourPoint, isWallEndpointCoveredByAnotherWall,
   buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
-  areWallsCollinear, isPointInsideWallSurface,
 } from './wall.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
@@ -149,17 +148,8 @@ export function redraw(ps) {
   drawWallDimensions();
   drawOpeningLeaders(exteriorWallIds);
   drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
-  // Stage 1: базовая линия для выделенных стен (жёлтый пунктир)
-  for (const item of ps.selectedItems) {
-    if (item.type !== 'wall') continue;
-    const wall = appState.walls.find(w => w.id === item.id);
-    if (wall) drawBaseLine(wall);
-  }
   if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.tool === 'wall' && ps.trackingLines?.length) {
-    drawTrackingLines(ps.activeTrackingPoint, ps.trackingLines);
-  }
   if (ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
   if (ps.tool === 'wall' && ps.currentGuideLine)  drawGuideLine(ps.currentGuideLine);
   if (ps.tool === 'wall' && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
@@ -270,67 +260,70 @@ function drawRoomFills(selectedItems) {
 }
 
 function drawWalls(selectedItems) {
-  if (!appState.walls.length) return;
-
-  // ── Joint map: точно знаем где стены соединяются (1мм точность) ─
+  const scale = _getScale();
   const jmap = buildWallJointMap();
+  const jrects = getWallJointRects();
 
-  // ── Pass 1: fill всех стен ──────────────────────────────────────
-  for (const wall of appState.walls) {
-    const g = sg(wall);
-    const isSel = sel('wall', wall.id, selectedItems);
+  // Предварительно вычисляем clip-точки для всех стен
+  const wallData = appState.walls.map(w => {
+    const g = sg(w);
+    const isSel = sel('wall', w.id, selectedItems);
+    const style = wallStyle(isSel);
+    const sjItems = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
+    const ejItems = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
+    const sj = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'start');
+    const ej = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(w, 'end');
+    const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
+    const sp = getWallContourPoint(w, 'start');
+    const ep = getWallContourPoint(w, 'end');
+    const hasStartJR = myJoints.some(jr =>
+      sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
+    const hasEndJR = myJoints.some(jr =>
+      ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
+    const wclipS = (sj && !hasStartJR) ? getWorldFaceClips(w, sjItems.map(i=>i.wall), 'start') : null;
+    const wclipE = (ej && !hasEndJR)   ? getWorldFaceClips(w, ejItems.map(i=>i.wall), 'end')   : null;
+    // Screen-координаты 4 углов с учётом clip
+    const ptA = wclipS?.ab ? toScreen(wclipS.ab.x, wclipS.ab.y) : g.a;
+    const ptB = wclipE?.ab ? toScreen(wclipE.ab.x, wclipE.ab.y) : g.b;
+    const ptC = wclipE?.dc ? toScreen(wclipE.dc.x, wclipE.dc.y) : g.c;
+    const ptD = wclipS?.dc ? toScreen(wclipS.dc.x, wclipS.dc.y) : g.d;
+    return { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD };
+  });
+
+  // Pass 1: fill обрезанным полигоном
+  for (const { style, ptA, ptB, ptC, ptD } of wallData) {
     fillWall(() => {
       _ctx.beginPath();
-      _ctx.moveTo(g.a.x, g.a.y); _ctx.lineTo(g.b.x, g.b.y);
-      _ctx.lineTo(g.c.x, g.c.y); _ctx.lineTo(g.d.x, g.d.y);
+      _ctx.moveTo(ptA.x, ptA.y); _ctx.lineTo(ptB.x, ptB.y);
+      _ctx.lineTo(ptC.x, ptC.y); _ctx.lineTo(ptD.x, ptD.y);
       _ctx.closePath();
-    }, isSel ? DRAW_COLORS.wallFillSelected : DRAW_COLORS.wallFill);
+    }, style.fill);
   }
 
-  // ── Pass 2: stroke только внешних рёбер ────────────────────────
-  //
-  // Торцы (короткие стороны bc, da):
-  //   Используем joint map + isWallEndpointCoveredByAnotherWall.
-  //   Точность 1мм. Без произвольных допусков.
-  //   - joint map: конец стены совпадает с концом другой стены (L, T концевой)
-  //   - isCovered: конец стены лежит на ТЕЛЕ другой стены (T-стык посередине)
-  //
-  // Боковые грани (длинные стороны ab, cd):
-  //   Тест midpoint с padding=0. Подавляет грань если её середина
-  //   оказывается внутри другой стены (перекрытие при T-стыках).
+  // Pass 2: fill joint rects (ортогональные углы)
+  for (const jr of jrects) {
+    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
+    const style = wallStyle(isSel);
+    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
+    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
+    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr-rl, rb-rt); }, style.fill);
+  }
 
-  _ctx.save();
-  _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10; _ctx.lineCap = 'butt';
-
-  for (const wall of appState.walls) {
-    const isSel = sel('wall', wall.id, selectedItems);
-    const gw = getWallWorldGeometry(wall);
-    const gs = sg(wall);
-
-    // Торцы: подавляем если конец соединён с другой стеной
-    const sjItems = getWallJointItemsForEndpoint(jmap, wall, 'start').filter(i => i.wall.id !== wall.id);
-    const ejItems = getWallJointItemsForEndpoint(jmap, wall, 'end').filter(i => i.wall.id !== wall.id);
-    const suppressStart = sjItems.length > 0 || isWallEndpointCoveredByAnotherWall(wall, 'start');
-    const suppressEnd   = ejItems.length > 0 || isWallEndpointCoveredByAnotherWall(wall, 'end');
-
-    // Боковые грани: подавляем если midpoint внутри другой стены
-    const mAB = { x: (gw.a.x + gw.b.x) / 2, y: (gw.a.y + gw.b.y) / 2 };
-    const mCD = { x: (gw.c.x + gw.d.x) / 2, y: (gw.c.y + gw.d.y) / 2 };
-    const suppressAB = appState.walls.some(o => o.id !== wall.id && isPointInsideWallSurface(mAB, o, 0));
-    const suppressCD = appState.walls.some(o => o.id !== wall.id && isPointInsideWallSurface(mCD, o, 0));
-
-    _ctx.strokeStyle = isSel ? DRAW_COLORS.wallStrokeSelected : DRAW_COLORS.wallStroke;
-    _ctx.lineWidth = isSel ? 1.5 : 1;
+  // Pass 3: stroke outlines
+  for (const { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD } of wallData) {
+    _ctx.save();
+    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
+    _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
     _ctx.beginPath();
-
-    if (!suppressAB)    { _ctx.moveTo(gs.a.x, gs.a.y); _ctx.lineTo(gs.b.x, gs.b.y); } // грань ab
-    if (!suppressEnd)   { _ctx.moveTo(gs.b.x, gs.b.y); _ctx.lineTo(gs.c.x, gs.c.y); } // торец bc
-    if (!suppressCD)    { _ctx.moveTo(gs.c.x, gs.c.y); _ctx.lineTo(gs.d.x, gs.d.y); } // грань cd
-    if (!suppressStart) { _ctx.moveTo(gs.d.x, gs.d.y); _ctx.lineTo(gs.a.x, gs.a.y); } // торец da
-
+    drawClippedFace(ptA, ptB, myJoints); // грань ab
+    drawClippedFace(ptD, ptC, myJoints); // грань dc
+    if (!ej) { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
+    if (!sj) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
     _ctx.stroke();
+
+    _ctx.restore();
   }
-  _ctx.restore();
 }
 
 // Пересечение двух бесконечных линий в 2D.
@@ -428,9 +421,34 @@ function drawClippedFace(sa, ea, joints) {
   }
 }
 
-// drawWallJoints — стыки теперь обрабатываются через midpoint-тест в drawWalls.
-// Функция оставлена как заглушка для совместимости.
-function drawWallJoints(_selectedItems) { /* no-op */ }
+function drawWallJoints(selectedItems) {
+  for (const jr of getWallJointRects()) {
+    const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
+    const style = wallStyle(isSel);
+    const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
+    const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
+    const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
+    // Заливка стыка
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
+    // Контур — только boundary edges (внешние грани стыка)
+    _ctx.save();
+    _ctx.strokeStyle = style.stroke;
+    _ctx.lineWidth = isSel ? 1.5 : 1;
+    _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
+    _ctx.beginPath();
+    for (const path of getJointBoundaryPaths(jr)) {
+      if (!path.length) continue;
+      const s = toScreen(path[0].x, path[0].y);
+      _ctx.moveTo(s.x, s.y);
+      for (let i = 1; i < path.length; i++) {
+        const p = toScreen(path[i].x, path[i].y);
+        _ctx.lineTo(p.x, p.y);
+      }
+    }
+    _ctx.stroke();
+    _ctx.restore();
+  }
+}
 
 function drawOpenings(selectedItems, dh, ds) {
   for (const op of appState.openings) {
@@ -558,61 +576,6 @@ function drawSelectedHandles(tool, selectedItems, wallResizeState) {
     _ctx.beginPath(); _ctx.arc(h.screen.x, h.screen.y, 2, 0, Math.PI * 2);
     _ctx.fillStyle = active ? DRAW_COLORS.handleActive : DRAW_COLORS.handleStroke; _ctx.fill(); _ctx.restore();
   }
-}
-
-// ── Stage 3: линии отслеживания (фиолетовые) ─────────────────────
-// Рисует бесконечные лучи от активированной точки + фиолетовую точку-якорь.
-function drawTrackingLines(activeTrackingPoint, trackingLines) {
-  if (!activeTrackingPoint || !trackingLines?.length) return;
-  const anchor = toScreen(activeTrackingPoint.x, activeTrackingPoint.y);
-  const SPAN   = Math.max(_canvas.width, _canvas.height) * 2;
-
-  _ctx.save();
-
-  // Лучи
-  _ctx.strokeStyle = 'rgba(109, 40, 217, 0.5)';
-  _ctx.lineWidth   = 1;
-  _ctx.lineCap     = 'round';
-  for (const line of trackingLines) {
-    // Направление одинаково в мировых и экранных координатах (нет поворота вьюпорта)
-    _ctx.setLineDash(line.lineType === 'axis' ? [3, 8] : [6, 6]);
-    _ctx.beginPath();
-    _ctx.moveTo(anchor.x - line.dir.x * SPAN, anchor.y - line.dir.y * SPAN);
-    _ctx.lineTo(anchor.x + line.dir.x * SPAN, anchor.y + line.dir.y * SPAN);
-    _ctx.stroke();
-  }
-
-  // Точка-якорь (фиолетовый кружок с белой обводкой)
-  _ctx.setLineDash([]);
-  _ctx.beginPath();
-  _ctx.arc(anchor.x, anchor.y, 5.5, 0, Math.PI * 2);
-  _ctx.fillStyle   = 'rgba(109, 40, 217, 0.9)';
-  _ctx.fill();
-  _ctx.strokeStyle = '#fff';
-  _ctx.lineWidth   = 1.5;
-  _ctx.stroke();
-
-  _ctx.restore();
-}
-
-// ── Stage 1: базовая линия (жёлтый пунктир как в Renga) ──────────
-// Показывается только для выделенных стен. Это cx1/cy1 → cx2/cy2 —
-// линия, которую рисовал пользователь и которая не двигается при
-// изменении offset/thickness.
-function drawBaseLine(wall) {
-  const p1 = toScreen(wall.cx1 ?? wall.x1, wall.cy1 ?? wall.y1);
-  const p2 = toScreen(wall.cx2 ?? wall.x2, wall.cy2 ?? wall.y2);
-  _ctx.save();
-  _ctx.strokeStyle = 'rgba(202, 138, 4, 0.75)'; // янтарный — как в Renga
-  _ctx.lineWidth   = 1.5;
-  _ctx.setLineDash([8, 5]);
-  _ctx.lineCap     = 'round';
-  _ctx.beginPath();
-  _ctx.moveTo(p1.x, p1.y);
-  _ctx.lineTo(p2.x, p2.y);
-  _ctx.stroke();
-  _ctx.setLineDash([]);
-  _ctx.restore();
 }
 
 function drawTempWall(ps) {
@@ -923,13 +886,6 @@ function drawObjectSnap(snap) {
     _ctx.beginPath(); _ctx.moveTo(p.x - ux * 7, p.y - uy * 7); _ctx.lineTo(p.x + ux * 7, p.y + uy * 7);
     _ctx.moveTo(p.x - nx * 4, p.y - ny * 4); _ctx.lineTo(p.x + nx * 4, p.y + ny * 4); _ctx.stroke();
     _ctx.beginPath(); _ctx.arc(p.x, p.y, snap.type === 'wallFace' ? 4.5 : 3.5, 0, Math.PI * 2); _ctx.fill(); _ctx.stroke();
-  }
-  else if (snap.type === 'tracking') {
-    // Ромб — как в Renga для точки на линии отслеживания
-    _ctx.beginPath();
-    _ctx.moveTo(p.x, p.y - 7); _ctx.lineTo(p.x + 7, p.y);
-    _ctx.lineTo(p.x, p.y + 7); _ctx.lineTo(p.x - 7, p.y);
-    _ctx.closePath(); _ctx.fill(); _ctx.stroke();
   }
   drawAlignedTextBox(snap.label, { x: p.x, y: p.y - 18 }, 0, { textColor: color, background: 'rgba(255,255,255,0.96)' });
   _ctx.restore();
