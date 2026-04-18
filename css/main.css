@@ -645,18 +645,29 @@ html, body {
 .spp-tab:hover { background: var(--card); color: var(--ink); }
 .spp-tab.active { background: #e8eeff; color: #3a5ed0; font-weight: 600; }
 .spp-body {
-  flex: 1; overflow-y: auto;
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 28px 24px 40px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;   /* ← ВОТ ЭТО ГЛАВНОЕ ИСПРАВЛЕНИЕ */
+  padding: 24px 16px 40px;
+  gap: 20px;
+  overflow-anchor: none;
+  margin-top: 0 !important;
+  transform: none !important;
+  position: relative;
+  top: 0;
 }
 .spp-page {
   width: 100%;
-  display: flex;
+  display: flex !important;
   justify-content: center;
   transition: opacity .2s;
 }
 .spp-page.spp-hidden {
-  display: none;
+  display: none !important;
 }
 
 /* A4 page in right panel — scales to fit available width */
