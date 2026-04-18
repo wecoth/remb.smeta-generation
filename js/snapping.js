@@ -13,6 +13,7 @@ let _scale = 0.12, _panX = 200, _panY = 150;
 let _shiftDown = false, _ctrlDown = false;
 
 export function setViewport(scale, panX, panY) { _scale = scale; _panX = panX; _panY = panY; }
+export function getViewport() { return { scale: _scale, panX: _panX, panY: _panY }; }
 export function setModifiers(shift, ctrl) { _shiftDown = shift; _ctrlDown = ctrl; }
 
 export function toScreen(x, y) { return { x: x * _scale + _panX, y: y * _scale + _panY }; }
