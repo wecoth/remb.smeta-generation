@@ -2,6 +2,7 @@
 import { appState } from './state.js';
 import { clamp, applyWallOffset, segmentIntersection } from './geometry.js';
 import polygonClipping from 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm';
+import ClipperLib from 'https://cdn.jsdelivr.net/npm/js-angusj-clipper@1.3.1/+esm';
 
 // ── Contour helpers ──────────────────────────────────────────────
 
@@ -96,6 +97,82 @@ export function getWallSnapSegments(wall) {
     { type: 'wallFace', segment: { x1: g.a.x, y1: g.a.y, x2: g.b.x, y2: g.b.y } },
     { type: 'wallFace', segment: { x1: g.d.x, y1: g.d.y, x2: g.c.x, y2: g.c.y } },
   ];
+}
+
+/**
+ * Строит полилинии (цепочки осевых линий) из всех стен.
+ * Возвращает массив полилиний, где каждая полилиния — массив точек {x, y}.
+ */
+export function buildWallPolylines() {
+  const walls = appState.walls;
+  if (walls.length === 0) return [];
+
+  const visited = new Set();
+  const polylines = [];
+
+  // Граф связей: ключ — координаты точки, значение — массив стен, инцидентных этой точке
+  const graph = new Map();
+  const addEdge = (x, y, wall) => {
+    const key = `${Math.round(x)},${Math.round(y)}`;
+    if (!graph.has(key)) graph.set(key, []);
+    graph.get(key).push({ wall, coord: { x, y } });
+  };
+
+  for (const wall of walls) {
+    const start = { x: wall.cx1, y: wall.cy1 };
+    const end   = { x: wall.cx2, y: wall.cy2 };
+    addEdge(start.x, start.y, wall);
+    addEdge(end.x, end.y, wall);
+  }
+
+  // Обход графа для выделения цепочек
+  for (const wall of walls) {
+    if (visited.has(wall.id)) continue;
+
+    const polyline = [];
+    let currentWall = wall;
+    let currentPoint = 'start';
+    let currentCoord = { x: wall.cx1, y: wall.cy1 };
+
+    while (currentWall && !visited.has(currentWall.id)) {
+      visited.add(currentWall.id);
+
+      // Добавляем начальную точку текущей стены (если это не дубль)
+      if (polyline.length === 0 || 
+          Math.hypot(polyline[polyline.length-1].x - currentCoord.x, 
+                     polyline[polyline.length-1].y - currentCoord.y) > 1) {
+        polyline.push({ x: currentCoord.x, y: currentCoord.y });
+      }
+
+      // Добавляем конечную точку
+      const otherCoord = currentPoint === 'start' 
+        ? { x: currentWall.cx2, y: currentWall.cy2 }
+        : { x: currentWall.cx1, y: currentWall.cy1 };
+      polyline.push({ x: otherCoord.x, y: otherCoord.y });
+
+      // Ищем соседнюю стену на этом конце
+      const endKey = `${Math.round(otherCoord.x)},${Math.round(otherCoord.y)}`;
+      const neighbors = graph.get(endKey) || [];
+      const next = neighbors.find(n => n.wall.id !== currentWall.id && !visited.has(n.wall.id));
+
+      if (next) {
+        currentWall = next.wall;
+        currentCoord = next.coord;
+        // Определяем, какой конец стены совпадает с точкой соединения
+        const distToStart = Math.hypot(currentWall.cx1 - currentCoord.x, currentWall.cy1 - currentCoord.y);
+        const distToEnd   = Math.hypot(currentWall.cx2 - currentCoord.x, currentWall.cy2 - currentCoord.y);
+        currentPoint = distToStart < distToEnd ? 'start' : 'end';
+      } else {
+        break;
+      }
+    }
+
+    if (polyline.length >= 2) {
+      polylines.push(polyline);
+    }
+  }
+
+  return polylines;
 }
 
 // ── Surface tests ─────────────────────────────────────────────────
@@ -657,10 +734,4 @@ export function getUnifiedWallsPolygon() {
 
   _unionCacheKey = key;
   return _unionCache;
-}
-
-// Устаревшая функция, оставлена для совместимости (не используется в варианте 3)
-export function getWallPolygon(wall) {
-  const g = getWallWorldGeometry(wall);
-  return [[[g.a.x, g.a.y], [g.b.x, g.b.y], [g.c.x, g.c.y], [g.d.x, g.d.y]]];
 }
