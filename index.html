@@ -144,6 +144,9 @@
     align-items:center;
     padding:24px 16px 40px;
     gap:20px;
+    /* Disable scroll anchoring — prevents browser from shifting scroll
+       position when JS adds content (rooms table, etc.) above visible area */
+    overflow-anchor: none;
   }
   /* Each page wrapper */
   .spp-page {
@@ -981,8 +984,6 @@
   window._appState = appState;
 
   // Poll for viewport — ui-planner updates scale/panX/panY continuously
-  // We read them via a getter exposed by ui-planner or directly from the planner
-  // For now, try to import getViewport if exported
   try {
     const up = await import('./js/ui-planner.js');
     if (up.getViewport) {
@@ -991,9 +992,20 @@
       });
     }
   } catch(e) {
-    // fallback: default viewport
     window._plannerViewport = { scale: 0.12, panX: 200, panY: 150 };
   }
+
+  // Force scroll to top AFTER all modules have loaded and liveUpdate() has run.
+  // This counteracts scroll anchoring that occurs when JS populates content
+  // (rooms table etc.) inside pages above the initially visible area.
+  function resetSppScroll() {
+    var b = document.getElementById('sppBody');
+    if (b) b.scrollTop = 0;
+  }
+  resetSppScroll();
+  setTimeout(resetSppScroll, 50);
+  setTimeout(resetSppScroll, 200);
+  setTimeout(resetSppScroll, 600);
 </script>
 </body>
 </html>
