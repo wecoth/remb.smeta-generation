@@ -5,6 +5,7 @@ import {
   addWall, findClosestWall, findClosestWallSel,
   getWallContourPoint, updateWallGeometry, setWallLength, getWallLength,
   invalidateJointCache, recalculateContourFromBase,
+  alignBasePointToJoint,   // <-- добавить
 } from './wall.js';
 import { addOpening, findClosestOpening, updateDoorOpening } from './opening.js';
 import { updateExpl, getComputedRooms, renameRoom, setWallHeight } from './room.js';
@@ -542,13 +543,56 @@ function finalizeWall(end) {
   const thick  = parseFloat(dom.inpWallThick?.value) || 200;
   const height = parseFloat(dom.inpWallHeight?.value) || 2700;
 
-  // Stage 5: CreateWallCommand делает addWall + EventBus.emit('walls:changed') внутри
-  executeCommand(new CreateWallCommand(drawStart, end, thick, height, wallOffset));
+  // Вычисляем скорректированные базовые точки с учётом привязки к существующим стенам
+  let baseStart = { x: drawStart.x, y: drawStart.y };
+  let baseEnd   = { x: end.x, y: end.y };
 
-  drawStart = { x: end.x, y: end.y }; drawEnd = { x: end.x, y: end.y };
-  currentGuideLine = null; currentObjectSnap = null;
-  lengthInput = ''; lengthMode = false; chainMode = true; isDrawing = true;
-  doRedraw(); return true;
+  // Если начальная точка привязана к существующей стене
+  if (drawStart.snapType === 'endpoint' && drawStart.wallId) {
+    const dx = end.x - drawStart.x;
+    const dy = end.y - drawStart.y;
+    const lenDir = Math.hypot(dx, dy);
+    if (lenDir > 0.1) {
+      const unitDir = { x: dx / lenDir, y: dy / lenDir };
+      baseStart = alignBasePointToJoint(
+        { x: drawStart.x, y: drawStart.y, wallId: drawStart.wallId, endpoint: drawStart.endpoint },
+        unitDir,
+        wallOffset,
+        thick
+      );
+    }
+  }
+
+  // Если конечная точка привязана к существующей стене
+  if (end.snapType === 'endpoint' && end.wallId) {
+    const dx = end.x - drawStart.x;
+    const dy = end.y - drawStart.y;
+    const lenDir = Math.hypot(dx, dy);
+    if (lenDir > 0.1) {
+      const unitDir = { x: dx / lenDir, y: dy / lenDir };
+      baseEnd = alignBasePointToJoint(
+        { x: end.x, y: end.y, wallId: end.wallId, endpoint: end.endpoint },
+        unitDir,
+        wallOffset,
+        thick
+      );
+    }
+  }
+
+  // Создаём стену через команду (Stage 5)
+  executeCommand(new CreateWallCommand(baseStart, baseEnd, thick, height, wallOffset));
+
+  // Продолжаем рисование в цепочке
+  drawStart = { x: end.x, y: end.y };
+  drawEnd   = { x: end.x, y: end.y };
+  currentGuideLine = null;
+  currentObjectSnap = null;
+  lengthInput = '';
+  lengthMode = false;
+  chainMode = true;
+  isDrawing = true;
+  doRedraw();
+  return true;
 }
 
 // ── Snap helpers ──────────────────────────────────────────────────
