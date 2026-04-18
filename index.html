@@ -96,46 +96,85 @@
     flex:1;
     display:flex;
     flex-direction:column;
-    background:#f0f2f5;
+    background:#e8eaed;
     overflow:hidden;
   }
   .spp-header {
     background:#fff;
     border-bottom:1px solid var(--line2,#e8e8e8);
-    padding:0 24px;
+    padding:0 20px;
     flex-shrink:0;
     display:flex;
     align-items:center;
-    height:44px;
+    height:48px;
+    gap:6px;
   }
-  .spp-tabs {
-    display:flex;gap:2px;
-  }
-  .spp-tab {
-    padding:6px 14px;
-    border:none;background:transparent;
+  /* Toggle chips */
+  .spp-toggle-bar { display:flex;gap:5px;align-items:center;flex-wrap:wrap; }
+  .spp-toggle {
+    display:flex;align-items:center;gap:5px;
+    padding:4px 12px 4px 8px;
+    border-radius:20px;
+    background:#f0f2f5;
+    cursor:pointer;
     font:500 12px/1 Onest,Inter,sans-serif;
-    color:#888;border-radius:6px;
-    cursor:pointer;transition:background .15s,color .15s;
+    color:#666;
+    transition:background .15s,color .15s;
+    user-select:none;
+    border:1.5px solid transparent;
   }
-  .spp-tab:hover { background:#f5f5f5;color:#333; }
-  .spp-tab.active { background:#f0f4ff;color:#4a6fe3;font-weight:600; }
+  .spp-toggle input[type="checkbox"] { display:none; }
+  .spp-toggle .tog-dot {
+    width:7px;height:7px;border-radius:50%;
+    background:#ccc;flex-shrink:0;
+    transition:background .15s;
+  }
+  .spp-toggle.active {
+    background:#eef1ff;color:#4a6fe3;
+    border-color:#c5d0f7;
+  }
+  .spp-toggle.active .tog-dot { background:#4a6fe3; }
+  .spp-toggle:hover:not(.active) { background:#e8eaed;color:#444; }
+
+  /* Scrollable body — all pages stacked */
   .spp-body {
-    flex:1;overflow-y:auto;
-    display:flex;align-items:flex-start;justify-content:center;
-    padding:24px;
+    flex:1;overflow-y:auto;overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:24px 16px 40px;
+    gap:20px;
   }
-  .spp-page { display:none;width:100%; }
-  .spp-page.active { display:block; }
+  /* Each page wrapper */
+  .spp-page {
+    width:100%;
+    display:flex;
+    justify-content:center;
+    transition:opacity .2s;
+  }
+  .spp-page.spp-hidden { display:none; }
+
+  /* A4 sheet — wider and fills more space */
   .spp-a4 {
     width:100%;
-    max-width:680px;
-    min-height:500px;
-    margin:0 auto;
+    max-width:860px;
+    min-height:520px;
     background:#fff;
-    box-shadow:0 2px 16px rgba(0,0,0,.10);
-    border-radius:3px;
+    box-shadow:0 3px 20px rgba(0,0,0,.13);
+    border-radius:4px;
+    position:relative;
+    /* Cancel modal scale inherited from .preview-page */
+    transform:none !important;
+    margin-bottom:0 !important;
   }
+
+  /* Blueprint page fills full height */
+  .spp-blueprint {
+    min-height:620px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
 
@@ -563,19 +602,38 @@
 <!-- RIGHT: live preview panel -->
 <div class="smeta-preview-panel" id="smetaPreviewPanel">
   <div class="spp-header">
-    <div class="spp-tabs" id="sppTabs">
-      <button class="spp-tab active" data-page="cover">Обложка</button>
-      <button class="spp-tab" data-page="plan">Планировка</button>
-      <button class="spp-tab" data-page="smr">СМР</button>
-      <button class="spp-tab" data-page="mat">Материалы</button>
-      <button class="spp-tab" data-page="final">Итоговая</button>
+    <div class="spp-toggle-bar" id="sppToggles">
+      <label class="spp-toggle active" title="Обложка КП">
+        <input type="checkbox" checked data-page="cover">
+        <span class="tog-dot"></span>Обложка
+      </label>
+      <label class="spp-toggle active" title="Планирование работ">
+        <input type="checkbox" checked data-page="plan">
+        <span class="tog-dot"></span>Планировка
+      </label>
+      <label class="spp-toggle active" title="Обмерный план — чертёж с размерами">
+        <input type="checkbox" checked data-page="blueprint">
+        <span class="tog-dot"></span>Обмерный план
+      </label>
+      <label class="spp-toggle active" title="Смета СМР">
+        <input type="checkbox" checked data-page="smr">
+        <span class="tog-dot"></span>СМР
+      </label>
+      <label class="spp-toggle active" title="Смета материалов">
+        <input type="checkbox" checked data-page="mat">
+        <span class="tog-dot"></span>Материалы
+      </label>
+      <label class="spp-toggle active" title="Итоговая страница">
+        <input type="checkbox" checked data-page="final">
+        <span class="tog-dot"></span>Итоговая
+      </label>
     </div>
   </div>
   <div class="spp-body" id="sppBody">
 
-    <!-- Cover page -->
-    <div class="spp-page active" data-page="cover">
-      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden">
+    <!-- 1. Cover page -->
+    <div class="spp-page" data-page="cover">
+      <div class="preview-page cover-pg spp-a4" data-be-page="cover" id="prevCover2" style="position:relative;overflow:hidden;min-height:620px">
         <div id="prevCovLogo2" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center">
           <img id="prevLogoImg2" alt="" style="max-height:70px;max-width:180px;display:none">
           <div id="prevCircle2" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
@@ -590,7 +648,7 @@
       </div>
     </div>
 
-    <!-- Planning page -->
+    <!-- 2. Planning page -->
     <div class="spp-page" data-page="plan">
       <div class="preview-page spp-a4" id="prevPlanning2" data-be-page="plan">
 
@@ -636,7 +694,25 @@
       </div>
     </div>
 
-    <!-- SMR page -->
+    <!-- 3. Обмерный план -->
+    <div class="spp-page" data-page="blueprint">
+      <div class="preview-page spp-a4 spp-blueprint" id="prevBlueprint2" data-be-page="blueprint">
+        <div style="padding:20px 28px 12px;border-bottom:1px solid #eee;display:flex;align-items:baseline;gap:10px;flex-shrink:0">
+          <span style="font:700 13px/1.4 Georgia,serif;letter-spacing:0.05em">Обмерный план:</span>
+          <span style="font-size:10px;color:#999" id="prevBpAddress2"></span>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;min-height:500px">
+          <img id="prevBpImg2" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:none">
+          <div id="prevBpPh2" style="color:#ccc;font-size:40px;text-align:center;line-height:1.4">⬚<br><span style="font-size:13px;letter-spacing:0">Используйте «Захватить чертёж»</span></div>
+        </div>
+        <div style="padding:8px 28px;display:flex;justify-content:flex-end;align-items:center;gap:5px;border-top:1px solid #eee;flex-shrink:0">
+          <div id="prevBpFtC2" style="width:18px;height:18px;border:1.5px solid #bbb;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:600;color:#bbb">К</div>
+          <div id="prevBpFtN2" style="font-size:9px;font-weight:600;letter-spacing:2px;color:#bbb">КОМПАНИЯ</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. SMR page -->
     <div class="spp-page" data-page="smr">
       <div class="preview-page spp-a4" id="prevSmr2" data-be-page="smr">
         <div style="padding:40px 52px;display:flex;flex-direction:column">
@@ -656,7 +732,7 @@
       </div>
     </div>
 
-    <!-- Mat page -->
+    <!-- 5. Mat page -->
     <div class="spp-page" data-page="mat">
       <div class="preview-page spp-a4" id="prevMat2" data-be-page="mat">
         <div style="padding:40px 52px;display:flex;flex-direction:column">
@@ -710,129 +786,7 @@
 </div><!-- /app-shell -->
 
 
-<!-- ═══════════════════════════════════════════════════════════
-     MODAL PREVIEW (smeta)
-════════════════════════════════════════════════════════════ -->
-<div class="modal-overlay" id="modalOverlay" onclick="window._smetaModule.closePreviewOnBg(event)">
-  <div class="modal-toolbar">
-    <span>ПРЕДПРОСМОТР ДОКУМЕНТА</span>
-    <div class="modal-toolbar-right">
-      <button class="btn-close-preview" onclick="window._smetaModule.closePreview()">✕ Закрыть</button>
-      <button class="btn-generate" onclick="window._smetaModule.generatePDF()">Сформировать PDF →</button>
-    </div>
-  </div>
 
-  <!-- Cover -->
-  <div class="preview-page cover-pg" id="prevCover" style="position:relative;overflow:hidden">
-    <div class="ed-el" id="prevCovLogo" data-ed="logo" style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;cursor:move">
-      <img id="prevLogoImg" alt="" style="max-height:70px;max-width:180px;display:none">
-      <div id="prevCircle" style="width:66px;height:66px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:500">К</div>
-    </div>
-    <div class="ed-el" id="prevCovName" data-ed="name" style="position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);font-size:20px;font-weight:400;letter-spacing:5px;text-transform:uppercase;cursor:move;white-space:nowrap">КОМПАНИЯ</div>
-    <div class="ed-el" id="prevCovSlogan" data-ed="slogan" style="position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);font-size:10px;letter-spacing:4px;color:#888;text-transform:uppercase;cursor:move;white-space:nowrap">КАЧЕСТВО ПОД КЛЮЧ</div>
-    <div class="ed-el" id="prevCovType" data-ed="dtype" style="position:absolute;left:50%;top:72%;transform:translate(-50%,-50%);font-size:14px;font-weight:300;color:#555;letter-spacing:2px;cursor:move;white-space:nowrap">Проектно-сметная документация</div>
-    <div class="ed-el" id="prevCovFoot" data-ed="foot" style="position:absolute;bottom:40px;right:40px;display:flex;align-items:center;gap:6px;cursor:move">
-      <div id="prevFootCircle" style="width:22px;height:22px;border:1.5px solid #aaa;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;color:#aaa">К</div>
-      <div id="prevFootName" style="font-size:9px;font-weight:600;letter-spacing:2px;color:#aaa">КОМПАНИЯ</div>
-    </div>
-  </div>
-
-  <!-- Planning -->
-  <div class="preview-page" id="prevPlanning">
-    <div style="padding:40px 52px 40px;min-height:560px;display:flex;flex-direction:column">
-      <div style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px;letter-spacing:.5px">Планирование работ:</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex:1">
-        <div>
-          <div id="prevPlanBox" style="min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff">
-            <img id="prevPlanImg" alt="" style="width:100%;height:100%;object-fit:contain;display:none;background:#fff">
-            <div id="prevPlanPh" style="color:#ccc;font-size:36px">⬚</div>
-          </div>
-        </div>
-        <div>
-          <div id="prevObjInfo" style="font-size:11px;line-height:2;color:#333;margin-bottom:16px"></div>
-          <div style="font-size:10.5px;color:#555;line-height:1.85;margin-bottom:14px">На основании осмотра объекта подготовлены следующие документы:<br>– Смета строительно-монтажных работ (СМР).<br>– Смета на строительные и отделочные материалы.<br>– Календарный график производства работ.</div>
-          <div style="font-size:12px;font-weight:500;text-align:center;margin-bottom:8px">Экспликация помещений</div>
-          <table style="width:100%;border-collapse:collapse;font-size:10.5px">
-            <thead><tr>
-              <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Помещение</th>
-              <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Пол м²</th>
-              <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Стены м²</th>
-              <th style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:500;font-size:10px;background:#f5f5f2">Периметр</th>
-            </tr></thead>
-            <tbody id="prevRoomsBody"></tbody>
-            <tfoot><tr>
-              <td style="text-align:right;font-weight:600;border:1px solid #ccc;padding:5px 7px;background:#f5f5f2">ИТОГО:</td>
-              <td id="prevTotF" style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:600;background:#f5f5f2">—</td>
-              <td id="prevTotW" style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:600;background:#f5f5f2">—</td>
-              <td id="prevTotP" style="border:1px solid #ccc;padding:5px 7px;text-align:center;font-weight:600;background:#f5f5f2">—</td>
-            </tr></tfoot>
-          </table>
-        </div>
-      </div>
-      <div style="margin-top:auto;padding-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:5px">
-        <div id="prevPfC" style="width:20px;height:20px;border:1.5px solid #bbb;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;color:#bbb">К</div>
-        <div id="prevPfN" style="font-size:9px;font-weight:600;letter-spacing:2px;color:#bbb">КОМПАНИЯ</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SMR preview -->
-  <div class="preview-page" id="prevSmr" style="display:none">
-    <div style="padding:40px 52px;min-height:560px;display:flex;flex-direction:column">
-      <div style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета строительно-монтажных работ</div>
-      <table style="width:100%;border-collapse:collapse;font-size:10px">
-        <thead><tr>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:24px">№</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:left;font-weight:500;font-size:9.5px;background:#f5f5f2">Наименование</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:46px">Ед.</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:52px">Кол</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-weight:500;font-size:9.5px;background:#f5f5f2;width:98px">Всего ₽</th>
-        </tr></thead>
-        <tbody id="prevSmrBody"></tbody>
-      </table>
-      <div id="prevSmrEmpty" style="flex:1;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:13px">Загрузите файл СМР или введите вручную</div>
-    </div>
-  </div>
-
-  <!-- Mat preview -->
-  <div class="preview-page" id="prevMat" style="display:none">
-    <div style="padding:40px 52px;min-height:560px;display:flex;flex-direction:column">
-      <div style="font-size:22px;font-weight:400;text-align:center;margin-bottom:28px">Смета на строительные и отделочные материалы</div>
-      <table style="width:100%;border-collapse:collapse;font-size:10px">
-        <thead><tr>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:24px">№</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:left;font-weight:500;font-size:9.5px;background:#f5f5f2">Наименование</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:46px">Ед.</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-weight:500;font-size:9.5px;background:#f5f5f2;width:52px">Кол</th>
-          <th style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-weight:500;font-size:9.5px;background:#f5f5f2;width:98px">Всего ₽</th>
-        </tr></thead>
-        <tbody id="prevMatBody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Final preview -->
-  <div class="preview-page" id="prevFinal" style="display:none">
-    <div style="padding:40px 52px;min-height:560px;display:flex;flex-direction:column">
-      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:40px">
-        <thead><tr>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:28px">№</th>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px">Разделы</th>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:50px">Ед.</th>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:center;width:60px">Кол-во</th>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:right;width:110px">За ед. ₽</th>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;text-align:right;width:120px">Всего ₽</th>
-          <th style="border:1px solid #ccc;padding:6px 10px;background:#f5f5f2;font-weight:500;font-size:10px;width:80px">Примечание</th>
-        </tr></thead>
-        <tbody id="prevFinBody"></tbody>
-      </table>
-      <div style="display:flex;justify-content:flex-end;gap:14px;align-items:baseline;margin-top:24px;font-size:14px">
-        <span style="font-size:12px;color:#666">Итого по разделам:</span>
-        <strong id="prevFinVal" style="font-size:20px;font-weight:500">0 ₽</strong>
-      </div>
-    </div>
-  </div>
-</div><!-- /modal-overlay -->
 
 
 <!-- ═══════════════════════════════════════════════════════════
@@ -974,9 +928,13 @@
         moveTo(active);
         requestAnimationFrame(function(){ slider.style.transition = ''; });
       }
-      // Init block editor after layout settles
+      // Init block editor for ALL spp-a4 pages
       setTimeout(function() {
-        if (window.BlockEditor) window.BlockEditor.init();
+        if (window.BlockEditor) {
+          document.querySelectorAll('.spp-a4').forEach(function(a4) {
+            window.BlockEditor.initPage(a4);
+          });
+        }
       }, 400);
     });
   }
@@ -988,33 +946,29 @@
   }
 })();
 
-// ── SPP TABS ─────────────────────────────────────────────
+// ── SPP TOGGLES — show/hide pages ────────────────────────
 (function() {
-  function initSppTabs() {
-    var tabs  = document.querySelectorAll('.spp-tab');
-    var pages = document.querySelectorAll('.spp-page');
-    tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-        var p = tab.dataset.page;
-        tabs.forEach(function(t){ t.classList.remove('active'); });
-        pages.forEach(function(pg){ pg.classList.remove('active'); });
-        tab.classList.add('active');
-        var target = document.querySelector('.spp-page[data-page="' + p + '"]');
-        if (target) {
-          target.classList.add('active');
-          // Init block editor for this page's .spp-a4
-          setTimeout(function() {
-            var a4 = target.querySelector('.spp-a4');
-            if (a4 && window.BlockEditor) window.BlockEditor.initPage(a4);
-          }, 50);
+  function initSppToggles() {
+    var toggles = document.querySelectorAll('#sppToggles input[type="checkbox"]');
+    toggles.forEach(function(inp) {
+      inp.addEventListener('change', function() {
+        var page = inp.dataset.page;
+        var label = inp.closest('.spp-toggle');
+        var pageEl = document.querySelector('.spp-page[data-page="' + page + '"]');
+        if (inp.checked) {
+          label.classList.add('active');
+          if (pageEl) pageEl.classList.remove('spp-hidden');
+        } else {
+          label.classList.remove('active');
+          if (pageEl) pageEl.classList.add('spp-hidden');
         }
       });
     });
   }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initSppTabs);
+    document.addEventListener('DOMContentLoaded', initSppToggles);
   } else {
-    initSppTabs();
+    initSppToggles();
   }
 })();
 </script>
