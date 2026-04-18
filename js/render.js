@@ -148,6 +148,12 @@ export function redraw(ps) {
   drawWallDimensions();
   drawOpeningLeaders(exteriorWallIds);
   drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
+  // Stage 1: базовая линия для выделенных стен (жёлтый пунктир)
+  for (const item of ps.selectedItems) {
+    if (item.type !== 'wall') continue;
+    const wall = appState.walls.find(w => w.id === item.id);
+    if (wall) drawBaseLine(wall);
+  }
   if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
@@ -576,6 +582,26 @@ function drawSelectedHandles(tool, selectedItems, wallResizeState) {
     _ctx.beginPath(); _ctx.arc(h.screen.x, h.screen.y, 2, 0, Math.PI * 2);
     _ctx.fillStyle = active ? DRAW_COLORS.handleActive : DRAW_COLORS.handleStroke; _ctx.fill(); _ctx.restore();
   }
+}
+
+// ── Stage 1: базовая линия (жёлтый пунктир как в Renga) ──────────
+// Показывается только для выделенных стен. Это cx1/cy1 → cx2/cy2 —
+// линия, которую рисовал пользователь и которая не двигается при
+// изменении offset/thickness.
+function drawBaseLine(wall) {
+  const p1 = toScreen(wall.cx1 ?? wall.x1, wall.cy1 ?? wall.y1);
+  const p2 = toScreen(wall.cx2 ?? wall.x2, wall.cy2 ?? wall.y2);
+  _ctx.save();
+  _ctx.strokeStyle = 'rgba(202, 138, 4, 0.75)'; // янтарный — как в Renga
+  _ctx.lineWidth   = 1.5;
+  _ctx.setLineDash([8, 5]);
+  _ctx.lineCap     = 'round';
+  _ctx.beginPath();
+  _ctx.moveTo(p1.x, p1.y);
+  _ctx.lineTo(p2.x, p2.y);
+  _ctx.stroke();
+  _ctx.setLineDash([]);
+  _ctx.restore();
 }
 
 function drawTempWall(ps) {
