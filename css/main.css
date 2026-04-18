@@ -673,8 +673,28 @@ html, body {
 /* A4 page in right panel — scales to fit available width */
 .spp-a4 {
   width: 100%;
-  max-width: 860px;          /* ограничиваем максимальную ширину */
-  aspect-ratio: 297 / 210;   /* альбомная ориентация */
+  max-width: 860px;
+  aspect-ratio: 297 / 210;
+  background: #fff;
+  box-shadow: 0 3px 20px rgba(0,0,0,.13);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+}
+
+.spp-a4.cover-pg {
+  aspect-ratio: 297 / 210 !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
   background: #fff;
   box-shadow: 0 3px 20px rgba(0,0,0,.13);
   border-radius: 4px;
@@ -725,14 +745,12 @@ html, body {
 .spp-a4 {
   width: 100%;
   max-width: 740px;
-  min-height: 500px;
   margin: 0 auto;
   background: var(--white);
   box-shadow: 0 2px 20px rgba(0,0,0,.13), 0 1px 4px rgba(0,0,0,.07);
   border-radius: 2px;
   font-family: 'Merriweather', serif;
   position: relative;
-  overflow: visible;
 }
 
 /* Margin guide */
