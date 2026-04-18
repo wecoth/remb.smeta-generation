@@ -1,6 +1,9 @@
 // ─── WALL.JS ──────────────────────────────────────────────────────
 import { appState } from './state.js';
 import { clamp, applyWallOffset, segmentIntersection } from './geometry.js';
+// jsDelivr +esm endpoint — надёжный CDN специально для браузерного ESM.
+// Если нужен offline: скачай и положи как ./vendor/polygon-clipping.js
+import polygonClipping from 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm';
 
 // ── Contour helpers ──────────────────────────────────────────────
 
@@ -163,6 +166,9 @@ let _jointRectsCacheKey = '';
 
 export function invalidateJointCache() {
   _jointRectsCache = null;
+  // Сбрасываем union-кэш — геометрия изменилась
+  _unionCache = null;
+  _unionCacheKey = '';
 }
 
 export function getWallJointRects(jointMap = null) {
@@ -511,4 +517,54 @@ export function findClosestOpeningByProximity(wx, wy, thresholdWorld = 120) {
     if (dist < bestDist) { best = op; bestDist = dist; }
   }
   return best;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// POLYGON UNION — единый монолитный контур всех стен
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Полигон стены в формате polygon-clipping: Polygon = [Ring]
+ * Ring = [[x,y], [x,y], [x,y], [x,y]]
+ * Углы a,b,c,d — из getWallWorldGeometry.
+ */
+export function getWallPolygon(wall) {
+  const g = getWallWorldGeometry(wall);
+  return [[[g.a.x, g.a.y], [g.b.x, g.b.y], [g.c.x, g.c.y], [g.d.x, g.d.y]]];
+}
+
+// ── Кэш union-полигона ───────────────────────────────────────────
+let _unionCache = null;
+let _unionCacheKey = '';
+
+/**
+ * Объединение всех стен в единый монолитный полигон (MultiPolygon).
+ * Кэшируется — инвалидируется через invalidateJointCache() при любом
+ * изменении стен (addWall, deleteWall, resize, thickness change).
+ *
+ * Возвращает [] если стен нет или union не удался.
+ * Возвращает MultiPolygon = Polygon[] в формате polygon-clipping.
+ */
+export function getUnifiedWallsPolygon() {
+  if (appState.walls.length === 0) return [];
+
+  // Ключ кэша по физической геометрии стен (x1/y1/x2/y2 + thickness)
+  const key = appState.walls.map(w =>
+    `${w.id}:${Math.round(w.x1)},${Math.round(w.y1)},${Math.round(w.x2)},${Math.round(w.y2)},${w.thickness}`
+  ).join('|');
+
+  if (_unionCache !== null && _unionCacheKey === key) return _unionCache;
+
+  try {
+    const polys = appState.walls.map(getWallPolygon);
+    _unionCache = polygonClipping.union(...polys);
+  } catch (e) {
+    console.warn('[REMB] polygon union failed:', e);
+    // Fallback: каждая стена как отдельный полигон
+    // (визуально появятся внутренние швы, но ничего не сломается)
+    _unionCache = appState.walls.map(getWallPolygon);
+  }
+
+  _unionCacheKey = key;
+  return _unionCache;
 }
