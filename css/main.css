@@ -649,8 +649,15 @@ html, body {
   display: flex; align-items: flex-start; justify-content: center;
   padding: 28px 24px 40px;
 }
-.spp-page { display: none; width: 100%; }
-.spp-page.active { display: block; }
+.spp-page {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  transition: opacity .2s;
+}
+.spp-page.spp-hidden {
+  display: none;
+}
 
 /* A4 page in right panel — scales to fit available width */
 .spp-a4 {
