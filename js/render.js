@@ -5,7 +5,7 @@ import {
   getWallContourPoint, isWallEndpointCoveredByAnotherWall,
   buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
-  areWallsCollinear, getWallFaceSegments,
+  areWallsCollinear,
 } from './wall.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
@@ -149,15 +149,11 @@ export function redraw(ps) {
   drawWallDimensions();
   drawOpeningLeaders(exteriorWallIds);
   drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
-  // Stage 1 + 7.5: три референсные линии стены для выделенных стен
-  // Порядок: грани (серые) → ось (жёлтая) чтобы ось была поверх
+  // Stage 1: базовая линия для выделенных стен (жёлтый пунктир)
   for (const item of ps.selectedItems) {
     if (item.type !== 'wall') continue;
     const wall = appState.walls.find(w => w.id === item.id);
-    if (wall) {
-      drawWallFaceLines(wall);
-      drawBaseLine(wall);
-    }
+    if (wall) drawBaseLine(wall);
   }
   if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
@@ -650,49 +646,22 @@ function drawTrackingLines(activeTrackingPoint, trackingLines) {
 }
 
 // ── Stage 1: базовая линия (жёлтый пунктир как в Renga) ──────────
+// Показывается только для выделенных стен. Это cx1/cy1 → cx2/cy2 —
+// линия, которую рисовал пользователь и которая не двигается при
+// изменении offset/thickness.
 function drawBaseLine(wall) {
   const p1 = toScreen(wall.cx1 ?? wall.x1, wall.cy1 ?? wall.y1);
   const p2 = toScreen(wall.cx2 ?? wall.x2, wall.cy2 ?? wall.y2);
   _ctx.save();
-  _ctx.strokeStyle = 'rgba(202, 138, 4, 0.85)'; // янтарный — как в Renga
+  _ctx.strokeStyle = 'rgba(202, 138, 4, 0.75)'; // янтарный — как в Renga
   _ctx.lineWidth   = 1.5;
   _ctx.setLineDash([8, 5]);
   _ctx.lineCap     = 'round';
-  _ctx.shadowColor = 'rgba(255,255,255,0.9)';
-  _ctx.shadowBlur  = 3;
   _ctx.beginPath();
   _ctx.moveTo(p1.x, p1.y);
   _ctx.lineTo(p2.x, p2.y);
   _ctx.stroke();
   _ctx.setLineDash([]);
-  _ctx.shadowBlur = 0;
-  _ctx.restore();
-}
-
-// ── Stage 7.5: грани стены (янтарные пунктиры, тоньше оси) ───────
-// Три референсные линии стены: левая грань | ось | правая грань.
-// Все три янтарные — один визуальный язык, разная насыщенность.
-// White shadow позволяет пробиться сквозь тёмный контур стены.
-function drawWallFaceLines(wall) {
-  const faces = getWallFaceSegments(wall);
-  if (!faces) return;
-  _ctx.save();
-  _ctx.strokeStyle = 'rgba(202, 138, 4, 0.50)'; // янтарный, светлее оси
-  _ctx.lineWidth   = 1;
-  _ctx.setLineDash([4, 6]);
-  _ctx.lineCap     = 'round';
-  _ctx.shadowColor = 'rgba(255,255,255,0.95)';
-  _ctx.shadowBlur  = 4;
-  for (const seg of [faces.left, faces.right]) {
-    const p1 = toScreen(seg.x1, seg.y1);
-    const p2 = toScreen(seg.x2, seg.y2);
-    _ctx.beginPath();
-    _ctx.moveTo(p1.x, p1.y);
-    _ctx.lineTo(p2.x, p2.y);
-    _ctx.stroke();
-  }
-  _ctx.setLineDash([]);
-  _ctx.shadowBlur = 0;
   _ctx.restore();
 }
 
