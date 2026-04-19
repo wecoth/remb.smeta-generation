@@ -97,12 +97,6 @@ export function computeRooms(wallHeightFallback = 2700) {
     for (const idx of toFill) bitmap[idx] = 1;
   }
   
-    // Применяем изменения только после полного прохода — нет каскада
-    for (const idx of toFill) {
-      bitmap[idx] = 1;
-    }
-  }
-
   // ── 4. BFS flood fill, 4-связность ────────────────────────────
   const regionId          = new Int32Array(cols * rows);
   let nextId = 1;
