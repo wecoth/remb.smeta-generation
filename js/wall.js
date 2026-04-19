@@ -98,6 +98,16 @@ export function getWallSnapSegments(wall) {
   ];
 }
 
+// ── Three reference lines (Stage 7.5) ────────────────────────────
+// left = грань a→b, right = грань d→c. Используется render.js.
+export function getWallFaceSegments(wall) {
+  const g = getWallWorldGeometry(wall);
+  return {
+    left:  { x1: g.a.x, y1: g.a.y, x2: g.b.x, y2: g.b.y },
+    right: { x1: g.d.x, y1: g.d.y, x2: g.c.x, y2: g.c.y },
+  };
+}
+
 // ── Surface tests ─────────────────────────────────────────────────
 
 export function isPointInsideWallSurface(point, wall, padding = 0.75) {
