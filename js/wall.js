@@ -207,12 +207,27 @@ export function getWallJointRects(jointMap = null) {
         const joint = horizontal.point;
         const hBounds = getWallWorldBounds(horizontal.wall);
         const vBounds = getWallWorldBounds(vertical.wall);
-        const x1 = horizontal.direction.x > 0 ? vBounds.minX : Math.max(vBounds.minX, joint.x);
-        const x2 = horizontal.direction.x > 0 ? Math.min(vBounds.maxX, joint.x) : vBounds.maxX;
-        const y1 = vertical.direction.y > 0 ? hBounds.minY : Math.max(hBounds.minY, joint.y);
-        const y2 = vertical.direction.y > 0 ? Math.min(hBounds.maxY, joint.y) : hBounds.maxY;
-        const left = Math.min(x1, x2), right = Math.max(x1, x2);
-        const top  = Math.min(y1, y2), bottom = Math.max(y1, y2);
+
+        // direction — вектор ОТ joint К другому концу стены.
+        // Пустой квадрант находится НА СТОРОНЕ joint-а (противоположной direction).
+        // hDir.x > 0 → стена идёт вправо → rect слева/совпадает с joint по X → берём [joint.x .. vBounds.maxX]... нет.
+        // Правило: rect должен быть в квадранте МЕЖДУ двумя стенами,
+        // т.е. со стороны joint относительно направления каждой стены.
+        // Для H-стены: rect по X находится НЕ в стороне direction, а напротив.
+        //   hDir.x > 0 (стена вправо) → rect по X: от vBounds.minX до joint.x (левее joint)
+        //   hDir.x < 0 (стена влево) → rect по X: от joint.x до vBounds.maxX (правее joint)
+        // Для V-стены: аналогично по Y.
+        //   vDir.y > 0 (стена вниз) → rect по Y: от hBounds.minY до joint.y (выше joint)
+        //   vDir.y < 0 (стена вверх) → rect по Y: от joint.y до hBounds.maxY (ниже joint)
+        const x1 = horizontal.direction.x > 0 ? vBounds.minX          : joint.x;
+        const x2 = horizontal.direction.x > 0 ? joint.x               : vBounds.maxX;
+        const y1 = vertical.direction.y   > 0 ? hBounds.minY          : joint.y;
+        const y2 = vertical.direction.y   > 0 ? joint.y               : hBounds.maxY;
+
+        const left   = Math.min(x1, x2);
+        const right  = Math.max(x1, x2);
+        const top    = Math.min(y1, y2);
+        const bottom = Math.max(y1, y2);
         if ((right - left) < 1 || (bottom - top) < 1) continue;
 
         const key = `${Math.round(left)},${Math.round(top)},${Math.round(right)},${Math.round(bottom)}`;
