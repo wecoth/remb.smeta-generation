@@ -1,4 +1,4 @@
-// ─── ROOM.JS (VECTOR VERSION + METRICS) ─────────────────────────────
+// ─── ROOM.JS (VECTOR VERSION + INWARD OFFSET) ────────────────────────
 import { appState, ROOM_STROKES } from './state.js';
 import { EventBus } from './eventBus.js';
 import {
@@ -26,6 +26,99 @@ export function renameRoom(roomKey, nextName) {
 }
 
 export let exteriorWallIds = new Set();
+
+// ══════════════════════════════════════════════════════════════════
+// СМЕЩЕНИЕ ПОЛИГОНА ВНУТРЬ НА ПОЛОВИНУ ТОЛЩИНЫ СТЕН
+// ══════════════════════════════════════════════════════════════════
+function getEdgeDirection(wall, point) {
+  const d1 = Math.hypot(wall.x1 - point.x, wall.y1 - point.y);
+  const d2 = Math.hypot(wall.x2 - point.x, wall.y2 - point.y);
+  if (d1 < d2) {
+    return { x: wall.x2 - wall.x1, y: wall.y2 - wall.y1 };
+  } else {
+    return { x: wall.x1 - wall.x2, y: wall.y1 - wall.y2 };
+  }
+}
+
+function lineLineIntersection(p1, p2, p3, p4) {
+  const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+  if (Math.abs(denom) < 0.0001) return null;
+  const x = ((p1.x * p2.y - p1.y * p2.x) * (p3.x - p4.x) - (p1.x - p2.x) * (p3.x * p4.y - p3.y * p4.x)) / denom;
+  const y = ((p1.x * p2.y - p1.y * p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x * p4.y - p3.y * p4.x)) / denom;
+  return { x, y };
+}
+
+function offsetPolygonInward(poly, boundaryWalls, roomCenter) {
+  if (poly.length < 3) return poly;
+
+  const newPoly = [];
+  const n = poly.length;
+
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const curr = poly[i];
+    const next = poly[(i + 1) % n];
+
+    // Находим стены, инцидентные этой вершине
+    const wallsAtVertex = boundaryWalls.filter(w => {
+      const d1 = Math.hypot(w.x1 - curr.x, w.y1 - curr.y);
+      const d2 = Math.hypot(w.x2 - curr.x, w.y2 - curr.y);
+      return d1 < 1.0 || d2 < 1.0;
+    });
+
+    if (wallsAtVertex.length < 2) {
+      // Не нашли две стены — оставляем точку как есть
+      newPoly.push({ x: curr.x, y: curr.y });
+      continue;
+    }
+
+    const w1 = wallsAtVertex[0];
+    const w2 = wallsAtVertex[1];
+
+    const edge1 = getEdgeDirection(w1, curr);
+    const edge2 = getEdgeDirection(w2, curr);
+
+    // Нормали к стенам (перпендикуляры)
+    let norm1 = { x: -edge1.y, y: edge1.x };
+    let norm2 = { x: -edge2.y, y: edge2.x };
+
+    // Направляем нормали внутрь комнаты (к центру)
+    const toCenter = { x: roomCenter.x - curr.x, y: roomCenter.y - curr.y };
+    if (norm1.x * toCenter.x + norm1.y * toCenter.y < 0) {
+      norm1.x = -norm1.x; norm1.y = -norm1.y;
+    }
+    if (norm2.x * toCenter.x + norm2.y * toCenter.y < 0) {
+      norm2.x = -norm2.x; norm2.y = -norm2.y;
+    }
+
+    const half1 = w1.thickness / 2;
+    const half2 = w2.thickness / 2;
+
+    // Смещённые точки на нормалях
+    const p1 = { x: curr.x + norm1.x * half1, y: curr.y + norm1.y * half1 };
+    const p2 = { x: curr.x + edge1.x * 1000 + norm1.x * half1, y: curr.y + edge1.y * 1000 + norm1.y * half1 };
+    const p3 = { x: curr.x + norm2.x * half2, y: curr.y + norm2.y * half2 };
+    const p4 = { x: curr.x + edge2.x * 1000 + norm2.x * half2, y: curr.y + edge2.y * 1000 + norm2.y * half2 };
+
+    const intersection = lineLineIntersection(p1, p2, p3, p4);
+    if (intersection) {
+      newPoly.push(intersection);
+    } else {
+      // fallback: смещение по биссектрисе
+      const bisector = { x: norm1.x + norm2.x, y: norm1.y + norm2.y };
+      const len = Math.hypot(bisector.x, bisector.y);
+      if (len > 0.001) {
+        bisector.x /= len; bisector.y /= len;
+        const avgHalf = (half1 + half2) / 2;
+        newPoly.push({ x: curr.x + bisector.x * avgHalf, y: curr.y + bisector.y * avgHalf });
+      } else {
+        newPoly.push({ x: curr.x, y: curr.y });
+      }
+    }
+  }
+
+  return newPoly;
+}
 
 // ══════════════════════════════════════════════════════════════════
 // ВЕКТОРНОЕ ПОСТРОЕНИЕ КОМНАТ
@@ -59,14 +152,14 @@ export function computeRooms(wallHeightFallback = 2700) {
 
   for (let i = 0; i < facePolys.length; i++) {
     if (i === exteriorIndex) continue;
-    const poly = facePolys[i];
-    const area = faceAreas[i];
-    if (area < 50000) continue; // 0.05 м²
+    const rawPoly = facePolys[i];
+    const rawArea = faceAreas[i];
+    if (rawArea < 50000) continue; // 0.05 м²
 
-    const center = polygonCentroid(poly);
+    const roughCenter = polygonCentroid(rawPoly);
     let insideWall = false;
     for (const w of walls) {
-      if (isPointInWall(center, w, 5)) { insideWall = true; break; }
+      if (isPointInWall(roughCenter, w, 5)) { insideWall = true; break; }
     }
     if (insideWall) continue;
 
@@ -74,11 +167,18 @@ export function computeRooms(wallHeightFallback = 2700) {
     for (const edge of edges) {
       const v1 = vertices[edge.v1], v2 = vertices[edge.v2];
       const mid = { x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2 };
-      if (isPointOnPolygonBoundary(mid, poly, 1.0)) {
+      if (isPointOnPolygonBoundary(mid, rawPoly, 1.0)) {
         boundaryWallIds.add(edge.wallId);
       }
     }
     const boundaryWalls = walls.filter(w => boundaryWallIds.has(w.id));
+
+    // Смещаем полигон внутрь комнаты на половину толщины стен
+    const poly = offsetPolygonInward(rawPoly, boundaryWalls, roughCenter);
+    const area = polygonArea(poly);
+    if (area < 50000) continue;
+
+    const center = polygonCentroid(poly);
 
     let roomHeightMm = wallHeightFallback;
     for (const w of boundaryWalls) {
