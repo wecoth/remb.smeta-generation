@@ -652,11 +652,15 @@ export function getComputedRooms() {
   });
 }
 
-// ── Stage 2: автономная реактивность ────────────────────────────
-// room.js сам подписывается на изменение стен и пересчитывает комнаты.
-// Убирает необходимость вызывать computeRooms() из ui-planner.js вручную.
-// Цепочка: walls:changed → computeRooms → rooms:computed → updateExpl (в ui-planner)
+// ── Stage 2: автономная реактивность с debounce (чтобы не висло при рисовании) ─────
+let debounceTimer = null;
+const DEBOUNCE_MS = 80;   // 80 мс — оптимально, чувствуется мгновенно, но не виснет
+
 EventBus.on('walls:changed', () => {
-  computeRooms(_wallHeightFallback);
-  // computeRooms уже сам вызывает EventBus.emit('rooms:computed') в конце
+  if (debounceTimer) clearTimeout(debounceTimer);
+  
+  debounceTimer = setTimeout(() => {
+    computeRooms(_wallHeightFallback);
+    debounceTimer = null;
+  }, DEBOUNCE_MS);
 });
