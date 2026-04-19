@@ -9,6 +9,7 @@ import {
 } from './wall.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
+import { polygonCentroid } from './geometry.js';
 
 let _canvas, _ctx, _hatchPat = null;
 let _getScale = () => 0.12;
@@ -241,29 +242,51 @@ function drawGrid() {
 
 function drawRoomFills(selectedItems) {
   const scale = _getScale();
-  // Небольшое перекрытие ячеек устраняет белую полосу у стен.
-  // Ячейки flood fill не доходят до внутренней поверхности стены
-  // из-за inflate bitmap — overlap компенсирует этот зазор.
-  const OVERLAP_MM = 32; // больше inflate 25мм — убирает зазоры на диагоналях
   for (let i = 0; i < appState.rooms.length; i++) {
-    const r = appState.rooms[i]; if (!r.cells?.length) continue;
+    const r = appState.rooms[i];
     _ctx.save();
-    _ctx.beginPath();
-    for (const c of r.cells) {
-      const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
-      const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
-      const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
-      _ctx.rect(p.x, p.y, w, h);
+
+    if (r.polygon && r.polygon.length >= 3) {
+      // Новый векторный метод
+      _ctx.beginPath();
+      const first = toScreen(r.polygon[0].x, r.polygon[0].y);
+      _ctx.moveTo(first.x, first.y);
+      for (let j = 1; j < r.polygon.length; j++) {
+        const p = toScreen(r.polygon[j].x, r.polygon[j].y);
+        _ctx.lineTo(p.x, p.y);
+      }
+      _ctx.closePath();
+      _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length];
+      _ctx.fill();
+      // Тонкая обводка для устранения возможных зазоров
+      _ctx.strokeStyle = ROOM_COLORS[i % ROOM_COLORS.length];
+      _ctx.lineWidth = 1;
+      _ctx.stroke();
+    } else if (r.cells) {
+      // Старый метод (fallback)
+      const OVERLAP_MM = 32;
+      _ctx.beginPath();
+      for (const c of r.cells) {
+        const p = toScreen(c.x1 - OVERLAP_MM / 2, c.y1 - OVERLAP_MM / 2);
+        const w = (c.x2 - c.x1 + OVERLAP_MM) * scale;
+        const h = (c.y2 - c.y1 + OVERLAP_MM) * scale;
+        _ctx.rect(p.x, p.y, w, h);
+      }
+      _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length];
+      _ctx.fill();
     }
-    _ctx.fillStyle = ROOM_COLORS[i % ROOM_COLORS.length]; _ctx.fill();
-   
-    if (scale > 0.08) { // Bug #6 fix
-      const sc = toScreen(r.center.x, r.center.y);
+
+    // Текст метки (как было)
+    if (scale > 0.08) {
+      const center = r.center || (r.polygon ? polygonCentroid(r.polygon) : { x: 0, y: 0 });
+      const sc = toScreen(center.x, center.y);
       _ctx.fillStyle = DRAW_COLORS.roomLabel;
-      _ctx.font = `600 ${(scale * 200).toFixed(1)}px Onest, Inter, sans-serif`; // статичный в мировых ед.
-      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle'; _ctx.fillText(r.name, sc.x, sc.y);
+      _ctx.font = `600 ${(scale * 200).toFixed(1)}px Onest, Inter, sans-serif`;
+      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+      _ctx.fillText(r.name, sc.x, sc.y);
       _ctx.font = `500 ${(scale * 160).toFixed(1)}px Onest, Inter, sans-serif`;
-      _ctx.fillStyle = DRAW_COLORS.roomMeta; _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
+      _ctx.fillStyle = DRAW_COLORS.roomMeta;
+      _ctx.fillText(`${r.area.toFixed(2)} м²`, sc.x, sc.y + Math.max(10, scale * 180));
     }
     _ctx.restore();
   }
