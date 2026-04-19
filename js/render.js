@@ -54,11 +54,8 @@ function fillWall(pathFn, fill) {
 }
 
 function wallInteriorSide(wall, fallback = 1) {
-  // Используем базовую линию (cx1/cy1) — не смещённую ось x1/y1
-  const bx1 = wall.cx1 ?? wall.x1, by1 = wall.cy1 ?? wall.y1;
-  const bx2 = wall.cx2 ?? wall.x2, by2 = wall.cy2 ?? wall.y2;
-  const mid = { x: (bx1 + bx2) / 2, y: (by1 + by2) / 2 };
-  const angle = Math.atan2(by2 - by1, bx2 - bx1);
+  const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
+  const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
   let best = null;
   for (const r of appState.rooms) {
@@ -293,17 +290,10 @@ function drawWalls(selectedItems) {
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
     const sp = getWallContourPoint(w, 'start');
     const ep = getWallContourPoint(w, 'end');
-    // Допуск = половина толщины стены: контурная точка стены с любым offset
-    // может отстоять от края joint rect на расстояние до halfThickness.
-    // Маленький допуск (±2) приводит к тому что clip и joint rect срабатывают
-    // одновременно → clip обрезает угол, joint rect его не закрывает → белая щель.
-    const _epsJR = (w.thickness ?? 200) / 2 + 2;
     const hasStartJR = myJoints.some(jr =>
-      sp.x >= jr.left - _epsJR && sp.x <= jr.right  + _epsJR &&
-      sp.y >= jr.top  - _epsJR && sp.y <= jr.bottom + _epsJR);
+      sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
     const hasEndJR = myJoints.some(jr =>
-      ep.x >= jr.left - _epsJR && ep.x <= jr.right  + _epsJR &&
-      ep.y >= jr.top  - _epsJR && ep.y <= jr.bottom + _epsJR);
+      ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
 
     // Stage 4: коллинеарных соседей исключаем из clip-расчёта —
     // у параллельных граней нет точки пересечения, clip всё равно вернул бы null,
@@ -589,10 +579,7 @@ function drawOpening(op, wall, isHover, isSel, dh, ds) {
 }
 
 function drawOpeningDimensions(op, wall, angle, seg) {
-  // Используем контурную базовую линию (cx1/cy1) для корректных размеров
-  const bx1 = wall.cx1 ?? wall.x1, by1 = wall.cy1 ?? wall.y1;
-  const bx2 = wall.cx2 ?? wall.x2, by2 = wall.cy2 ?? wall.y2;
-  const ws = toScreen(bx1, by1), we = toScreen(bx2, by2);
+  const ws = toScreen(wall.x1, wall.y1), we = toScreen(wall.x2, wall.y2);
   const os = toScreen(seg.x1, seg.y1), oe = toScreen(seg.x2, seg.y2);
   const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
   const side = wallInteriorSide(wall, 1), off = wall.thickness / 2 + 18;
@@ -605,7 +592,7 @@ function drawOpeningDimensions(op, wall, angle, seg) {
     _ctx.moveTo(to.x, to.y); _ctx.lineTo(to2.x, to2.y); _ctx.moveTo(fo.x, fo.y); _ctx.lineTo(to2.x, to2.y); _ctx.stroke(); _ctx.restore();
     drawAlignedTextBox(label, { x: (fo.x + to2.x) / 2, y: (fo.y + to2.y) / 2 }, angle);
   };
-  const wlen = Math.hypot(bx2 - bx1, by2 - by1);
+  const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
   dim(ws, os, `${Math.round(op.t * wlen - op.width / 2)} мм`, DRAW_COLORS.dimension);
   dim(os, oe, `${op.width} мм`, op.type === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke);
   dim(oe, we, `${Math.round(wlen - (op.t * wlen + op.width / 2))} мм`, DRAW_COLORS.dimension);
@@ -784,23 +771,18 @@ function drawWallDimensions() {
   _ctx.save();
 
   for (const wall of appState.walls) {
-    // Используем контурную базовую линию (cx1/cy1 → cx2/cy2) —
-    // это то что видит пользователь как линию стены, от неё меряются размеры.
-    // wall.x1/y1 — смещённая ось (зависит от offset), не подходит для размеров.
-    const bx1 = wall.cx1 ?? wall.x1, by1 = wall.cy1 ?? wall.y1;
-    const bx2 = wall.cx2 ?? wall.x2, by2 = wall.cy2 ?? wall.y2;
-    const wlen = Math.hypot(bx2 - bx1, by2 - by1);
+    const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (wlen < 100) continue;
 
-    const angle  = Math.atan2(by2 - by1, bx2 - bx1);
+    const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
     const nx = -uy, ny = ux;
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
     const worldPt = (along, normalOff) => ({
-      x: bx1 + ux * along + nx * normalOff,
-      y: by1 + uy * along + ny * normalOff,
+      x: wall.x1 + ux * along + nx * normalOff,
+      y: wall.y1 + uy * along + ny * normalOff,
     });
     const sp = (along, normalOff) => toScreen(worldPt(along, normalOff).x, worldPt(along, normalOff).y);
 
@@ -898,19 +880,16 @@ function drawOpeningLeaders(extWallIds) {
     const isEntrance = op.type === 'door' && extWallIds && extWallIds.has(op.wallId);
     if (op.type !== 'window' && !isEntrance) continue;
 
-    // Используем базовую линию (cx1/cy1) для корректного позиционирования выносок
-    const _bx1 = wall.cx1 ?? wall.x1, _by1 = wall.cy1 ?? wall.y1;
-    const _bx2 = wall.cx2 ?? wall.x2, _by2 = wall.cy2 ?? wall.y2;
-    const wlen  = Math.hypot(_bx2 - _bx1, _by2 - _by1);
-    const angle = Math.atan2(_by2 - _by1, _bx2 - _bx1);
+    const wlen  = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
     const nx = -uy, ny = ux;
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
     // Центр проёма в мировых координатах
-    const cx = _bx1 + ux * op.t * wlen;
-    const cy = _by1 + uy * op.t * wlen;
+    const cx = wall.x1 + ux * op.t * wlen;
+    const cy = wall.y1 + uy * op.t * wlen;
 
     // Точка старта выноски — на внешней грани стены
     const outSign = -interiorSign;
