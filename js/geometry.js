@@ -1,9 +1,4 @@
-// ─── GEOMETRY.JS — pure math, no DOM, no appState ─────────────────
-
-/**
- * Segment–segment intersection.
- * Returns {x, y, t, u} or null.
- */
+// ─── GEOMETRY.JS — pure math, vector room detection added ─────────
 export function segmentIntersection(a, b, epsilon = 0.001) {
   const r = { x: a.x2 - a.x1, y: a.y2 - a.y1 };
   const s = { x: b.x2 - b.x1, y: b.y2 - b.y1 };
@@ -16,10 +11,6 @@ export function segmentIntersection(a, b, epsilon = 0.001) {
   return { x: a.x1 + r.x * t, y: a.y1 + r.y * t, t, u };
 }
 
-/**
- * Project point onto segment [x1,y1]→[x2,y2].
- * Returns {x, y, t, distance}.
- */
 export function projectPointOntoSegment(point, segment) {
   const dx = segment.x2 - segment.x1;
   const dy = segment.y2 - segment.y1;
@@ -36,16 +27,10 @@ export function projectPointOntoSegment(point, segment) {
   return { ...proj, t, distance: Math.hypot(point.x - proj.x, point.y - proj.y) };
 }
 
-/**
- * Clamp v between min and max.
- */
 export function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-/**
- * Normalize direction to the dominant axis.
- */
 export function normalizeDirection(dir) {
   if (Math.abs(dir.x) >= Math.abs(dir.y)) {
     return dir.x >= 0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
@@ -53,18 +38,11 @@ export function normalizeDirection(dir) {
   return dir.y >= 0 ? { x: 0, y: 1 } : { x: 0, y: -1 };
 }
 
-/**
- * Do numeric ranges [a1,a2] and [b1,b2] overlap?
- */
 export function rangesOverlap(a1, a2, b1, b2, eps = 2) {
   return Math.max(Math.min(a1, a2), Math.min(b1, b2)) <
          Math.min(Math.max(a1, a2), Math.max(b1, b2)) + eps;
 }
 
-/**
- * Cluster a sorted list of values: values within `threshold` of each other
- * are merged to their average.  Fixes bug #11 (float coords grid explosion).
- */
 export function clusterValues(values, threshold = 5) {
   if (!values.length) return [];
   const sorted = [...values].sort((a, b) => a - b);
@@ -82,9 +60,6 @@ export function clusterValues(values, threshold = 5) {
   return result.map(v => Math.round(v));
 }
 
-/**
- * Apply wall offset (left / center / right) perpendicular to the draw direction.
- */
 export function applyWallOffset(cx, cy, angle, offset, thickness) {
   if (offset === 'center') return { x: cx, y: cy };
   const px = -Math.sin(angle);
@@ -93,16 +68,79 @@ export function applyWallOffset(cx, cy, angle, offset, thickness) {
   return { x: cx + sign * px * thickness / 2, y: cy + sign * py * thickness / 2 };
 }
 
-// Находит все точки пересечения между двумя стенами (включая концы)
-export function findAllIntersections(walls, eps = 0.1) {
+// ══════════════════════════════════════════════════════════════════
+// ВЕКТОРНОЕ ПОСТРОЕНИЕ КОМНАТ (Stage 6)
+// ══════════════════════════════════════════════════════════════════
+
+/** Площадь полигона (по модулю) */
+export function polygonArea(poly) {
+  if (poly.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p1 = poly[i];
+    const p2 = poly[(i + 1) % poly.length];
+    area += p1.x * p2.y - p2.x * p1.y;
+  }
+  return Math.abs(area) / 2;
+}
+
+/** Центроид полигона */
+export function polygonCentroid(poly) {
+  if (poly.length === 0) return { x: 0, y: 0 };
+  let cx = 0, cy = 0, area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p1 = poly[i];
+    const p2 = poly[(i + 1) % poly.length];
+    const cross = p1.x * p2.y - p2.x * p1.y;
+    area += cross;
+    cx += (p1.x + p2.x) * cross;
+    cy += (p1.y + p2.y) * cross;
+  }
+  area /= 2;
+  if (Math.abs(area) < 0.0001) {
+    // fallback: среднее арифметическое
+    cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+    cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+    return { x: cx, y: cy };
+  }
+  return { x: cx / (6 * area), y: cy / (6 * area) };
+}
+
+/** Проверка: точка внутри полигона (алгоритм луча) */
+export function isPointInPolygon(point, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > point.y) !== (yj > point.y)) &&
+      (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** Проверка: точка внутри контура стены (для исключения пустот) */
+export function isPointInWall(point, wall, eps = 5) {
+  const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+  if (len < 0.001) return false;
+  const u = ((point.x - wall.x1) * (wall.x2 - wall.x1) + (point.y - wall.y1) * (wall.y2 - wall.y1)) / (len * len);
+  if (u < -0.1 || u > 1.1) return false;
+  const proj = {
+    x: wall.x1 + u * (wall.x2 - wall.x1),
+    y: wall.y1 + u * (wall.y2 - wall.y1)
+  };
+  const dist = Math.hypot(point.x - proj.x, point.y - proj.y);
+  return dist <= wall.thickness / 2 + eps;
+}
+
+/** Находит все уникальные точки (концы стен + пересечения) */
+export function findAllIntersections(walls, eps = 0.5) {
   const points = [];
-  // Добавляем все концы стен
   for (const w of walls) {
     points.push({ x: w.x1, y: w.y1, wallIds: [w.id] });
     points.push({ x: w.x2, y: w.y2, wallIds: [w.id] });
   }
 
-  // Пересечения каждой пары стен
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
       const w1 = walls[i], w2 = walls[j];
@@ -110,15 +148,12 @@ export function findAllIntersections(walls, eps = 0.1) {
       const seg2 = { x1: w2.x1, y1: w2.y1, x2: w2.x2, y2: w2.y2 };
       const inter = segmentIntersection(seg1, seg2, eps);
       if (inter) {
-        // Проверяем, не совпадает ли с уже существующей точкой
-        const exists = points.some(p => Math.hypot(p.x - inter.x, p.y - inter.y) < eps);
+        const exists = points.find(p => Math.hypot(p.x - inter.x, p.y - inter.y) < eps);
         if (!exists) {
           points.push({ x: inter.x, y: inter.y, wallIds: [w1.id, w2.id] });
         } else {
-          // Добавляем id стен к существующей точке
-          const pt = points.find(p => Math.hypot(p.x - inter.x, p.y - inter.y) < eps);
-          if (!pt.wallIds.includes(w1.id)) pt.wallIds.push(w1.id);
-          if (!pt.wallIds.includes(w2.id)) pt.wallIds.push(w2.id);
+          if (!exists.wallIds.includes(w1.id)) exists.wallIds.push(w1.id);
+          if (!exists.wallIds.includes(w2.id)) exists.wallIds.push(w2.id);
         }
       }
     }
@@ -126,16 +161,16 @@ export function findAllIntersections(walls, eps = 0.1) {
   return points;
 }
 
-// Строит граф: вершины (точки) и рёбра (сегменты стен между точками)
+/** Строит граф: вершины (точки) и рёбра (сегменты стен между точками) */
 export function buildWallGraph(walls, points, eps = 0.5) {
   const vertices = points.map((p, i) => ({ ...p, id: i }));
   const edges = [];
 
   for (const wall of walls) {
-    // Находим все точки, лежащие на этой стене
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (len < 1) continue;
+
     const onWall = vertices.filter(v => {
-      const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-      if (len < 1) return false;
       const u = ((v.x - wall.x1) * (wall.x2 - wall.x1) + (v.y - wall.y1) * (wall.y2 - wall.y1)) / (len * len);
       if (u < -eps || u > 1 + eps) return false;
       const proj = {
@@ -145,7 +180,6 @@ export function buildWallGraph(walls, points, eps = 0.5) {
       return Math.hypot(v.x - proj.x, v.y - proj.y) < eps;
     });
 
-    // Сортируем точки вдоль стены
     const dirX = wall.x2 - wall.x1, dirY = wall.y2 - wall.y1;
     onWall.sort((a, b) => {
       const dotA = (a.x - wall.x1) * dirX + (a.y - wall.y1) * dirY;
@@ -153,7 +187,6 @@ export function buildWallGraph(walls, points, eps = 0.5) {
       return dotA - dotB;
     });
 
-    // Создаём рёбра между соседними точками
     for (let i = 0; i < onWall.length - 1; i++) {
       const v1 = onWall[i], v2 = onWall[i+1];
       const length = Math.hypot(v2.x - v1.x, v2.y - v1.y);
@@ -166,20 +199,17 @@ export function buildWallGraph(walls, points, eps = 0.5) {
       });
     }
   }
-
   return { vertices, edges };
 }
 
-// Находит все грани (faces) в планарном графе
+/** Находит все грани (faces) в планарном графе */
 export function findFaces(vertices, edges) {
-  // Строим списки смежности
   const adj = Array.from({ length: vertices.length }, () => []);
   for (const e of edges) {
     adj[e.v1].push({ to: e.v2, edge: e });
     adj[e.v2].push({ to: e.v1, edge: e });
   }
 
-  // Сортируем соседей по углу для корректного обхода
   for (let i = 0; i < adj.length; i++) {
     adj[i].sort((a, b) => {
       const v = vertices[i];
@@ -192,7 +222,6 @@ export function findFaces(vertices, edges) {
   const usedEdges = new Set();
   const faces = [];
 
-  // Обходим каждое ребро в обоих направлениях
   for (const e of edges) {
     for (const dir of ['forward', 'backward']) {
       const start = dir === 'forward' ? e.v1 : e.v2;
@@ -205,27 +234,24 @@ export function findFaces(vertices, edges) {
       let prev = next;
       usedEdges.add(edgeKey);
 
-      // Идём по грани, выбирая самое левое ребро
       while (true) {
         const neighbors = adj[prev];
-        // Находим индекс входящего ребра
         const inIdx = neighbors.findIndex(n => n.to === current);
-        // Берём следующее по часовой стрелке (самое левое)
+        if (inIdx === -1) break;
         const outIdx = (inIdx + 1) % neighbors.length;
         const nextEdge = neighbors[outIdx];
-        
+
         path.push({ v: prev, e: nextEdge.edge.id });
-        
-        if (nextEdge.to === start) break; // замкнули цикл
-        
+
+        if (nextEdge.to === start) break;
+
         const dirKey = nextEdge.edge.v1 === prev ? 'forward' : 'backward';
         usedEdges.add(`${nextEdge.edge.id}:${dirKey}`);
-        
+
         current = prev;
         prev = nextEdge.to;
       }
 
-      // Собираем полигон грани
       const polygon = path.map(p => vertices[p.v]);
       faces.push(polygon);
     }
