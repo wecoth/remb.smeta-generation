@@ -290,10 +290,17 @@ function drawWalls(selectedItems) {
     const myJoints = jrects.filter(jr => jr.wallIds.includes(w.id));
     const sp = getWallContourPoint(w, 'start');
     const ep = getWallContourPoint(w, 'end');
+    // Допуск = половина толщины стены: контурная точка стены с любым offset
+    // может отстоять от края joint rect на расстояние до halfThickness.
+    // Маленький допуск (±2) приводит к тому что clip и joint rect срабатывают
+    // одновременно → clip обрезает угол, joint rect его не закрывает → белая щель.
+    const _epsJR = (w.thickness ?? 200) / 2 + 2;
     const hasStartJR = myJoints.some(jr =>
-      sp.x >= jr.left-2 && sp.x <= jr.right+2 && sp.y >= jr.top-2 && sp.y <= jr.bottom+2);
+      sp.x >= jr.left - _epsJR && sp.x <= jr.right  + _epsJR &&
+      sp.y >= jr.top  - _epsJR && sp.y <= jr.bottom + _epsJR);
     const hasEndJR = myJoints.some(jr =>
-      ep.x >= jr.left-2 && ep.x <= jr.right+2 && ep.y >= jr.top-2 && ep.y <= jr.bottom+2);
+      ep.x >= jr.left - _epsJR && ep.x <= jr.right  + _epsJR &&
+      ep.y >= jr.top  - _epsJR && ep.y <= jr.bottom + _epsJR);
 
     // Stage 4: коллинеарных соседей исключаем из clip-расчёта —
     // у параллельных граней нет точки пересечения, clip всё равно вернул бы null,
