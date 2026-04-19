@@ -399,7 +399,7 @@ export function updateWallGeometry(wall, nextStart, nextEnd, options = {}) {
 export function setWallLength(wall, nextLength, anchor = 'start', options = {}) {
   if (!wall) return false;
   const targetLength = Number(nextLength);
-  if (!isFinite(targetLength) || targetLength < 20) return false;
+  if (!isFinite(targetLength) || targetLength < 1) return false;
   const start = getWallContourPoint(wall, 'start');
   const end   = getWallContourPoint(wall, 'end');
   const currentLength = Math.hypot(end.x - start.x, end.y - start.y);
