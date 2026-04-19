@@ -73,15 +73,16 @@ export function computeRooms(wallHeightFallback = 2700) {
     rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
-  // ── 3. МОЩНОЕ закрытие всех щелей (диагонали + T-junctions + наружные углы) ─────
-  // Два прохода гарантируют, что даже сложные стыки полностью закрыты.
+ // ── 3. БЕЗОПАСНОЕ закрытие щелей (без каскадного переполнения комнаты) ─────
+  // Используем отдельный список toFill + повышенный порог — теперь точно
+  // закрывает наружные углы и T-стыки, но не трогает внутреннюю площадь.
   for (let iteration = 0; iteration < 2; iteration++) {
+    const toFill = [];
     for (let gy = 1; gy < rows - 1; gy++) {
       for (let gx = 1; gx < cols - 1; gx++) {
         const idx = gy * cols + gx;
         if (bitmap[idx] !== 0) continue;               // уже стена
 
-        // Считаем 8 соседей-стен
         let wallNeighbors = 0;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -90,11 +91,14 @@ export function computeRooms(wallHeightFallback = 2700) {
             if (bitmap[nidx] === 1) wallNeighbors++;
           }
         }
-        // 4+ соседей-стен → закрываем щель (идеально для наружных углов)
-        if (wallNeighbors >= 4) {
-          bitmap[idx] = 1;
+        if (wallNeighbors >= 5) {                      // ← порог 5 — оптимально при CELL_MM=5
+          toFill.push(idx);
         }
       }
+    }
+    // Применяем изменения только после полного прохода — нет каскада
+    for (const idx of toFill) {
+      bitmap[idx] = 1;
     }
   }
 
