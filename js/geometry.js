@@ -230,17 +230,18 @@ export function buildWallGraph(walls, points, eps = 2) {
 
     const onWall = vertices.filter(v => v.wallIds.includes(wall.id));
 
-    onWall.sort((a, b) => {
-      const da = (a.x - b.x1) * ux + (a.y - b.y1) * uy;
-      const db = (b.x - b.x1) * ux + (b.y - b.y1) * uy;
+    const bx1 = b.x1, by1 = b.y1;
+    onWall.sort((va, vb) => {
+      const da = (va.x - bx1) * ux + (va.y - by1) * uy;
+      const db = (vb.x - bx1) * ux + (vb.y - by1) * uy;
       return da - db;
     });
 
     const deduped = [];
     for (const v of onWall) {
-      const along = (v.x - b.x1) * ux + (v.y - b.y1) * uy;
+      const along = (v.x - bx1) * ux + (v.y - by1) * uy;
       const prev = deduped.length
-        ? (deduped[deduped.length-1].x - b.x1) * ux + (deduped[deduped.length-1].y - b.y1) * uy
+        ? (deduped[deduped.length-1].x - bx1) * ux + (deduped[deduped.length-1].y - by1) * uy
         : -Infinity;
       if (along - prev > eps) deduped.push(v);
     }
