@@ -201,12 +201,11 @@ export function findAllIntersections(walls, eps = 2) {
         // Добавляем проекцию как точку пересечения — на оси стены B
         const p = findOrAdd(projX, projY, wb.id);
         if (!p.wallIds.includes(wa.id)) p.wallIds.push(wa.id);
-        // И сам конец стены A тоже привязываем к этой точке
-        const ep = points.find(pt => Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
-        if (ep && ep !== p) {
-          // Сливаем ep в p — переносим wallIds
+        // Конец стены A сливаем в p: переносим wallIds и удаляем дубль
+        const ep = points.find(pt => pt !== p && Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
+        if (ep) {
           for (const id of ep.wallIds) if (!p.wallIds.includes(id)) p.wallIds.push(id);
-          ep.x = p.x; ep.y = p.y; // сдвигаем к проекции
+          points.splice(points.indexOf(ep), 1);
         }
       }
     }
