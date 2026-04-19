@@ -98,6 +98,19 @@ export function getWallSnapSegments(wall) {
   ];
 }
 
+// ── Three reference lines (Stage 7.5: Renga-style) ────────────────
+// Возвращает две грани стены как явные отрезки.
+// left  = грань со стороны a→b (одна сторона от физической оси)
+// right = грань со стороны d→c (другая сторона)
+// Используется render.js для отрисовки серых пунктиров при выделении.
+export function getWallFaceSegments(wall) {
+  const g = getWallWorldGeometry(wall);
+  return {
+    left:  { x1: g.a.x, y1: g.a.y, x2: g.b.x, y2: g.b.y },
+    right: { x1: g.d.x, y1: g.d.y, x2: g.c.x, y2: g.c.y },
+  };
+}
+
 // ── Surface tests ─────────────────────────────────────────────────
 
 export function isPointInsideWallSurface(point, wall, padding = 0.75) {
