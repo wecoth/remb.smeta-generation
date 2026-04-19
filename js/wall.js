@@ -98,19 +98,6 @@ export function getWallSnapSegments(wall) {
   ];
 }
 
-// ── Three reference lines (Stage 7.5: Renga-style) ────────────────
-// Возвращает две грани стены как явные отрезки.
-// left  = грань со стороны a→b (одна сторона от физической оси)
-// right = грань со стороны d→c (другая сторона)
-// Используется render.js для отрисовки серых пунктиров при выделении.
-export function getWallFaceSegments(wall) {
-  const g = getWallWorldGeometry(wall);
-  return {
-    left:  { x1: g.a.x, y1: g.a.y, x2: g.b.x, y2: g.b.y },
-    right: { x1: g.d.x, y1: g.d.y, x2: g.c.x, y2: g.c.y },
-  };
-}
-
 // ── Surface tests ─────────────────────────────────────────────────
 
 export function isPointInsideWallSurface(point, wall, padding = 0.75) {
@@ -145,7 +132,9 @@ export function getWallJointPoint(wall, endpoint) {
 }
 
 export function getWallJointKey(point) {
-  return `${Math.round(point.x)},${Math.round(point.y)}`;
+  // Допуск 2мм — склеивает концы стен с расхождением до 1мм (float/snap погрешность).
+  // Math.round(x) был слишком строгим: 3679.4→3679, 3679.6→3680 → разные ключи → нет стыка.
+  return `${Math.round(point.x / 2) * 2},${Math.round(point.y / 2) * 2}`;
 }
 
 export function buildWallJointMap() {
