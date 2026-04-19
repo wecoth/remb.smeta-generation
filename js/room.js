@@ -501,7 +501,7 @@ function computeCornerStats(walls) {
 // Caps: radius=thickness/2+2мм — закрывают торцевые зазоры в вершинах.
 // ══════════════════════════════════════════════════════════════════
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
-  const INFLATE = 4;
+  const INFLATE = 12;
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
@@ -543,7 +543,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   }
 
   // Круглые caps на концах — закрывают торцевые зазоры в вершинах
-  const capRadius = wall.thickness / 2 + 5;
+  const capRadius = wall.thickness / 2 + 12;
   rasterizeCap(wall.x1, wall.y1, capRadius, bitmap, cols, rows, minX, minY);
   rasterizeCap(wall.x2, wall.y2, capRadius, bitmap, cols, rows, minX, minY);
 }
