@@ -176,10 +176,9 @@ export function findAllIntersections(walls, eps = 2) {
     }
   }
 
-  // 3. Конец стены A находится рядом с телом стены B (цепляние к внешней/внутренней грани).
-  // Для каждого конца стены A ищем ближайшую стену B, тело которой содержит эту точку.
-  // Проецируем конец на ось стены B и добавляем как точку графа.
-  // Это позволяет строить комнаты при любой привязке (лево/центр/право).
+  // 3. Конец стены A находится рядом с телом стены B (смежные комнаты).
+  // Цепляние к внешней/внутренней грани: cx/cy стен отстоят на thickness,
+  // но физически комнаты стыкуются. Сливаем обе точки в одну на оси стены B.
   for (const wa of walls) {
     const ba = wallBase(wa);
     for (const endpoint of [{ x: ba.x1, y: ba.y1 }, { x: ba.x2, y: ba.y2 }]) {
@@ -193,34 +192,24 @@ export function findAllIntersections(walls, eps = 2) {
         const along = dx * ux + dy * uy;
         if (along < -mergeEps || along > len + mergeEps) continue;
         const perp = Math.abs(dx * (-uy) + dy * ux);
-        // Допуск: от оси до внешней грани = thickness/2, плюс зазор на float и толщину стены A
-        const snapTol = wb.thickness / 2 + wa.thickness / 2 + 15;
-        if (perp > snapTol) continue;
+        // Допуск: физический контакт двух стен = сумма половин толщин + зазор
+        const snapTol = wa.thickness / 2 + wb.thickness / 2 + 15;
+        if (perp > snapTol || perp < 1) continue; // perp < 1 = уже на оси, шаг 1 обработал
 
-        // Проецируем конец стены A на ось стены B
+        // Проекция конца A на ось B
         const clampedAlong = Math.max(0, Math.min(len, along));
         const projX = bb.x1 + ux * clampedAlong;
         const projY = bb.y1 + uy * clampedAlong;
 
-        // Добавляем проекцию на ось стены B
-        const p = findOrAdd(projX, projY, wb.id);
-        if (!p.wallIds.includes(wa.id)) p.wallIds.push(wa.id);
+        // Находим или создаём точку на оси B
+        const pOnB = findOrAdd(projX, projY, wb.id);
+        if (!pOnB.wallIds.includes(wa.id)) pOnB.wallIds.push(wa.id);
 
-        // Сливаем оригинальный конец стены A в эту точку
-        const ep = points.find(pt => pt !== p && Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
-        if (ep) {
-          for (const id of ep.wallIds) if (!p.wallIds.includes(id)) p.wallIds.push(id);
-          points.splice(points.indexOf(ep), 1);
-        }
-
-        // Также добавляем сам endpoint как точку на стене B (для случая привязки к грани)
-        // чтобы граф включал обе комнаты через общую точку
-        const ep2 = points.find(pt => Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
-        if (!ep2) {
-          const np = { x: endpoint.x, y: endpoint.y, wallIds: [wa.id, wb.id] };
-          points.push(np);
-        } else {
-          if (!ep2.wallIds.includes(wb.id)) ep2.wallIds.push(wb.id);
+        // Сливаем оригинальный конец A в эту же точку (удаляем дубль)
+        const epA = points.find(pt => pt !== pOnB && Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
+        if (epA) {
+          for (const id of epA.wallIds) if (!pOnB.wallIds.includes(id)) pOnB.wallIds.push(id);
+          points.splice(points.indexOf(epA), 1);
         }
       }
     }
