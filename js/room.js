@@ -73,19 +73,28 @@ export function computeRooms(wallHeightFallback = 2700) {
     rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
-  // ── 3. Закрываем диагональные щели вдоль тел стен ─────────────
-  // Два пикселя стены, касающихся только по диагонали:
-  //   ██░   ░██
-  //   ░██   ██░
-  // Заполняем один из свободных — щель закрыта.
-  for (let gy = 0; gy < rows - 1; gy++) {
-    for (let gx = 0; gx < cols - 1; gx++) {
-      const tl = bitmap[ gy      * cols + gx    ];
-      const tr = bitmap[ gy      * cols + gx + 1];
-      const bl = bitmap[(gy + 1) * cols + gx    ];
-      const br = bitmap[(gy + 1) * cols + gx + 1];
-      if (tl && br && !tr && !bl) bitmap[gy * cols + gx + 1] = 1;
-      if (tr && bl && !tl && !br) bitmap[gy * cols + gx    ] = 1;
+  // ── 3. МОЩНОЕ закрытие всех щелей (диагонали + T-junctions + наружные углы) ─────
+  // Два прохода гарантируют, что даже сложные стыки полностью закрыты.
+  for (let iteration = 0; iteration < 2; iteration++) {
+    for (let gy = 1; gy < rows - 1; gy++) {
+      for (let gx = 1; gx < cols - 1; gx++) {
+        const idx = gy * cols + gx;
+        if (bitmap[idx] !== 0) continue;               // уже стена
+
+        // Считаем 8 соседей-стен
+        let wallNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nidx = (gy + dy) * cols + (gx + dx);
+            if (bitmap[nidx] === 1) wallNeighbors++;
+          }
+        }
+        // 4+ соседей-стен → закрываем щель (идеально для наружных углов)
+        if (wallNeighbors >= 4) {
+          bitmap[idx] = 1;
+        }
+      }
     }
   }
 
@@ -494,7 +503,7 @@ function computeCornerStats(walls) {
 // Caps: radius=thickness/2+2мм — закрывают торцевые зазоры в вершинах.
 // ══════════════════════════════════════════════════════════════════
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
-  const INFLATE = 1;
+  const INFLATE = 2;
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
@@ -536,7 +545,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   }
 
   // Круглые caps на концах — закрывают торцевые зазоры в вершинах
-  const capRadius = wall.thickness / 2 + 2;
+  const capRadius = wall.thickness / 2 + 3;
   rasterizeCap(wall.x1, wall.y1, capRadius, bitmap, cols, rows, minX, minY);
   rasterizeCap(wall.x2, wall.y2, capRadius, bitmap, cols, rows, minX, minY);
 }
