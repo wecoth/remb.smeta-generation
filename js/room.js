@@ -135,22 +135,13 @@ export function computeRooms(wallHeightFallback = 2700) {
     return;
   }
 
+  // TEMP DEBUG
+  console.log('walls:', walls.map(w => ({id:w.id, cx1:w.cx1, cy1:w.cy1, cx2:w.cx2, cy2:w.cy2, offset:w.offset})));
+  console.log('points:', points.length, JSON.stringify(points.map(p => ({x:Math.round(p.x), y:Math.round(p.y)}))));
+  console.log('edges:', edges.length);
+
   const faces = findFaces(vertices, edges);
-
-  const { vertices, edges } = buildWallGraph(walls, points);
-
-// TEMP DEBUG
-console.log('walls:', walls.map(w => ({id:w.id, cx1:w.cx1, cy1:w.cy1, cx2:w.cx2, cy2:w.cy2, offset:w.offset})));
-console.log('points:', points.length);
-console.log('edges:', edges.length);
-
-if (edges.length < 3) {
-  EventBus.emit('rooms:computed');
-  return;
-}
-
-const faces = findFaces(vertices, edges);
-console.log('faces:', faces.length);
+  console.log('faces:', faces.length);
   
   const facePolys = faces.map(face => face.map(v => ({ x: v.x, y: v.y })));
 
