@@ -5,7 +5,7 @@ import {
   getWallContourPoint, isWallEndpointCoveredByAnotherWall,
   buildWallJointMap, getWallJointItemsForEndpoint, getWallJointRects,
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
-  areWallsCollinear,
+  areWallsCollinear, getWallFaceSegments,
 } from './wall.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
@@ -149,11 +149,15 @@ export function redraw(ps) {
   drawWallDimensions();
   drawOpeningLeaders(exteriorWallIds);
   drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
-  // Stage 1: базовая линия для выделенных стен (жёлтый пунктир)
+  // Stage 1 + 7.5: базовая линия и грани для выделенных стен
+  // Жёлтый пунктир = ось (cx/cy), серые пунктиры = левая и правая грани
   for (const item of ps.selectedItems) {
     if (item.type !== 'wall') continue;
     const wall = appState.walls.find(w => w.id === item.id);
-    if (wall) drawBaseLine(wall);
+    if (wall) {
+      drawWallFaceLines(wall); // серые грани — рисуем ДО базовой линии, чтобы ось была сверху
+      drawBaseLine(wall);
+    }
   }
   if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
@@ -661,6 +665,29 @@ function drawBaseLine(wall) {
   _ctx.moveTo(p1.x, p1.y);
   _ctx.lineTo(p2.x, p2.y);
   _ctx.stroke();
+  _ctx.setLineDash([]);
+  _ctx.restore();
+}
+
+// ── Stage 7.5: грани стены (серые пунктиры как в Renga) ──────────
+// Рисует левую и правую грань выделенной стены.
+// Грани — физические поверхности стены (±thickness/2 от смещённой оси).
+// Вместе с жёлтой базовой линией образуют три референсные линии стены.
+function drawWallFaceLines(wall) {
+  const faces = getWallFaceSegments(wall);
+  _ctx.save();
+  _ctx.strokeStyle = 'rgba(100, 116, 139, 0.60)'; // slate-500, чуть прозрачный
+  _ctx.lineWidth   = 1;
+  _ctx.setLineDash([4, 5]);
+  _ctx.lineCap     = 'round';
+  for (const seg of [faces.left, faces.right]) {
+    const p1 = toScreen(seg.x1, seg.y1);
+    const p2 = toScreen(seg.x2, seg.y2);
+    _ctx.beginPath();
+    _ctx.moveTo(p1.x, p1.y);
+    _ctx.lineTo(p2.x, p2.y);
+    _ctx.stroke();
+  }
   _ctx.setLineDash([]);
   _ctx.restore();
 }
