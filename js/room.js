@@ -124,15 +124,27 @@ function offsetPolygonInward(poly, boundaryWalls, roomCenter) {
 // ВЕКТОРНОЕ ПОСТРОЕНИЕ КОМНАТ
 // ══════════════════════════════════════════════════════════════════
 export function computeRooms(wallHeightFallback = 2700) {
+  // Всегда очищаем старые комнаты
   appState.rooms = [];
+  
   const walls = appState.walls;
-  if (walls.length < 3) return;
+  if (walls.length < 3) {
+    // Если стен недостаточно, всё равно испускаем событие, чтобы экспликация очистилась
+    EventBus.emit('rooms:computed');
+    return;
+  }
 
   const points = findAllIntersections(walls);
-  if (points.length < 3) return;
+  if (points.length < 3) {
+    EventBus.emit('rooms:computed');
+    return;
+  }
 
   const { vertices, edges } = buildWallGraph(walls, points);
-  if (edges.length < 3) return;
+  if (edges.length < 3) {
+    EventBus.emit('rooms:computed');
+    return;
+  }
 
   const faces = findFaces(vertices, edges);
   const facePolys = faces.map(face => face.map(v => ({ x: v.x, y: v.y })));
@@ -151,18 +163,22 @@ export function computeRooms(wallHeightFallback = 2700) {
   }
 
   for (let i = 0; i < facePolys.length; i++) {
-    if (i === exteriorIndex) continue;
+    if (i === exteriorIndex) continue; // исключаем внешнюю границу
+    
     const rawPoly = facePolys[i];
     const rawArea = faceAreas[i];
     if (rawArea < 50000) continue; // 0.05 м²
 
     const roughCenter = polygonCentroid(rawPoly);
+    
+    // Проверяем, не находится ли центр внутри стены (пустоты в стене)
     let insideWall = false;
     for (const w of walls) {
       if (isPointInWall(roughCenter, w, 5)) { insideWall = true; break; }
     }
     if (insideWall) continue;
 
+    // Находим граничные стены (чьи рёбра лежат на полигоне)
     const boundaryWallIds = new Set();
     for (const edge of edges) {
       const v1 = vertices[edge.v1], v2 = vertices[edge.v2];
@@ -173,8 +189,9 @@ export function computeRooms(wallHeightFallback = 2700) {
     }
     const boundaryWalls = walls.filter(w => boundaryWallIds.has(w.id));
 
-    // Смещаем полигон внутрь комнаты на половину толщины стен
-    const poly = offsetPolygonInward(rawPoly, boundaryWalls, roughCenter);
+    // Временно отключаем смещение, чтобы проверить базовую геометрию
+    // Если площадь станет 9.0, значит проблема в смещении.
+    const poly = rawPoly; // offsetPolygonInward(rawPoly, boundaryWalls, roughCenter);
     const area = polygonArea(poly);
     if (area < 50000) continue;
 
