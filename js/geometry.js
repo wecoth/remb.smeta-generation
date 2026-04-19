@@ -144,13 +144,8 @@ function wallBase(w) {
 /** Находит все уникальные точки (концы стен + пересечения) — по базовым линиям cx/cy */
 export function findAllIntersections(walls, eps = 2) {
   const points = [];
-  for (const w of walls) {
-    const b = wallBase(w);
-    points.push({ x: b.x1, y: b.y1, wallIds: [w.id] });
-    points.push({ x: b.x2, y: b.y2, wallIds: [w.id] });
-  }
+  const mergeEps = 10; // мм — достаточно для float-погрешностей снэппинга
 
-  const mergeEps = eps * 2;
   function findOrAdd(x, y, wallId) {
     const existing = points.find(p => Math.hypot(p.x - x, p.y - y) < mergeEps);
     if (existing) {
@@ -162,6 +157,14 @@ export function findAllIntersections(walls, eps = 2) {
     return np;
   }
 
+  // Концы стен — с дедупликацией
+  for (const w of walls) {
+    const b = wallBase(w);
+    findOrAdd(b.x1, b.y1, w.id);
+    findOrAdd(b.x2, b.y2, w.id);
+  }
+
+  // Пересечения стен
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
       const b1 = wallBase(walls[i]), b2 = wallBase(walls[j]);
