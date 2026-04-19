@@ -39,7 +39,7 @@ export function renameRoom(roomKey, nextName) {
 // ══════════════════════════════════════════════════════════════════
 // FLOOD FILL
 // ══════════════════════════════════════════════════════════════════
-const CELL_MM = 10;
+const CELL_MM = 25;
 
 // Экспортируется для render.js (выноски входной двери)
 export let exteriorWallIds = new Set();
@@ -73,29 +73,28 @@ export function computeRooms(wallHeightFallback = 2700) {
     rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
- // ── 3. БЕЗОПАСНОЕ закрытие щелей (финальная версия) ─────
-  for (let iteration = 0; iteration < 2; iteration++) {
-    const toFill = [];
-    for (let gy = 1; gy < rows - 1; gy++) {
-      for (let gx = 1; gx < cols - 1; gx++) {
-        const idx = gy * cols + gx;
-        if (bitmap[idx] !== 0) continue;
+ // ── 3. Закрываем диагональные щели и T‑стыки (один быстрый проход) ─────
+const toFill = [];
+for (let gy = 1; gy < rows - 1; gy++) {
+  for (let gx = 1; gx < cols - 1; gx++) {
+    const idx = gy * cols + gx;
+    if (bitmap[idx] !== 0) continue;
 
-        let wallNeighbors = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const nidx = (gy + dy) * cols + (gx + dx);
-            if (bitmap[nidx] === 1) wallNeighbors++;
-          }
-        }
-        if (wallNeighbors >= 4) {          // ← порог 4 — идеально для CELL_MM=10
-          toFill.push(idx);
-        }
+    // Считаем соседей по 8 направлениям
+    let wallNeighbors = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        if (bitmap[(gy + dy) * cols + (gx + dx)] === 1) wallNeighbors++;
       }
     }
-    for (const idx of toFill) bitmap[idx] = 1;
+    // Если вокруг 5+ стен – это щель, которую нужно закрыть
+    if (wallNeighbors >= 5) {
+      toFill.push(idx);
+    }
   }
+}
+for (const idx of toFill) bitmap[idx] = 1;
   
   // ── 4. BFS flood fill, 4-связность ────────────────────────────
   const regionId          = new Int32Array(cols * rows);
@@ -502,7 +501,7 @@ function computeCornerStats(walls) {
 // Caps: radius=thickness/2+2мм — закрывают торцевые зазоры в вершинах.
 // ══════════════════════════════════════════════════════════════════
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
-  const INFLATE = 3;
+  const INFLATE = 4;
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
@@ -544,7 +543,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   }
 
   // Круглые caps на концах — закрывают торцевые зазоры в вершинах
-  const capRadius = wall.thickness / 2 + 4;
+  const capRadius = wall.thickness / 2 + 5;
   rasterizeCap(wall.x1, wall.y1, capRadius, bitmap, cols, rows, minX, minY);
   rasterizeCap(wall.x2, wall.y2, capRadius, bitmap, cols, rows, minX, minY);
 }
