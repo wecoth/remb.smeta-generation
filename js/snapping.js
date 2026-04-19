@@ -253,7 +253,7 @@ export function getSnappedWallResizePoint(fixedPoint, worldPoint, screenPoint, s
   if (!snappedBase.snapType) {
     const dx = nextPoint.x - fixedPoint.x, dy = nextPoint.y - fixedPoint.y;
     const len = Math.hypot(dx, dy);
-    if (len > 20 && !shiftDown) {
+    if (len > 1 && !shiftDown) {
       let angle = Math.atan2(dy, dx);
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
         const diff = Math.abs(angle - sa);
