@@ -39,7 +39,7 @@ export function renameRoom(roomKey, nextName) {
 // ══════════════════════════════════════════════════════════════════
 // FLOOD FILL
 // ══════════════════════════════════════════════════════════════════
-const CELL_MM = 50;
+const CELL_MM = 5;
 
 // Экспортируется для render.js (выноски входной двери)
 export let exteriorWallIds = new Set();
