@@ -176,9 +176,10 @@ export function findAllIntersections(walls, eps = 2) {
     }
   }
 
-  // 3. Конец одной стены попадает на тело другой стены (смежные комнаты с разной привязкой).
-  // Например: правая грань стены A совпадает с левой гранью стены B — их cx/cy отстоят
-  // на thickness, но физически они стыкуются. Проецируем конец на ось другой стены.
+  // 3. Конец стены A находится рядом с телом стены B (цепляние к внешней/внутренней грани).
+  // Для каждого конца стены A ищем ближайшую стену B, тело которой содержит эту точку.
+  // Проецируем конец на ось стены B и добавляем как точку графа.
+  // Это позволяет строить комнаты при любой привязке (лево/центр/право).
   for (const wa of walls) {
     const ba = wallBase(wa);
     for (const endpoint of [{ x: ba.x1, y: ba.y1 }, { x: ba.x2, y: ba.y2 }]) {
@@ -192,20 +193,34 @@ export function findAllIntersections(walls, eps = 2) {
         const along = dx * ux + dy * uy;
         if (along < -mergeEps || along > len + mergeEps) continue;
         const perp = Math.abs(dx * (-uy) + dy * ux);
-        // Допуск: сумма половин толщин + небольшой зазор
-        const snapTol = (wa.thickness + wb.thickness) / 2 + 15;
+        // Допуск: от оси до внешней грани = thickness/2, плюс зазор на float и толщину стены A
+        const snapTol = wb.thickness / 2 + wa.thickness / 2 + 15;
         if (perp > snapTol) continue;
+
         // Проецируем конец стены A на ось стены B
-        const projX = bb.x1 + ux * Math.max(0, Math.min(len, along));
-        const projY = bb.y1 + uy * Math.max(0, Math.min(len, along));
-        // Добавляем проекцию как точку пересечения — на оси стены B
+        const clampedAlong = Math.max(0, Math.min(len, along));
+        const projX = bb.x1 + ux * clampedAlong;
+        const projY = bb.y1 + uy * clampedAlong;
+
+        // Добавляем проекцию на ось стены B
         const p = findOrAdd(projX, projY, wb.id);
         if (!p.wallIds.includes(wa.id)) p.wallIds.push(wa.id);
-        // Конец стены A сливаем в p: переносим wallIds и удаляем дубль
+
+        // Сливаем оригинальный конец стены A в эту точку
         const ep = points.find(pt => pt !== p && Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
         if (ep) {
           for (const id of ep.wallIds) if (!p.wallIds.includes(id)) p.wallIds.push(id);
           points.splice(points.indexOf(ep), 1);
+        }
+
+        // Также добавляем сам endpoint как точку на стене B (для случая привязки к грани)
+        // чтобы граф включал обе комнаты через общую точку
+        const ep2 = points.find(pt => Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
+        if (!ep2) {
+          const np = { x: endpoint.x, y: endpoint.y, wallIds: [wa.id, wb.id] };
+          points.push(np);
+        } else {
+          if (!ep2.wallIds.includes(wb.id)) ep2.wallIds.push(wb.id);
         }
       }
     }
@@ -223,23 +238,36 @@ export function buildWallGraph(walls, points, eps = 2) {
     const b = wallBase(wall);
     const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
     if (len < 1) continue;
+    const ux = (b.x2 - b.x1) / len, uy = (b.y2 - b.y1) / len;
+    // Допуск по нормали: half thickness + небольшой зазор
+    const normalTol = wall.thickness / 2 + 15;
 
     const onWall = vertices.filter(v => {
-      const u = ((v.x - b.x1) * (b.x2 - b.x1) + (v.y - b.y1) * (b.y2 - b.y1)) / (len * len);
-      if (u < -0.01 || u > 1.01) return false;
-      const proj = { x: b.x1 + u * (b.x2 - b.x1), y: b.y1 + u * (b.y2 - b.y1) };
-      return Math.hypot(v.x - proj.x, v.y - proj.y) < eps;
+      const dx = v.x - b.x1, dy = v.y - b.y1;
+      const along = dx * ux + dy * uy;
+      if (along < -eps || along > len + eps) return false;
+      // Вершина должна лежать в теле стены (от оси до грани + допуск)
+      const perp = Math.abs(dx * (-uy) + dy * ux);
+      return perp < normalTol;
     });
 
-    const dirX = b.x2 - b.x1, dirY = b.y2 - b.y1;
-    onWall.sort((a, b) => {
-      const dotA = (a.x - b.x1) * dirX + (a.y - b.y1) * dirY;
-      const dotB = (b.x - b.x1) * dirX + (b.y - b.y1) * dirY;
-      return dotA - dotB;
+    // Для каждой вершины вычисляем её проекцию вдоль оси (для сортировки)
+    const withAlong = onWall.map(v => {
+      const dx = v.x - b.x1, dy = v.y - b.y1;
+      return { v, along: dx * ux + dy * uy };
     });
+    withAlong.sort((a, b) => a.along - b.along);
 
-    for (let i = 0; i < onWall.length - 1; i++) {
-      const v1 = onWall[i], v2 = onWall[i+1];
+    // Дедуплицируем по позиции вдоль оси
+    const deduped = [];
+    for (const item of withAlong) {
+      if (!deduped.length || item.along - deduped[deduped.length - 1].along > eps) {
+        deduped.push(item);
+      }
+    }
+
+    for (let i = 0; i < deduped.length - 1; i++) {
+      const v1 = deduped[i].v, v2 = deduped[i + 1].v;
       const length = Math.hypot(v2.x - v1.x, v2.y - v1.y);
       if (length < 1) continue;
       edges.push({
