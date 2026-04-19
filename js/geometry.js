@@ -203,9 +203,13 @@ export function findAllIntersections(walls, eps = 2) {
         const pProj = findOrAdd(projX, projY, wb.id);
         pProj.wallIds.add(wa.id);
 
-        // Оригинальный конец A тоже регистрируем на стене B
-        const pEp = points.find(p => Math.hypot(p.x - ep.x, p.y - ep.y) < MERGE);
-        if (pEp) { pEp.wallIds.add(wb.id); pEp.wallIds.add(wa.id); }
+        // Оригинальный конец A сливаем в pProj (удаляем дубль)
+        const epIdx = points.findIndex(p => p !== pProj && Math.hypot(p.x - ep.x, p.y - ep.y) < MERGE);
+        if (epIdx !== -1) {
+          const pEp = points[epIdx];
+          for (const id of pEp.wallIds) pProj.wallIds.add(id);
+          points.splice(epIdx, 1);
+        }
       }
     }
   }
@@ -286,8 +290,10 @@ export function findFaces(vertices, edges) {
       let current = start;
       let prev = next;
       usedEdges.add(edgeKey);
+      const maxSteps = edges.length * 2 + 4;
+      let steps = 0;
 
-      while (true) {
+      while (steps++ < maxSteps) {
         const neighbors = adj[prev];
         const inIdx = neighbors.findIndex(n => n.to === current);
         if (inIdx === -1) break;
