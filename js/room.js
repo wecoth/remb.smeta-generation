@@ -39,7 +39,7 @@ export function renameRoom(roomKey, nextName) {
 // ══════════════════════════════════════════════════════════════════
 // FLOOD FILL
 // ══════════════════════════════════════════════════════════════════
-const CELL_MM = 5;
+const CELL_MM = 10;
 
 // Экспортируется для render.js (выноски входной двери)
 export let exteriorWallIds = new Set();
@@ -73,15 +73,13 @@ export function computeRooms(wallHeightFallback = 2700) {
     rasterizeWall(w, bitmap, cols, rows, minX, minY);
   }
 
- // ── 3. БЕЗОПАСНОЕ закрытие щелей (без каскадного переполнения комнаты) ─────
-  // Используем отдельный список toFill + повышенный порог — теперь точно
-  // закрывает наружные углы и T-стыки, но не трогает внутреннюю площадь.
+ // ── 3. БЕЗОПАСНОЕ закрытие щелей (финальная версия) ─────
   for (let iteration = 0; iteration < 2; iteration++) {
     const toFill = [];
     for (let gy = 1; gy < rows - 1; gy++) {
       for (let gx = 1; gx < cols - 1; gx++) {
         const idx = gy * cols + gx;
-        if (bitmap[idx] !== 0) continue;               // уже стена
+        if (bitmap[idx] !== 0) continue;
 
         let wallNeighbors = 0;
         for (let dy = -1; dy <= 1; dy++) {
@@ -91,11 +89,14 @@ export function computeRooms(wallHeightFallback = 2700) {
             if (bitmap[nidx] === 1) wallNeighbors++;
           }
         }
-        if (wallNeighbors >= 5) {                      // ← порог 5 — оптимально при CELL_MM=5
+        if (wallNeighbors >= 4) {          // ← порог 4 — идеально для CELL_MM=10
           toFill.push(idx);
         }
       }
     }
+    for (const idx of toFill) bitmap[idx] = 1;
+  }
+  
     // Применяем изменения только после полного прохода — нет каскада
     for (const idx of toFill) {
       bitmap[idx] = 1;
@@ -507,7 +508,7 @@ function computeCornerStats(walls) {
 // Caps: radius=thickness/2+2мм — закрывают торцевые зазоры в вершинах.
 // ══════════════════════════════════════════════════════════════════
 function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
-  const INFLATE = 2;
+  const INFLATE = 3;
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
   const half  = wall.thickness / 2 + INFLATE;
   const sinA  = Math.sin(angle), cosA = Math.cos(angle);
@@ -549,7 +550,7 @@ function rasterizeWall(wall, bitmap, cols, rows, minX, minY) {
   }
 
   // Круглые caps на концах — закрывают торцевые зазоры в вершинах
-  const capRadius = wall.thickness / 2 + 3;
+  const capRadius = wall.thickness / 2 + 4;
   rasterizeCap(wall.x1, wall.y1, capRadius, bitmap, cols, rows, minX, minY);
   rasterizeCap(wall.x2, wall.y2, capRadius, bitmap, cols, rows, minX, minY);
 }
@@ -652,13 +653,12 @@ export function getComputedRooms() {
   });
 }
 
-// ── Stage 2: автономная реактивность с debounce (чтобы не висло при рисовании) ─────
+// ── Stage 2: автономная реактивность с debounce ─────
 let debounceTimer = null;
-const DEBOUNCE_MS = 80;   // 80 мс — оптимально, чувствуется мгновенно, но не виснет
+const DEBOUNCE_MS = 80;
 
 EventBus.on('walls:changed', () => {
   if (debounceTimer) clearTimeout(debounceTimer);
-  
   debounceTimer = setTimeout(() => {
     computeRooms(_wallHeightFallback);
     debounceTimer = null;
