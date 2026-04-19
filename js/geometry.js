@@ -141,84 +141,83 @@ function wallBase(w) {
   };
 }
 
-/** Находит все уникальные точки (концы стен + пересечения) — по базовым линиям cx/cy */
+/**
+ * Находит все уникальные вершины графа:
+ * - концы стен (cx/cy)
+ * - пересечения осей стен
+ * - точки где конец одной стены касается тела другой (смежные комнаты)
+ */
 export function findAllIntersections(walls, eps = 2) {
-  const points = [];
-  const mergeEps = 10; // мм — достаточно для float-погрешностей снэппинга
+  const MERGE = 12;
+  const points = []; // { x, y, wallIds: Set }
 
   function findOrAdd(x, y, wallId) {
-    const existing = points.find(p => Math.hypot(p.x - x, p.y - y) < mergeEps);
-    if (existing) {
-      if (!existing.wallIds.includes(wallId)) existing.wallIds.push(wallId);
-      return existing;
-    }
-    const np = { x, y, wallIds: [wallId] };
+    const existing = points.find(p => Math.hypot(p.x - x, p.y - y) < MERGE);
+    if (existing) { existing.wallIds.add(wallId); return existing; }
+    const np = { x, y, wallIds: new Set([wallId]) };
     points.push(np);
     return np;
   }
 
-  // 1. Концы стен — с дедупликацией
+  // 1. Концы всех стен
   for (const w of walls) {
     const b = wallBase(w);
     findOrAdd(b.x1, b.y1, w.id);
     findOrAdd(b.x2, b.y2, w.id);
   }
 
-  // 2. Пересечения осей (cx/cy) стен
+  // 2. Пересечения осей стен
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
       const b1 = wallBase(walls[i]), b2 = wallBase(walls[j]);
       const inter = segmentIntersection(b1, b2, eps);
       if (inter) {
         const p = findOrAdd(inter.x, inter.y, walls[i].id);
-        if (!p.wallIds.includes(walls[j].id)) p.wallIds.push(walls[j].id);
+        p.wallIds.add(walls[j].id);
       }
     }
   }
 
-  // 3. Конец стены A находится рядом с телом стены B (смежные комнаты).
-  // Цепляние к внешней/внутренней грани: cx/cy стен отстоят на thickness,
-  // но физически комнаты стыкуются. Сливаем обе точки в одну на оси стены B.
+  // 3. Конец стены A близко к телу стены B (смежные комнаты, разная привязка).
+  // Добавляем проекцию конца A на ось B как точку стены B,
+  // и регистрируем конец A как принадлежащий стене B тоже.
   for (const wa of walls) {
     const ba = wallBase(wa);
-    for (const endpoint of [{ x: ba.x1, y: ba.y1 }, { x: ba.x2, y: ba.y2 }]) {
+    for (const ep of [{ x: ba.x1, y: ba.y1 }, { x: ba.x2, y: ba.y2 }]) {
       for (const wb of walls) {
         if (wa.id === wb.id) continue;
         const bb = wallBase(wb);
         const len = Math.hypot(bb.x2 - bb.x1, bb.y2 - bb.y1);
         if (len < 1) continue;
         const ux = (bb.x2 - bb.x1) / len, uy = (bb.y2 - bb.y1) / len;
-        const dx = endpoint.x - bb.x1, dy = endpoint.y - bb.y1;
+        const dx = ep.x - bb.x1, dy = ep.y - bb.y1;
         const along = dx * ux + dy * uy;
-        if (along < -mergeEps || along > len + mergeEps) continue;
+        if (along < -MERGE || along > len + MERGE) continue;
         const perp = Math.abs(dx * (-uy) + dy * ux);
-        // Допуск: физический контакт двух стен = сумма половин толщин + зазор
-        const snapTol = wa.thickness / 2 + wb.thickness / 2 + 15;
-        if (perp > snapTol || perp < 1) continue; // perp < 1 = уже на оси, шаг 1 обработал
+        const tol = wa.thickness / 2 + wb.thickness / 2 + 15;
+        if (perp < 1 || perp > tol) continue;
 
         // Проекция конца A на ось B
-        const clampedAlong = Math.max(0, Math.min(len, along));
-        const projX = bb.x1 + ux * clampedAlong;
-        const projY = bb.y1 + uy * clampedAlong;
+        const clamp = Math.max(0, Math.min(len, along));
+        const projX = bb.x1 + ux * clamp, projY = bb.y1 + uy * clamp;
+        const pProj = findOrAdd(projX, projY, wb.id);
+        pProj.wallIds.add(wa.id);
 
-        // Находим или создаём точку на оси B
-        const pOnB = findOrAdd(projX, projY, wb.id);
-        if (!pOnB.wallIds.includes(wa.id)) pOnB.wallIds.push(wa.id);
-
-        // Сливаем оригинальный конец A в эту же точку (удаляем дубль)
-        const epA = points.find(pt => pt !== pOnB && Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
-        if (epA) {
-          for (const id of epA.wallIds) if (!pOnB.wallIds.includes(id)) pOnB.wallIds.push(id);
-          points.splice(points.indexOf(epA), 1);
-        }
+        // Оригинальный конец A тоже регистрируем на стене B
+        const pEp = points.find(p => Math.hypot(p.x - ep.x, p.y - ep.y) < MERGE);
+        if (pEp) { pEp.wallIds.add(wb.id); pEp.wallIds.add(wa.id); }
       }
     }
   }
 
-  return points;
+  return points.map(p => ({ x: p.x, y: p.y, wallIds: [...p.wallIds] }));
 }
 
-/** Строит граф: вершины (точки) и рёбра (сегменты стен между точками) — по базовым линиям */
+/**
+ * Строит граф: вершины и рёбра.
+ * Для каждой стены берём все вершины с её wallId,
+ * сортируем вдоль оси, строим рёбра между соседними.
+ */
 export function buildWallGraph(walls, points, eps = 2) {
   const vertices = points.map((p, i) => ({ ...p, id: i }));
   const edges = [];
@@ -228,43 +227,28 @@ export function buildWallGraph(walls, points, eps = 2) {
     const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
     if (len < 1) continue;
     const ux = (b.x2 - b.x1) / len, uy = (b.y2 - b.y1) / len;
-    // Допуск по нормали: half thickness + небольшой зазор
-    const normalTol = wall.thickness / 2 + 15;
 
-    const onWall = vertices.filter(v => {
-      const dx = v.x - b.x1, dy = v.y - b.y1;
-      const along = dx * ux + dy * uy;
-      if (along < -eps || along > len + eps) return false;
-      // Вершина должна лежать в теле стены (от оси до грани + допуск)
-      const perp = Math.abs(dx * (-uy) + dy * ux);
-      return perp < normalTol;
+    const onWall = vertices.filter(v => v.wallIds.includes(wall.id));
+
+    onWall.sort((a, b) => {
+      const da = (a.x - b.x1) * ux + (a.y - b.y1) * uy;
+      const db = (b.x - b.x1) * ux + (b.y - b.y1) * uy;
+      return da - db;
     });
 
-    // Для каждой вершины вычисляем её проекцию вдоль оси (для сортировки)
-    const withAlong = onWall.map(v => {
-      const dx = v.x - b.x1, dy = v.y - b.y1;
-      return { v, along: dx * ux + dy * uy };
-    });
-    withAlong.sort((a, b) => a.along - b.along);
-
-    // Дедуплицируем по позиции вдоль оси
     const deduped = [];
-    for (const item of withAlong) {
-      if (!deduped.length || item.along - deduped[deduped.length - 1].along > eps) {
-        deduped.push(item);
-      }
+    for (const v of onWall) {
+      const along = (v.x - b.x1) * ux + (v.y - b.y1) * uy;
+      const prev = deduped.length
+        ? (deduped[deduped.length-1].x - b.x1) * ux + (deduped[deduped.length-1].y - b.y1) * uy
+        : -Infinity;
+      if (along - prev > eps) deduped.push(v);
     }
 
     for (let i = 0; i < deduped.length - 1; i++) {
-      const v1 = deduped[i].v, v2 = deduped[i + 1].v;
-      const length = Math.hypot(v2.x - v1.x, v2.y - v1.y);
-      if (length < 1) continue;
-      edges.push({
-        id: `e${edges.length}`,
-        v1: v1.id, v2: v2.id,
-        wallId: wall.id,
-        length
-      });
+      const v1 = deduped[i], v2 = deduped[i+1];
+      if (Math.hypot(v2.x - v1.x, v2.y - v1.y) < 1) continue;
+      edges.push({ id: `e${edges.length}`, v1: v1.id, v2: v2.id, wallId: wall.id });
     }
   }
   return { vertices, edges };
