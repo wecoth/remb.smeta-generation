@@ -157,14 +157,14 @@ export function findAllIntersections(walls, eps = 2) {
     return np;
   }
 
-  // Концы стен — с дедупликацией
+  // 1. Концы стен — с дедупликацией
   for (const w of walls) {
     const b = wallBase(w);
     findOrAdd(b.x1, b.y1, w.id);
     findOrAdd(b.x2, b.y2, w.id);
   }
 
-  // Пересечения стен
+  // 2. Пересечения осей (cx/cy) стен
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
       const b1 = wallBase(walls[i]), b2 = wallBase(walls[j]);
@@ -175,6 +175,43 @@ export function findAllIntersections(walls, eps = 2) {
       }
     }
   }
+
+  // 3. Конец одной стены попадает на тело другой стены (смежные комнаты с разной привязкой).
+  // Например: правая грань стены A совпадает с левой гранью стены B — их cx/cy отстоят
+  // на thickness, но физически они стыкуются. Проецируем конец на ось другой стены.
+  for (const wa of walls) {
+    const ba = wallBase(wa);
+    for (const endpoint of [{ x: ba.x1, y: ba.y1 }, { x: ba.x2, y: ba.y2 }]) {
+      for (const wb of walls) {
+        if (wa.id === wb.id) continue;
+        const bb = wallBase(wb);
+        const len = Math.hypot(bb.x2 - bb.x1, bb.y2 - bb.y1);
+        if (len < 1) continue;
+        const ux = (bb.x2 - bb.x1) / len, uy = (bb.y2 - bb.y1) / len;
+        const dx = endpoint.x - bb.x1, dy = endpoint.y - bb.y1;
+        const along = dx * ux + dy * uy;
+        if (along < -mergeEps || along > len + mergeEps) continue;
+        const perp = Math.abs(dx * (-uy) + dy * ux);
+        // Допуск: сумма половин толщин + небольшой зазор
+        const snapTol = (wa.thickness + wb.thickness) / 2 + 15;
+        if (perp > snapTol) continue;
+        // Проецируем конец стены A на ось стены B
+        const projX = bb.x1 + ux * Math.max(0, Math.min(len, along));
+        const projY = bb.y1 + uy * Math.max(0, Math.min(len, along));
+        // Добавляем проекцию как точку пересечения — на оси стены B
+        const p = findOrAdd(projX, projY, wb.id);
+        if (!p.wallIds.includes(wa.id)) p.wallIds.push(wa.id);
+        // И сам конец стены A тоже привязываем к этой точке
+        const ep = points.find(pt => Math.hypot(pt.x - endpoint.x, pt.y - endpoint.y) < mergeEps);
+        if (ep && ep !== p) {
+          // Сливаем ep в p — переносим wallIds
+          for (const id of ep.wallIds) if (!p.wallIds.includes(id)) p.wallIds.push(id);
+          ep.x = p.x; ep.y = p.y; // сдвигаем к проекции
+        }
+      }
+    }
+  }
+
   return points;
 }
 
