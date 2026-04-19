@@ -28,92 +28,92 @@ export function renameRoom(roomKey, nextName) {
 export let exteriorWallIds = new Set();
 
 // ══════════════════════════════════════════════════════════════════
-// СМЕЩЕНИЕ ПОЛИГОНА ВНУТРЬ НА ПОЛОВИНУ ТОЛЩИНЫ СТЕН
+// СМЕЩЕНИЕ ПОЛИГОНА ВНУТРЬ ПО РЁБРАМ
+// Для каждого ребра полигона находим соответствующую стену,
+// берём её thickness/2 и смещаем ребро внутрь.
+// Новые вершины = пересечения соседних смещённых рёбер.
 // ══════════════════════════════════════════════════════════════════
-function getEdgeDirection(wall, point) {
-  const d1 = Math.hypot(wall.x1 - point.x, wall.y1 - point.y);
-  const d2 = Math.hypot(wall.x2 - point.x, wall.y2 - point.y);
-  if (d1 < d2) {
-    return { x: wall.x2 - wall.x1, y: wall.y2 - wall.y1 };
-  } else {
-    return { x: wall.x1 - wall.x2, y: wall.y1 - wall.y2 };
-  }
-}
 
-function lineLineIntersection(p1, p2, p3, p4) {
-  const denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+function lineLineIntersection(p1, d1, p2, d2) {
+  // Пересечение двух прямых: p1 + t*d1 = p2 + s*d2
+  const denom = d1.x * d2.y - d1.y * d2.x;
   if (Math.abs(denom) < 0.0001) return null;
-  const x = ((p1.x * p2.y - p1.y * p2.x) * (p3.x - p4.x) - (p1.x - p2.x) * (p3.x * p4.y - p3.y * p4.x)) / denom;
-  const y = ((p1.x * p2.y - p1.y * p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x * p4.y - p3.y * p4.x)) / denom;
-  return { x, y };
+  const t = ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / denom;
+  return { x: p1.x + d1.x * t, y: p1.y + d1.y * t };
 }
 
-function offsetPolygonInward(poly, boundaryWalls, roomCenter) {
-  if (poly.length < 3) return poly;
+function findWallForEdge(ax, ay, bx, by, walls, eps = 10) {
+  // Ищем стену, чья ось совпадает с ребром (ax,ay)→(bx,by)
+  const midX = (ax + bx) / 2, midY = (ay + by) / 2;
+  const edgeLen = Math.hypot(bx - ax, by - ay);
+  if (edgeLen < 1) return null;
+  const edUX = (bx - ax) / edgeLen, edUY = (by - ay) / edgeLen;
 
-  const newPoly = [];
+  let best = null, bestDist = eps;
+  for (const w of walls) {
+    const wLen = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    if (wLen < 1) continue;
+    const wUX = (w.x2 - w.x1) / wLen, wUY = (w.y2 - w.y1) / wLen;
+    // Параллельность (с учётом обратного направления)
+    const dot = Math.abs(edUX * wUX + edUY * wUY);
+    if (dot < 0.98) continue; // не параллельны
+    // Дистанция середины ребра до оси стены
+    const dx = midX - w.x1, dy = midY - w.y1;
+    const along = dx * wUX + dy * wUY;
+    if (along < -eps || along > wLen + eps) continue; // мимо длины стены
+    const perp = Math.abs(dx * (-wUY) + dy * wUX); // расстояние до оси
+    if (perp < bestDist) { bestDist = perp; best = w; }
+  }
+  return best;
+}
+
+function offsetPolygonInward(poly, walls, roomCenter) {
+  if (poly.length < 3) return poly;
   const n = poly.length;
 
+  // 1. Для каждого ребра i→(i+1) найти стену и смещение
+  const offsets = []; // { offset, nx, ny } — нормаль внутрь и величина сдвига
   for (let i = 0; i < n; i++) {
-    const prev = poly[(i - 1 + n) % n];
-    const curr = poly[i];
-    const next = poly[(i + 1) % n];
+    const a = poly[i], b = poly[(i + 1) % n];
+    const wall = findWallForEdge(a.x, a.y, b.x, b.y, walls);
+    const half = wall ? wall.thickness / 2 : 0;
 
-    // Находим стены, инцидентные этой вершине
-    const wallsAtVertex = boundaryWalls.filter(w => {
-      const d1 = Math.hypot(w.x1 - curr.x, w.y1 - curr.y);
-      const d2 = Math.hypot(w.x2 - curr.x, w.y2 - curr.y);
-      return d1 < 1.0 || d2 < 1.0;
-    });
+    // Нормаль к ребру (перпендикуляр)
+    const edLen = Math.hypot(b.x - a.x, b.y - a.y);
+    const edUX = (b.x - a.x) / (edLen || 1);
+    const edUY = (b.y - a.y) / (edLen || 1);
+    let nx = -edUY, ny = edUX; // одна из двух нормалей
 
-    if (wallsAtVertex.length < 2) {
-      // Не нашли две стены — оставляем точку как есть
-      newPoly.push({ x: curr.x, y: curr.y });
-      continue;
-    }
+    // Направляем к центру комнаты
+    const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+    const toC = { x: roomCenter.x - midX, y: roomCenter.y - midY };
+    if (nx * toC.x + ny * toC.y < 0) { nx = -nx; ny = -ny; }
 
-    const w1 = wallsAtVertex[0];
-    const w2 = wallsAtVertex[1];
+    offsets.push({ half, nx, ny, edUX, edUY, ax: a.x, ay: a.y });
+  }
 
-    const edge1 = getEdgeDirection(w1, curr);
-    const edge2 = getEdgeDirection(w2, curr);
+  // 2. Смещённые прямые: точка на прямой + направление вдоль ребра
+  const lines = offsets.map(o => ({
+    px: o.ax + o.nx * o.half,
+    py: o.ay + o.ny * o.half,
+    dx: o.edUX,
+    dy: o.edUY,
+  }));
 
-    // Нормали к стенам (перпендикуляры)
-    let norm1 = { x: -edge1.y, y: edge1.x };
-    let norm2 = { x: -edge2.y, y: edge2.x };
-
-    // Направляем нормали внутрь комнаты (к центру)
-    const toCenter = { x: roomCenter.x - curr.x, y: roomCenter.y - curr.y };
-    if (norm1.x * toCenter.x + norm1.y * toCenter.y < 0) {
-      norm1.x = -norm1.x; norm1.y = -norm1.y;
-    }
-    if (norm2.x * toCenter.x + norm2.y * toCenter.y < 0) {
-      norm2.x = -norm2.x; norm2.y = -norm2.y;
-    }
-
-    const half1 = w1.thickness / 2;
-    const half2 = w2.thickness / 2;
-
-    // Смещённые точки на нормалях
-    const p1 = { x: curr.x + norm1.x * half1, y: curr.y + norm1.y * half1 };
-    const p2 = { x: curr.x + edge1.x * 1000 + norm1.x * half1, y: curr.y + edge1.y * 1000 + norm1.y * half1 };
-    const p3 = { x: curr.x + norm2.x * half2, y: curr.y + norm2.y * half2 };
-    const p4 = { x: curr.x + edge2.x * 1000 + norm2.x * half2, y: curr.y + edge2.y * 1000 + norm2.y * half2 };
-
-    const intersection = lineLineIntersection(p1, p2, p3, p4);
-    if (intersection) {
-      newPoly.push(intersection);
+  // 3. Новые вершины = пересечения соседних смещённых прямых
+  const newPoly = [];
+  for (let i = 0; i < n; i++) {
+    const l1 = lines[i];
+    const l2 = lines[(i + 1) % n];
+    const pt = lineLineIntersection(
+      { x: l1.px, y: l1.py }, { x: l1.dx, y: l1.dy },
+      { x: l2.px, y: l2.py }, { x: l2.dx, y: l2.dy }
+    );
+    if (pt) {
+      newPoly.push(pt);
     } else {
-      // fallback: смещение по биссектрисе
-      const bisector = { x: norm1.x + norm2.x, y: norm1.y + norm2.y };
-      const len = Math.hypot(bisector.x, bisector.y);
-      if (len > 0.001) {
-        bisector.x /= len; bisector.y /= len;
-        const avgHalf = (half1 + half2) / 2;
-        newPoly.push({ x: curr.x + bisector.x * avgHalf, y: curr.y + bisector.y * avgHalf });
-      } else {
-        newPoly.push({ x: curr.x, y: curr.y });
-      }
+      // Параллельные рёбра (прямой угол не найден) — берём точку на первой прямой
+      newPoly.push({ x: l1.px, y: l1.py });
     }
   }
 
@@ -189,11 +189,10 @@ export function computeRooms(wallHeightFallback = 2700) {
     }
     const boundaryWalls = walls.filter(w => boundaryWallIds.has(w.id));
 
-    // Временно отключаем смещение, чтобы проверить базовую геометрию
-    // Если площадь станет 9.0, значит проблема в смещении.
-    const poly = rawPoly; // offsetPolygonInward(rawPoly, boundaryWalls, roughCenter);
+    // Смещаем полигон с осей стен на внутренние края (thickness/2 внутрь)
+    const poly = offsetPolygonInward(rawPoly, boundaryWalls, roughCenter);
     const area = polygonArea(poly);
-    if (area < 50000) continue;
+    if (area < 10000) continue; // 0.01 м² — отсекаем совсем крошечные артефакты
 
     const center = polygonCentroid(poly);
 
