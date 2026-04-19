@@ -391,7 +391,7 @@ function updateEditPanel() {
     dom.editContent.innerHTML = `
       <div class="param-group">
         <div class="param-label">Длина <span class="param-unit">мм</span></div>
-        <div class="param-input-wrap"><input class="param-input" type="number" min="20" step="1" value="${len}" data-wall-length-input><span class="param-input-unit">мм</span></div>
+        <div class="param-input-wrap"><input class="param-input" type="number" min="1" step="1" value="${len}" data-wall-length-input><span class="param-input-unit">мм</span></div>
       </div>
       <div class="param-group">
         <div class="param-label">Фиксировать край</div>
@@ -476,7 +476,7 @@ function getWallPreviewEnd(world) {
   const hardSnap = snappedBase.snapType === 'endpoint' || snappedBase.snapType === 'corner' || snappedBase.snapType === 'intersection';
   if (!hardSnap && !shiftDown && drawStart) {
     const dx = rawEnd.x - drawStart.x, dy = rawEnd.y - drawStart.y, len = Math.hypot(dx, dy);
-    if (len > 20) {
+    if (len > 1) {
       let angle = Math.atan2(dy, dx);
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
         const diff = Math.abs(angle - sa);
@@ -535,7 +535,7 @@ function getWallPreviewEnd(world) {
 function finalizeWall(end) {
   if (!drawStart) return false;
   const len = Math.hypot(end.x - drawStart.x, end.y - drawStart.y);
-  if (len <= 20) return false;
+  if (len <= 1) return false;
 
   const thick  = parseFloat(dom.inpWallThick?.value) || 200;
   const height = parseFloat(dom.inpWallHeight?.value) || 2700;
@@ -702,7 +702,7 @@ function onMouseMove(e) {
     const moved = getSnappedWallResizePoint(wallResizeState.fixedPoint, world, pos, shiftDown);
     const ns = wallResizeState.endpoint === 'start' ? moved : wallResizeState.fixedPoint;
     const ne = wallResizeState.endpoint === 'start' ? wallResizeState.fixedPoint : moved;
-    if (Math.hypot(ne.x - ns.x, ne.y - ns.y) >= 20) {
+    if (Math.hypot(ne.x - ns.x, ne.y - ns.y) >= 1) {
       const changed = updateWallGeometry(wall, ns, ne, { preserveFrom: wallResizeState.endpoint === 'start' ? 'end' : 'start' });
       wallResizeState.changed = wallResizeState.changed || changed;
       debouncedComputeRooms();
