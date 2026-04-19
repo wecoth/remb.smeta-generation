@@ -133,57 +133,69 @@ export function isPointInWall(point, wall, eps = 5) {
   return dist <= wall.thickness / 2 + eps;
 }
 
-/** Находит все уникальные точки (концы стен + пересечения) */
-export function findAllIntersections(walls, eps = 0.5) {
+// Хелпер: базовая линия стены (cx/cy если есть, иначе x/y)
+function wallBase(w) {
+  return {
+    x1: w.cx1 ?? w.x1, y1: w.cy1 ?? w.y1,
+    x2: w.cx2 ?? w.x2, y2: w.cy2 ?? w.y2,
+  };
+}
+
+/** Находит все уникальные точки (концы стен + пересечения) — по базовым линиям cx/cy */
+export function findAllIntersections(walls, eps = 2) {
   const points = [];
   for (const w of walls) {
-    points.push({ x: w.x1, y: w.y1, wallIds: [w.id] });
-    points.push({ x: w.x2, y: w.y2, wallIds: [w.id] });
+    const b = wallBase(w);
+    points.push({ x: b.x1, y: b.y1, wallIds: [w.id] });
+    points.push({ x: b.x2, y: b.y2, wallIds: [w.id] });
+  }
+
+  const mergeEps = eps * 2;
+  function findOrAdd(x, y, wallId) {
+    const existing = points.find(p => Math.hypot(p.x - x, p.y - y) < mergeEps);
+    if (existing) {
+      if (!existing.wallIds.includes(wallId)) existing.wallIds.push(wallId);
+      return existing;
+    }
+    const np = { x, y, wallIds: [wallId] };
+    points.push(np);
+    return np;
   }
 
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
-      const w1 = walls[i], w2 = walls[j];
-      const seg1 = { x1: w1.x1, y1: w1.y1, x2: w1.x2, y2: w1.y2 };
-      const seg2 = { x1: w2.x1, y1: w2.y1, x2: w2.x2, y2: w2.y2 };
-      const inter = segmentIntersection(seg1, seg2, eps);
+      const b1 = wallBase(walls[i]), b2 = wallBase(walls[j]);
+      const inter = segmentIntersection(b1, b2, eps);
       if (inter) {
-        const exists = points.find(p => Math.hypot(p.x - inter.x, p.y - inter.y) < eps);
-        if (!exists) {
-          points.push({ x: inter.x, y: inter.y, wallIds: [w1.id, w2.id] });
-        } else {
-          if (!exists.wallIds.includes(w1.id)) exists.wallIds.push(w1.id);
-          if (!exists.wallIds.includes(w2.id)) exists.wallIds.push(w2.id);
-        }
+        const p = findOrAdd(inter.x, inter.y, walls[i].id);
+        if (!p.wallIds.includes(walls[j].id)) p.wallIds.push(walls[j].id);
       }
     }
   }
   return points;
 }
 
-/** Строит граф: вершины (точки) и рёбра (сегменты стен между точками) */
-export function buildWallGraph(walls, points, eps = 0.5) {
+/** Строит граф: вершины (точки) и рёбра (сегменты стен между точками) — по базовым линиям */
+export function buildWallGraph(walls, points, eps = 2) {
   const vertices = points.map((p, i) => ({ ...p, id: i }));
   const edges = [];
 
   for (const wall of walls) {
-    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const b = wallBase(wall);
+    const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
     if (len < 1) continue;
 
     const onWall = vertices.filter(v => {
-      const u = ((v.x - wall.x1) * (wall.x2 - wall.x1) + (v.y - wall.y1) * (wall.y2 - wall.y1)) / (len * len);
-      if (u < -eps || u > 1 + eps) return false;
-      const proj = {
-        x: wall.x1 + u * (wall.x2 - wall.x1),
-        y: wall.y1 + u * (wall.y2 - wall.y1)
-      };
+      const u = ((v.x - b.x1) * (b.x2 - b.x1) + (v.y - b.y1) * (b.y2 - b.y1)) / (len * len);
+      if (u < -0.01 || u > 1.01) return false;
+      const proj = { x: b.x1 + u * (b.x2 - b.x1), y: b.y1 + u * (b.y2 - b.y1) };
       return Math.hypot(v.x - proj.x, v.y - proj.y) < eps;
     });
 
-    const dirX = wall.x2 - wall.x1, dirY = wall.y2 - wall.y1;
+    const dirX = b.x2 - b.x1, dirY = b.y2 - b.y1;
     onWall.sort((a, b) => {
-      const dotA = (a.x - wall.x1) * dirX + (a.y - wall.y1) * dirY;
-      const dotB = (b.x - wall.x1) * dirX + (b.y - wall.y1) * dirY;
+      const dotA = (a.x - b.x1) * dirX + (a.y - b.y1) * dirY;
+      const dotB = (b.x - b.x1) * dirX + (b.y - b.y1) * dirY;
       return dotA - dotB;
     });
 
