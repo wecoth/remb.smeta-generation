@@ -141,86 +141,74 @@ function wallBase(w) {
   };
 }
 
+// Возвращает все три характерные линии стены: ось (cx/cy), левую и правую грань
+function wallLines(w) {
+  const b = wallBase(w);
+  const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+  if (len < 1) return [b];
+  const nx = -(b.y2 - b.y1) / len, ny = (b.x2 - b.x1) / len;
+  const h = w.thickness / 2;
+  return [
+    b, // ось (cx/cy)
+    { x1: b.x1 + nx*h, y1: b.y1 + ny*h, x2: b.x2 + nx*h, y2: b.y2 + ny*h }, // левая грань
+    { x1: b.x1 - nx*h, y1: b.y1 - ny*h, x2: b.x2 - nx*h, y2: b.y2 - ny*h }, // правая грань
+  ];
+}
+
 /**
- * Находит все уникальные вершины графа:
- * - концы стен (cx/cy)
- * - пересечения осей стен
- * - точки где конец одной стены касается тела другой (смежные комнаты)
+ * Находит все уникальные вершины графа.
+ * Ключевая идея: ищем пересечения между ВСЕМИ тремя линиями каждой стены
+ * (ось, левая грань, правая грань) против всех трёх линий других стен.
+ * Это гарантирует замыкание графа независимо от того к какой грани
+ * пользователь привязался при рисовании.
  */
 export function findAllIntersections(walls, eps = 2) {
   const MERGE = 12;
-  const points = []; // { x, y, wallIds: Set }
+  const points = [];
 
   function findOrAdd(x, y, wallId) {
     const existing = points.find(p => Math.hypot(p.x - x, p.y - y) < MERGE);
-    if (existing) { existing.wallIds.add(wallId); return existing; }
-    const np = { x, y, wallIds: new Set([wallId]) };
+    if (existing) {
+      if (!existing.wallIds.includes(wallId)) existing.wallIds.push(wallId);
+      return existing;
+    }
+    const np = { x, y, wallIds: [wallId] };
     points.push(np);
     return np;
   }
 
-  // 1. Концы всех стен
+  // 1. Концы всех стен (по cx/cy) — с дедупликацией
   for (const w of walls) {
     const b = wallBase(w);
     findOrAdd(b.x1, b.y1, w.id);
     findOrAdd(b.x2, b.y2, w.id);
   }
 
-  // 2. Пересечения осей стен
+  // 2. Пересечения всех линий стены A со всеми линиями стены B.
+  // Включаем ось + обе грани — тогда любое физическое соприкосновение стен
+  // даст точку в графе, независимо от привязки.
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
-      const b1 = wallBase(walls[i]), b2 = wallBase(walls[j]);
-      const inter = segmentIntersection(b1, b2, eps);
-      if (inter) {
-        const p = findOrAdd(inter.x, inter.y, walls[i].id);
-        p.wallIds.add(walls[j].id);
-      }
-    }
-  }
-
-  // 3. Конец стены A близко к телу стены B (смежные комнаты, разная привязка).
-  // Добавляем проекцию конца A на ось B как точку стены B,
-  // и регистрируем конец A как принадлежащий стене B тоже.
-  for (const wa of walls) {
-    const ba = wallBase(wa);
-    for (const ep of [{ x: ba.x1, y: ba.y1 }, { x: ba.x2, y: ba.y2 }]) {
-      for (const wb of walls) {
-        if (wa.id === wb.id) continue;
-        const bb = wallBase(wb);
-        const len = Math.hypot(bb.x2 - bb.x1, bb.y2 - bb.y1);
-        if (len < 1) continue;
-        const ux = (bb.x2 - bb.x1) / len, uy = (bb.y2 - bb.y1) / len;
-        const dx = ep.x - bb.x1, dy = ep.y - bb.y1;
-        const along = dx * ux + dy * uy;
-        if (along < -MERGE || along > len + MERGE) continue;
-        const perp = Math.abs(dx * (-uy) + dy * ux);
-        const tol = wa.thickness / 2 + wb.thickness / 2 + 15;
-        if (perp < 1 || perp > tol) continue;
-
-        // Проекция конца A на ось B
-        const clamp = Math.max(0, Math.min(len, along));
-        const projX = bb.x1 + ux * clamp, projY = bb.y1 + uy * clamp;
-        const pProj = findOrAdd(projX, projY, wb.id);
-        pProj.wallIds.add(wa.id);
-
-        // Оригинальный конец A сливаем в pProj (удаляем дубль)
-        const epIdx = points.findIndex(p => p !== pProj && Math.hypot(p.x - ep.x, p.y - ep.y) < MERGE);
-        if (epIdx !== -1) {
-          const pEp = points[epIdx];
-          for (const id of pEp.wallIds) pProj.wallIds.add(id);
-          points.splice(epIdx, 1);
+      const linesA = wallLines(walls[i]);
+      const linesB = wallLines(walls[j]);
+      for (const la of linesA) {
+        for (const lb of linesB) {
+          const inter = segmentIntersection(la, lb, eps);
+          if (!inter) continue;
+          const p = findOrAdd(inter.x, inter.y, walls[i].id);
+          if (!p.wallIds.includes(walls[j].id)) p.wallIds.push(walls[j].id);
         }
       }
     }
   }
 
-  return points.map(p => ({ x: p.x, y: p.y, wallIds: [...p.wallIds] }));
+  return points;
 }
 
 /**
  * Строит граф: вершины и рёбра.
  * Для каждой стены берём все вершины с её wallId,
- * сортируем вдоль оси, строим рёбра между соседними.
+ * сортируем вдоль оси cx/cy, строим рёбра между соседними.
  */
 export function buildWallGraph(walls, points, eps = 2) {
   const vertices = points.map((p, i) => ({ ...p, id: i }));
@@ -231,10 +219,20 @@ export function buildWallGraph(walls, points, eps = 2) {
     const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
     if (len < 1) continue;
     const ux = (b.x2 - b.x1) / len, uy = (b.y2 - b.y1) / len;
-
-    const onWall = vertices.filter(v => v.wallIds.includes(wall.id));
-
     const bx1 = b.x1, by1 = b.y1;
+    // Допуск по нормали: половина толщины + зазор (чтобы точки на гранях тоже включались)
+    const normalTol = wall.thickness / 2 + 12;
+
+    const onWall = vertices.filter(v => {
+      if (!v.wallIds.includes(wall.id)) return false;
+      // Дополнительно проверяем что точка физически рядом со стеной
+      const dx = v.x - bx1, dy = v.y - by1;
+      const along = dx * ux + dy * uy;
+      if (along < -MERGE || along > len + MERGE) return false;
+      const perp = Math.abs(dx * (-uy) + dy * ux);
+      return perp <= normalTol;
+    });
+
     onWall.sort((va, vb) => {
       const da = (va.x - bx1) * ux + (va.y - by1) * uy;
       const db = (vb.x - bx1) * ux + (vb.y - by1) * uy;
