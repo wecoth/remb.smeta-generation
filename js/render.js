@@ -1275,7 +1275,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   _canvas    = oc;
   _ctx       = octx;
   _getScale  = () => scale;
-  _hatchPat  = null;
+  _hatchCache = null;
   // Масштабируем шрифты пропорционально ширине output (базовый = 800px)
   _fontScale = Math.max(1, outW / 800);
 
@@ -1313,7 +1313,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   _canvas    = savedCanvas;
   _ctx       = savedCtx;
   _getScale  = savedGetScale;
-  _hatchPat  = savedHatch;
+  _hatchCache = savedHatch;
   _fontScale = 1;
   const vp   = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
   _setViewportFn(vp.scale, vp.panX, vp.panY);
