@@ -40,62 +40,58 @@ function sg(wall) { // screen geometry
 }
 
 function fillWall(pathFn, fill) {
-  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
-  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
+  _ctx.save();
+  pathFn();
+  _ctx.fillStyle = fill;
+  _ctx.fill();
+
+  // Штрихуем через clip, а не через repeating-pattern — без плиточной ряби/швов.
+  _ctx.save();
+  pathFn();
+  _ctx.clip();
+  hatch();
+  _ctx.restore();
+
   _ctx.restore();
 }
 
 function hatch() {
-  // Экранно-стабильная штриховка (не меняет плотность при zoom)
-  // и сдвигается вместе с мировым нулём (не «плывёт» при pan).
-  const HATCH_TILE = 96;
-  const HATCH_STEP = 18;
-  const HATCH_LONG = 26;
-  const HATCH_SHORT = 8;
-  const HATCH_GAP = 8;
-  const HATCH_LINE = 1.2;
+  if (!_ctx || !_canvas) return;
 
-  const cacheKey = `${DRAW_COLORS.wallHatch}|${HATCH_TILE}|${HATCH_STEP}|${HATCH_LONG}|${HATCH_SHORT}|${HATCH_GAP}|${HATCH_LINE}`;
+  // Экранно-стабильная ГОСТ-подобная штриховка бетона: ___ _ ___ _
+  const HATCH_STEP = 24;
+  const HATCH_LONG = 20;
+  const HATCH_SHORT = 6;
+  const HATCH_GAP = 10;
+  const HATCH_LINE = 1.0;
 
-  if (!_hatchPat || _hatchPat.key !== cacheKey) {
-    const pc = document.createElement('canvas');
-    pc.width = HATCH_TILE;
-    pc.height = HATCH_TILE;
-    const px = pc.getContext('2d');
-    if (!px) return null;
+  const W = _canvas.width;
+  const H = _canvas.height;
+  const origin = toScreen(0, 0);
 
-    px.clearRect(0, 0, HATCH_TILE, HATCH_TILE);
-    px.strokeStyle = DRAW_COLORS.wallHatch;
-    px.lineWidth = HATCH_LINE;
-    px.lineCap = 'butt';
-    px.setLineDash([HATCH_LONG, HATCH_GAP, HATCH_SHORT, HATCH_GAP]); // ___ _ ___ _
+  _ctx.save();
+  _ctx.strokeStyle = DRAW_COLORS.wallHatch;
+  _ctx.lineWidth = HATCH_LINE;
+  _ctx.lineCap = 'butt';
+  _ctx.setLineDash([HATCH_LONG, HATCH_GAP, HATCH_SHORT, HATCH_GAP]);
 
-    const from = -HATCH_TILE;
-    const to = HATCH_TILE * 2;
-    for (let offset = from; offset <= to; offset += HATCH_STEP) {
-      px.beginPath();
-      px.moveTo(offset, -HATCH_TILE);
-      px.lineTo(offset + HATCH_TILE * 2, HATCH_TILE);
-      px.stroke();
-    }
+  // Привязка к мировому нулю: при pan/zoom рисунок не «ездит» по стенам.
+  const phase = ((origin.y - origin.x) % HATCH_STEP + HATCH_STEP) % HATCH_STEP;
 
-    const pattern = _ctx.createPattern(pc, 'repeat');
-    if (!pattern) return null;
-    _hatchPat = { key: cacheKey, pattern };
+  const margin = Math.hypot(W, H) + HATCH_STEP * 4;
+  for (let offset = -margin + phase; offset <= margin; offset += HATCH_STEP) {
+    const x1 = -margin;
+    const y1 = x1 + offset;
+    const x2 = W + margin;
+    const y2 = x2 + offset;
+
+    _ctx.beginPath();
+    _ctx.moveTo(x1, y1);
+    _ctx.lineTo(x2, y2);
+    _ctx.stroke();
   }
 
-  const pattern = _hatchPat.pattern;
-  if (pattern && typeof pattern.setTransform === 'function') {
-    const origin = toScreen(0, 0);
-    const tx = ((origin.x % HATCH_TILE) + HATCH_TILE) % HATCH_TILE;
-    const ty = ((origin.y % HATCH_TILE) + HATCH_TILE) % HATCH_TILE;
-    const matrix = typeof DOMMatrix === 'function'
-      ? new DOMMatrix([1, 0, 0, 1, tx, ty])
-      : { a: 1, b: 0, c: 0, d: 1, e: tx, f: ty };
-    pattern.setTransform(matrix);
-  }
-
-  return pattern || null;
+  _ctx.restore();
 }
 
 function wallInteriorSide(wall, fallback = 1) {
