@@ -322,29 +322,31 @@ function drawMeasures(selectedItems) {
   if (!appState.measures || !appState.measures.length) return;
   
   _ctx.save();
-  _ctx.strokeStyle = '#10b981'; // зелёный
-  _ctx.lineWidth = 2.0;
-  _ctx.setLineDash([8, 4]);
+  _ctx.strokeStyle = '#9ca3af';   // серый, как у обычных размеров
+  _ctx.lineWidth = 1.0;
+  _ctx.setLineDash([]);           // сплошная линия
   _ctx.lineCap = 'round';
   
   for (const m of appState.measures) {
     const p1 = toScreen(m.x1, m.y1);
     const p2 = toScreen(m.x2, m.y2);
+    
+    // Основная линия (без отступа, т.к. это уже сохранённый замер)
     _ctx.beginPath();
     _ctx.moveTo(p1.x, p1.y);
     _ctx.lineTo(p2.x, p2.y);
     _ctx.stroke();
 
-    // Подпись расстояния
+    // Подпись с белым фоном
     const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
     drawAlignedTextBox(m.label, mid, angle, {
-      textColor: '#047857',
-      background: 'rgba(255,255,255,0.9)',
+      textColor: '#374151',                        // тёмно-серый текст
+      background: 'rgba(255,255,255,0.95)',
+      font: '600 9px Onest, Inter, sans-serif'
     });
   }
   
-  _ctx.setLineDash([]);
   _ctx.restore();
 }
 
