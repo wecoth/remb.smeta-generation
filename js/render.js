@@ -46,27 +46,42 @@ function fillWall(pathFn, fill) {
 }
 
 function hatch() {
-  if (_hatchPat) return _hatchPat;
+  const scale = _getScale();
   
-  const SIZE = 24;               // было 12 → стало 24 (в 2 раза крупнее)
+  // Если масштаб не изменился — возвращаем кэш
+  if (_hatchCache && _hatchCache.scale === scale) {
+    return _hatchCache.pattern;
+  }
+
+  const STEP_MM = 50;           // расстояние между линиями в мм (можно менять)
+  const STEP = STEP_MM * scale; // в пикселях
+  const SIZE = Math.max(8, Math.ceil(STEP));
+
   const pc = document.createElement('canvas');
   pc.width = SIZE;
   pc.height = SIZE;
   const px = pc.getContext('2d');
-  
+
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 2.0;            // было 1 → стало 2 (жирнее)
-  
-  // Две диагональные линии для равномерного заполнения увеличенного тайла
+  px.lineWidth = 2 * scale;   // толщина линий
+
   px.beginPath();
-  px.moveTo(-2, SIZE + 2);
-  px.lineTo(SIZE + 2, -2);
-  px.moveTo(SIZE / 2, -2);
-  px.lineTo(SIZE + 2, SIZE / 2);
+
+  // ПАРАЛЛЕЛЬНЫЕ ДИАГОНАЛЬНЫЕ ЛИНИИ под 45° (как на втором скриншоте)
+  // Направление \ (слева-сверху → справа-снизу)
+  const start = -SIZE * 2;
+  const end = SIZE * 2;
+  for (let offset = start; offset < end; offset += STEP) {
+    px.moveTo(offset, 0);
+    px.lineTo(offset + SIZE, SIZE);
+  }
+
   px.stroke();
-  
-  _hatchPat = _ctx.createPattern(pc, 'repeat');
-  return _hatchPat;
+
+  const pattern = _ctx.createPattern(pc, 'repeat');
+  _hatchCache = { pattern, scale };
+
+  return pattern;
 }
 
 function wallInteriorSide(wall, fallback = 1) {
