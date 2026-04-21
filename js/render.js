@@ -322,9 +322,9 @@ function drawMeasures(selectedItems) {
   if (!appState.measures || !appState.measures.length) return;
   
   _ctx.save();
-  _ctx.strokeStyle = '#9ca3af';   // серый
+  _ctx.strokeStyle = '#9ca3af';
   _ctx.lineWidth = 1.0;
-  _ctx.setLineDash([]);           // сплошная
+  _ctx.setLineDash([]);
   _ctx.lineCap = 'round';
   
   for (const m of appState.measures) {
@@ -343,7 +343,7 @@ function drawMeasures(selectedItems) {
     _ctx.lineTo(p2.x, p2.y);
     _ctx.stroke();
     
-    // Прямые засечки (перпендикулярно линии)
+    // Прямые засечки (перпендикулярно)
     const TICK = 6 * _fontScale;
     const perpX = -dirY * TICK;
     const perpY = dirX * TICK;
@@ -355,9 +355,17 @@ function drawMeasures(selectedItems) {
     _ctx.lineTo(p2.x + perpX, p2.y + perpY);
     _ctx.stroke();
     
-    // Подпись с белым фоном
+    // Смещение текста вверх (по нормали)
+    const OFFSET = 18; // пикселей
+    const normalX = -dirY;
+    const normalY = dirX;
     const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-    drawAlignedTextBox(m.label, mid, angle, {
+    const labelPos = {
+      x: mid.x + normalX * OFFSET,
+      y: mid.y + normalY * OFFSET
+    };
+    
+    drawAlignedTextBox(m.label, labelPos, angle, {
       textColor: '#374151',
       background: 'rgba(255,255,255,0.95)',
       font: '600 9px Onest, Inter, sans-serif'
@@ -822,13 +830,13 @@ function drawTempMeasure(ps) {
   const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
   
   _ctx.save();
-  _ctx.strokeStyle = '#9ca3af';   // серый, как у обычных размеров
+  _ctx.strokeStyle = '#9ca3af';   // серый
   _ctx.lineWidth = 1.0;
   _ctx.setLineDash([]);
   _ctx.lineCap = 'round';
   
   // Основная линия с отступом от концов (для засечек)
-  const GAP = 12; // пиксели отступа
+  const GAP = 12;
   const dirX = (p2.x - p1.x) / len;
   const dirY = (p2.y - p1.y) / len;
   const startGap = { x: p1.x + dirX * GAP, y: p1.y + dirY * GAP };
@@ -839,28 +847,33 @@ function drawTempMeasure(ps) {
   _ctx.lineTo(endGap.x, endGap.y);
   _ctx.stroke();
   
-  // Засечки 45° на концах
-    // Прямые засечки (перпендикулярно линии)
+  // Прямые засечки (перпендикулярно линии)
   const TICK = 6 * _fontScale;
-  const perpX = -dirY * TICK;  // нормаль к линии
+  const perpX = -dirY * TICK;
   const perpY = dirX * TICK;
   
   _ctx.beginPath();
-  // Засечка у стартовой точки
   _ctx.moveTo(p1.x - perpX, p1.y - perpY);
   _ctx.lineTo(p1.x + perpX, p1.y + perpY);
-  // Засечка у конечной точки
   _ctx.moveTo(p2.x - perpX, p2.y - perpY);
   _ctx.lineTo(p2.x + perpX, p2.y + perpY);
   _ctx.stroke();
   
-  // Текст с белым фоном по центру
+  // Текст с белым фоном СМЕЩЁННЫЙ ВВЕРХ (над линией)
+  const OFFSET = 18;                      // отступ в пикселях
+  const normalX = -dirY;
+  const normalY = dirX;
   const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+  const labelPos = {
+    x: mid.x + normalX * OFFSET,
+    y: mid.y + normalY * OFFSET
+  };
+  
   const labelText = (lengthMode && lengthInput) 
     ? `${lengthInput} мм` 
     : `${Math.round(len)} мм`;
     
-  drawAlignedTextBox(labelText, mid, angle, {
+  drawAlignedTextBox(labelText, labelPos, angle, {
     textColor: '#374151',
     background: 'rgba(255,255,255,0.95)',
     font: '600 9px Onest, Inter, sans-serif'
