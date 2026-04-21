@@ -27,6 +27,8 @@ export function getSnapTypePriority(type) {
   }[type] ?? 9;
 }
 
+export function getPan() { return { panX: _panX, panY: _panY }; }
+
 export function getSnapLabel(type) {
   return {
     corner: 'Угол',
