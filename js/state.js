@@ -61,7 +61,7 @@ export const DRAW_COLORS = {
   wallFillSelected:    '#b0b0b0',
   wallStroke:          '#5f6771',
   wallStrokeSelected:  '#353c45',
-  wallHatch:           'rgba(2,2,2,0.15)',
+  wallHatch:           'rgba(0,0,0,0.35)',
   roomLabel:           '#4b5563',
   roomMeta:            '#6b7280',
   windowStroke:        '#8e96a0',
