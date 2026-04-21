@@ -46,29 +46,56 @@ function fillWall(pathFn, fill) {
 }
 
 function hatch() {
-  const scale = _getScale();
-  const STEP_MM = 50;
-  const STEP = STEP_MM * scale;
-  const SIZE = Math.max(8, Math.ceil(STEP));
+  // Экранно-стабильная штриховка (не меняет плотность при zoom)
+  // и сдвигается вместе с мировым нулём (не «плывёт» при pan).
+  const HATCH_TILE = 96;
+  const HATCH_STEP = 18;
+  const HATCH_LONG = 26;
+  const HATCH_SHORT = 8;
+  const HATCH_GAP = 8;
+  const HATCH_LINE = 1.2;
 
-  const pc = document.createElement('canvas');
-  pc.width = SIZE;
-  pc.height = SIZE;
-  const px = pc.getContext('2d');
+  const cacheKey = `${DRAW_COLORS.wallHatch}|${HATCH_TILE}|${HATCH_STEP}|${HATCH_LONG}|${HATCH_SHORT}|${HATCH_GAP}|${HATCH_LINE}`;
 
-  px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1.5 * scale;
+  if (!_hatchPat || _hatchPat.key !== cacheKey) {
+    const pc = document.createElement('canvas');
+    pc.width = HATCH_TILE;
+    pc.height = HATCH_TILE;
+    const px = pc.getContext('2d');
+    if (!px) return null;
 
-  px.beginPath();
-  const start = -SIZE * 2;
-  const end = SIZE * 2;
-  for (let offset = start; offset < end; offset += STEP) {
-    px.moveTo(offset, 0);
-    px.lineTo(offset + SIZE, SIZE);
+    px.clearRect(0, 0, HATCH_TILE, HATCH_TILE);
+    px.strokeStyle = DRAW_COLORS.wallHatch;
+    px.lineWidth = HATCH_LINE;
+    px.lineCap = 'butt';
+    px.setLineDash([HATCH_LONG, HATCH_GAP, HATCH_SHORT, HATCH_GAP]); // ___ _ ___ _
+
+    const from = -HATCH_TILE;
+    const to = HATCH_TILE * 2;
+    for (let offset = from; offset <= to; offset += HATCH_STEP) {
+      px.beginPath();
+      px.moveTo(offset, -HATCH_TILE);
+      px.lineTo(offset + HATCH_TILE * 2, HATCH_TILE);
+      px.stroke();
+    }
+
+    const pattern = _ctx.createPattern(pc, 'repeat');
+    if (!pattern) return null;
+    _hatchPat = { key: cacheKey, pattern };
   }
-  px.stroke();
 
-  return _ctx.createPattern(pc, 'repeat');
+  const pattern = _hatchPat.pattern;
+  if (pattern && typeof pattern.setTransform === 'function') {
+    const origin = toScreen(0, 0);
+    const tx = ((origin.x % HATCH_TILE) + HATCH_TILE) % HATCH_TILE;
+    const ty = ((origin.y % HATCH_TILE) + HATCH_TILE) % HATCH_TILE;
+    const matrix = typeof DOMMatrix === 'function'
+      ? new DOMMatrix([1, 0, 0, 1, tx, ty])
+      : { a: 1, b: 0, c: 0, d: 1, e: tx, f: ty };
+    pattern.setTransform(matrix);
+  }
+
+  return pattern || null;
 }
 
 function wallInteriorSide(wall, fallback = 1) {
