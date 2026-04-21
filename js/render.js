@@ -39,6 +39,12 @@ function sg(wall) { // screen geometry
            a: sc(w.a), b: sc(w.b), c: sc(w.c), d: sc(w.d) };
 }
 
+function fillWall(pathFn, fill) {
+  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
+  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
+  _ctx.restore();
+}
+
 function hatch() {
   const scale = _getScale();
   
