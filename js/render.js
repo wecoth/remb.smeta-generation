@@ -47,7 +47,7 @@ function hatch() {
     return _hatchCache.pattern;
   }
 
-  const STEP_MM = 20;           // расстояние между линиями в мм (можно менять)
+  const STEP_MM = 75;           // расстояние между линиями в мм (можно менять)
   const STEP = STEP_MM * scale; // в пикселях
   const SIZE = Math.max(8, Math.ceil(STEP));
 
