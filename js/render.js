@@ -47,14 +47,8 @@ function fillWall(pathFn, fill) {
 
 function hatch() {
   const scale = _getScale();
-  
-  // Если масштаб не изменился — возвращаем кэш
-  if (_hatchCache && _hatchCache.scale === scale) {
-    return _hatchCache.pattern;
-  }
-
-  const STEP_MM = 50;           // расстояние между линиями в мм (можно менять)
-  const STEP = STEP_MM * scale; // в пикселях
+  const STEP_MM = 50;
+  const STEP = STEP_MM * scale;
   const SIZE = Math.max(8, Math.ceil(STEP));
 
   const pc = document.createElement('canvas');
@@ -63,25 +57,18 @@ function hatch() {
   const px = pc.getContext('2d');
 
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 2 * scale;   // толщина линий
+  px.lineWidth = 1.5 * scale;
 
   px.beginPath();
-
-  // ПАРАЛЛЕЛЬНЫЕ ДИАГОНАЛЬНЫЕ ЛИНИИ под 45° (как на втором скриншоте)
-  // Направление \ (слева-сверху → справа-снизу)
   const start = -SIZE * 2;
   const end = SIZE * 2;
   for (let offset = start; offset < end; offset += STEP) {
     px.moveTo(offset, 0);
     px.lineTo(offset + SIZE, SIZE);
   }
-
   px.stroke();
 
-  const pattern = _ctx.createPattern(pc, 'repeat');
-  _hatchCache = { pattern, scale };
-
-  return pattern;
+  return _ctx.createPattern(pc, 'repeat');
 }
 
 function wallInteriorSide(wall, fallback = 1) {
