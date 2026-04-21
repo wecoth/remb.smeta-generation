@@ -10,6 +10,7 @@ import {
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
 import { polygonCentroid } from './geometry.js';
+import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn, getPan } from './snapping.js';
 
 let _canvas, _ctx, _hatchCache = null;
 let _getScale = () => 0.12;
@@ -47,10 +48,9 @@ function fillWall(pathFn, fill) {
 
 function hatch() {
   const scale = _getScale();
-  const panX = _panX;   // нужно получить текущее панорамирование
-  const panY = _panY;   // (переменные должны быть доступны, возможно через замыкание или глобально)
+  const { panX, panY } = getPan();
   
-  const cacheKey = `${scale}_${panX}_${panY}`;
+  const cacheKey = `${scale}_${Math.round(panX)}_${Math.round(panY)}`;
   if (_hatchCache && _hatchCache.key === cacheKey) {
     return _hatchCache.pattern;
   }
@@ -67,15 +67,14 @@ function hatch() {
   px.strokeStyle = DRAW_COLORS.wallHatch;
   px.lineWidth = 1.8 * scale;
 
-  const OVER = SIZE * 2;
-
-  // Смещаем начало координат внутри паттерна на величину панорамирования
-  // Это компенсирует движение холста, делая штриховку "приклеенной" к мировым координатам
+  // Смещаем начало координат внутри тайла на величину панорамирования
   const offsetX = panX % SIZE;
   const offsetY = panY % SIZE;
   px.translate(-offsetX, -offsetY);
 
-  // Длинные линии
+  const OVER = SIZE * 2;
+
+  // Длинные диагональные линии
   px.beginPath();
   for (let offset = -OVER; offset < SIZE + OVER; offset += STEP) {
     px.moveTo(offset, 0);
@@ -83,7 +82,7 @@ function hatch() {
   }
   px.stroke();
 
-  // Короткие отрезки
+  // Короткие отрезки между длинными
   const SHORT_LEN = STEP * 0.48;
   px.beginPath();
   for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
