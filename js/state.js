@@ -57,11 +57,11 @@ export function updateState(key, newValue) {
 
 // ── Draw colours (canvas) — shared between render + snapping ──────
 export const DRAW_COLORS = {
-  wallFill:            '#cfd4da',
-  wallFillSelected:    '#b9c0c8',
+  wallFill:            '#cdcdcd',
+  wallFillSelected:    '#b0b0b0',
   wallStroke:          '#5f6771',
   wallStrokeSelected:  '#353c45',
-  wallHatch:           'rgba(95,103,113,0.15)',
+  wallHatch:           'rgba(2,2,2,0.15)',
   roomLabel:           '#4b5563',
   roomMeta:            '#6b7280',
   windowStroke:        '#8e96a0',
@@ -88,8 +88,8 @@ export const DRAW_COLORS = {
   handleFill:          '#f8fafc',
   handleStroke:        '#4b5563',
   handleActive:        '#111827',
-  measureLine: '#10b981',
+  measureLine:         '#10b981',
 };
 
-export const ROOM_COLORS  = ['rgba(223,227,231,0.86)'];
+export const ROOM_COLORS  = ['#e6e6e6'];
 export const ROOM_STROKES = ['rgba(120,127,136,0.4)'];
