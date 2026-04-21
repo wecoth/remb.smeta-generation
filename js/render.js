@@ -9,16 +9,16 @@ import {
 } from './wall.js';
 import { exteriorWallIds } from './room.js';
 import { polygonCentroid } from './geometry.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn, getPan } from './snapping.js';
+import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 
-let _canvas, _ctx, _hatchCache = null;
+let _canvas, _ctx, _hatchPat = null;
 let _getScale = () => 0.12;
 let _fontScale = 1; // множитель шрифта для offscreen рендера (PDF)
 
 export function initRenderer(canvas, ctx, getScaleFn) {
   _canvas = canvas; _ctx = ctx;
   _getScale = getScaleFn || (() => 0.12);
-  _hatchCache = null;
+  _hatchPat = null;
 }
 
 // ── Utilities ─────────────────────────────────────────────────────
@@ -40,69 +40,27 @@ function sg(wall) { // screen geometry
 }
 
 function fillWall(pathFn, fill) {
-  _ctx.save();
-  pathFn();
-  _ctx.fillStyle = fill;
-  _ctx.fill();
-
-  const h = hatch();
-  if (h) {
-    _ctx.save();
-    // Сдвигаем контекст на текущее панорамирование, чтобы штриховка «приклеилась» к стенам
-    const { panX, panY } = getPan();
-    _ctx.translate(panX, panY);
-    _ctx.fillStyle = h;
-    pathFn();
-    _ctx.fill();
-    _ctx.restore();
-  }
-
+  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
+  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
   _ctx.restore();
 }
 
 function hatch() {
-  const scale = _getScale();
-  const cacheKey = `${scale}`;   // кэш только по масштабу, панорамирование учтём в fillWall
-  if (_hatchCache && _hatchCache.key === cacheKey) {
-    return _hatchCache.pattern;
-  }
-
-  const STEP_MM = 45;
-  const STEP = STEP_MM * scale;
-  const SIZE = Math.max(24, Math.ceil(STEP * 1.8));
-
+  if (_hatchPat) return _hatchPat;
   const pc = document.createElement('canvas');
-  pc.width = SIZE;
-  pc.height = SIZE;
+  pc.width = 12;
+  pc.height = 12;
   const px = pc.getContext('2d');
-
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1.8 * scale;
-
-  const OVER = SIZE * 2;
-
-  // Длинные диагональные линии
+  px.lineWidth = 1;
   px.beginPath();
-  for (let offset = -OVER; offset < SIZE + OVER; offset += STEP) {
-    px.moveTo(offset, 0);
-    px.lineTo(offset + SIZE, SIZE);
-  }
+  px.moveTo(-2, 12);
+  px.lineTo(12, -2);
+  px.moveTo(4, 12);
+  px.lineTo(12, 4);
   px.stroke();
-
-  // Короткие отрезки
-  const SHORT_LEN = STEP * 0.48;
-  px.beginPath();
-  for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
-    const x1 = offset + SIZE * 0.22;
-    const y1 = SIZE * 0.18;
-    px.moveTo(x1, y1);
-    px.lineTo(x1 + SHORT_LEN, y1 + SHORT_LEN);
-  }
-  px.stroke();
-
-  const pattern = _ctx.createPattern(pc, 'repeat');
-  _hatchCache = { pattern, key: cacheKey };
-  return pattern;
+  _hatchPat = _ctx.createPattern(pc, 'repeat');
+  return _hatchPat;
 }
 
 function wallInteriorSide(wall, fallback = 1) {
@@ -1288,7 +1246,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   const savedCanvas   = _canvas;
   const savedCtx      = _ctx;
   const savedGetScale = _getScale;
-  const savedHatch    = _hatchCache;
+  const savedHatch    = _hatchPat;
 
   // Переключаем на offscreen
   _canvas    = oc;
