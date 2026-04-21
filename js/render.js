@@ -7,7 +7,6 @@ import {
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
   areWallsCollinear,
 } from './wall.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
 import { polygonCentroid } from './geometry.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn, getPan } from './snapping.js';
