@@ -912,6 +912,7 @@ function drawStraightTick(screenPt, angle, lengthPx = 8) {
 // Снаружи: общий размер угол-угол с засечками 45°
 // Внутри:  цепочка угол→проём→угол (только если есть проёмы)
 // ══════════════════════════════════════════════════════════════════
+
 function drawWallDimensions() {
   const scale = _getScale();
   if (scale < 0.07) return;
@@ -996,7 +997,7 @@ function drawWallDimensions() {
     }
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
-    const OFFSET_MM = 70;
+    const OFFSET_MM = 300;
     const offsetPx = OFFSET_MM * _getScale();
     for (const seg of segs) {
       const mid = (seg.from + seg.to) / 2;
