@@ -46,9 +46,9 @@ function hatch() {
     return _hatchCache.pattern;
   }
   
-  const STEP_MM = 2;                // расстояние между линиями штриховки в миллиметрах
+  const STEP_MM = 20;               // расстояние между линиями в миллиметрах (крупнее)
   const STEP = STEP_MM * scale;     // переводим в пиксели
-  const SIZE = Math.max(4, Math.ceil(STEP));
+  const SIZE = Math.max(8, Math.ceil(STEP));
   
   const pc = document.createElement('canvas');
   pc.width = SIZE;
@@ -56,9 +56,9 @@ function hatch() {
   const px = pc.getContext('2d');
   
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1 * scale;         // толщина линии тоже в мировых единицах
+  px.lineWidth = 1.5 * scale;       // чуть потолще для выразительности
   
-  // Диагональные линии
+  // Диагональные линии (как у бетона)
   px.beginPath();
   px.moveTo(-SIZE, 0);
   px.lineTo(SIZE * 2, SIZE);
