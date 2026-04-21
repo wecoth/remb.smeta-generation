@@ -879,7 +879,7 @@ function drawTempMeasure(ps) {
 // ЗАСЕЧКА 45° (архитектурный стиль)
 // ══════════════════════════════════════════════════════════════════
 function drawTick45(screenPt, angle) {
-  const TICK_MM = 30;                      // длина засечки в миллиметрах
+  const TICK_MM = 25;                      // длина засечки в миллиметрах
   const TICK = TICK_MM * _getScale();      // перевод в пиксели
   const a = angle + Math.PI / 4;
   _ctx.moveTo(screenPt.x - Math.cos(a) * TICK, screenPt.y - Math.sin(a) * TICK);
