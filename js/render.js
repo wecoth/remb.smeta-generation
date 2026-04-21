@@ -40,16 +40,29 @@ function sg(wall) { // screen geometry
 }
 
 function fillWall(pathFn, fill) {
-  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
-  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
+  _ctx.save();
+  pathFn();
+  _ctx.fillStyle = fill;
+  _ctx.fill();
+
+  const h = hatch();
+  if (h) {
+    _ctx.save();
+    // Сдвигаем контекст на текущее панорамирование, чтобы штриховка «приклеилась» к стенам
+    const { panX, panY } = getPan();
+    _ctx.translate(panX, panY);
+    _ctx.fillStyle = h;
+    pathFn();
+    _ctx.fill();
+    _ctx.restore();
+  }
+
   _ctx.restore();
 }
 
 function hatch() {
   const scale = _getScale();
-  const { panX, panY } = getPan();
-  
-  const cacheKey = `${scale}_${Math.round(panX)}_${Math.round(panY)}`;
+  const cacheKey = `${scale}`;   // кэш только по масштабу, панорамирование учтём в fillWall
   if (_hatchCache && _hatchCache.key === cacheKey) {
     return _hatchCache.pattern;
   }
@@ -66,11 +79,6 @@ function hatch() {
   px.strokeStyle = DRAW_COLORS.wallHatch;
   px.lineWidth = 1.8 * scale;
 
-  // Смещаем начало координат внутри тайла на величину панорамирования
-  const offsetX = panX % SIZE;
-  const offsetY = panY % SIZE;
-  px.translate(-offsetX, -offsetY);
-
   const OVER = SIZE * 2;
 
   // Длинные диагональные линии
@@ -81,7 +89,7 @@ function hatch() {
   }
   px.stroke();
 
-  // Короткие отрезки между длинными
+  // Короткие отрезки
   const SHORT_LEN = STEP * 0.48;
   px.beginPath();
   for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
