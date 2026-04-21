@@ -7,9 +7,9 @@ import {
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getJointBoundaryPaths,
   areWallsCollinear,
 } from './wall.js';
+import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 import { exteriorWallIds } from './room.js';
 import { polygonCentroid } from './geometry.js';
-import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn, getPan } from './snapping.js';
 
 let _canvas, _ctx, _hatchCache = null;
 let _getScale = () => 0.12;
@@ -39,37 +39,16 @@ function sg(wall) { // screen geometry
            a: sc(w.a), b: sc(w.b), c: sc(w.c), d: sc(w.d) };
 }
 
-function fillWall(pathFn, fill) {
-  _ctx.save();
-  pathFn();
-  _ctx.fillStyle = fill;
-  _ctx.fill();
-
-  const h = hatch();
-  if (h) {
-    _ctx.save();
-    // Сдвигаем контекст на текущее панорамирование, чтобы штриховка «приклеилась» к стенам
-    const { panX, panY } = getPan();
-    _ctx.translate(panX, panY);
-    _ctx.fillStyle = h;
-    pathFn();
-    _ctx.fill();
-    _ctx.restore();
-  }
-
-  _ctx.restore();
-}
-
 function hatch() {
   const scale = _getScale();
-  const cacheKey = `${scale}`;   // кэш только по масштабу, панорамирование учтём в fillWall
-  if (_hatchCache && _hatchCache.key === cacheKey) {
+  
+  if (_hatchCache && _hatchCache.scale === scale) {
     return _hatchCache.pattern;
   }
 
-  const STEP_MM = 45;
+  const STEP_MM = 45;           // ← СИЛЬНО КРУПНЕЕ (было 20, теперь 45)
   const STEP = STEP_MM * scale;
-  const SIZE = Math.max(24, Math.ceil(STEP * 1.8));
+  const SIZE = Math.max(24, Math.ceil(STEP * 1.8)); // большой тайл для хорошего повторения
 
   const pc = document.createElement('canvas');
   pc.width = SIZE;
@@ -77,31 +56,33 @@ function hatch() {
   const px = pc.getContext('2d');
 
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1.8 * scale;
+  px.lineWidth = 1.8 * scale;   // чуть толще, как в ГОСТ-чертежах
 
-  const OVER = SIZE * 2;
-
-  // Длинные диагональные линии
   px.beginPath();
+
+  const OVER = SIZE * 2; // перекрытие по краям, чтобы не было пробелов
+
+  // 1. ДЛИННЫЕ диагональные линии (основные, как в ГОСТ)
   for (let offset = -OVER; offset < SIZE + OVER; offset += STEP) {
     px.moveTo(offset, 0);
     px.lineTo(offset + SIZE, SIZE);
   }
-  px.stroke();
 
-  // Короткие отрезки
-  const SHORT_LEN = STEP * 0.48;
-  px.beginPath();
+  // 2. КОРОТКИЕ диагональные отрезки между длинными (то, что ты просил)
+  const SHORT_LEN = STEP * 0.48;           // длина коротких ~половина шага
   for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
+    // короткие отрезки размещены в промежутках
     const x1 = offset + SIZE * 0.22;
     const y1 = SIZE * 0.18;
     px.moveTo(x1, y1);
     px.lineTo(x1 + SHORT_LEN, y1 + SHORT_LEN);
   }
+
   px.stroke();
 
   const pattern = _ctx.createPattern(pc, 'repeat');
-  _hatchCache = { pattern, key: cacheKey };
+  _hatchCache = { pattern, scale };
+
   return pattern;
 }
 
@@ -1294,7 +1275,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   _canvas    = oc;
   _ctx       = octx;
   _getScale  = () => scale;
-  _hatchCache = null;
+  _hatchPat  = null;
   // Масштабируем шрифты пропорционально ширине output (базовый = 800px)
   _fontScale = Math.max(1, outW / 800);
 
@@ -1332,7 +1313,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   _canvas    = savedCanvas;
   _ctx       = savedCtx;
   _getScale  = savedGetScale;
-  _hatchCache = savedHatch;
+  _hatchPat  = savedHatch;
   _fontScale = 1;
   const vp   = window._plannerViewport ?? { scale: 0.12, panX: 200, panY: 150 };
   _setViewportFn(vp.scale, vp.panX, vp.panY);
