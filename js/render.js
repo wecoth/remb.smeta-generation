@@ -68,22 +68,6 @@ function hatch() {
   _hatchPat = _ctx.createPattern(pc, 'repeat');
   return _hatchPat;
 }
-  if (_hatchPat) return _hatchPat;
-  const pc = document.createElement('canvas');
-  pc.width = 12;
-  pc.height = 12;
-  const px = pc.getContext('2d');
-  px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1;
-  px.beginPath();
-  px.moveTo(-2, 12);
-  px.lineTo(12, -2);
-  px.moveTo(4, 12);
-  px.lineTo(12, 4);
-  px.stroke();
-  _hatchPat = _ctx.createPattern(pc, 'repeat');
-  return _hatchPat;
-}
 
 function wallInteriorSide(wall, fallback = 1) {
   const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
