@@ -955,7 +955,7 @@ function drawWallDimensions() {
     if (!hasOpenings) {
       drawChain([0, wlen], IN_OFF, '#111111');
       const pt = sp(wlen / 2, IN_OFF);
-      const OFFSET_MM = 80;
+      const OFFSET_MM = 150;
       const offsetPx = OFFSET_MM * _getScale();
       const labelPos = {
         x: pt.x - ny * offsetPx,
@@ -982,7 +982,7 @@ function drawWallDimensions() {
     }
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
-    const OFFSET_MM = 80;
+    const OFFSET_MM = 150;
     const offsetPx = OFFSET_MM * _getScale();
     for (const seg of segs) {
       const mid = (seg.from + seg.to) / 2;
