@@ -39,23 +39,23 @@ function sg(wall) { // screen geometry
            a: sc(w.a), b: sc(w.b), c: sc(w.c), d: sc(w.d) };
 }
 
-function fillWall(pathFn, fill) {
+function fillWall(pathFn, fill, hatchBounds = null) {
   _ctx.save();
   pathFn();
   _ctx.fillStyle = fill;
   _ctx.fill();
 
-  // Штрихуем через clip, а не через repeating-pattern — без плиточной ряби/швов.
+  // Штрихуем через clip: без плиточной ряби и только в области фигуры.
   _ctx.save();
   pathFn();
   _ctx.clip();
-  hatch();
+  hatch(hatchBounds);
   _ctx.restore();
 
   _ctx.restore();
 }
 
-function hatch() {
+function hatch(bounds = null) {
   if (!_ctx || !_canvas) return;
 
   // Экранно-стабильная ГОСТ-подобная штриховка бетона: ___ _ ___ _
@@ -65,9 +65,35 @@ function hatch() {
   const HATCH_GAP = 10;
   const HATCH_LINE = 1.0;
 
-  const W = _canvas.width;
-  const H = _canvas.height;
+  let left = 0;
+  let top = 0;
+  let right = _canvas.width;
+  let bottom = _canvas.height;
+
+  if (bounds) {
+    left = bounds.left;
+    top = bounds.top;
+    right = bounds.right;
+    bottom = bounds.bottom;
+  }
+
+  // Небольшой запас, чтобы штрихи не обрезались по краям clip-области.
+  const pad = HATCH_STEP * 2;
+  left -= pad;
+  top -= pad;
+  right += pad;
+  bottom += pad;
+
   const origin = toScreen(0, 0);
+
+  // Линии вида y = x + c, где c привязан к мировому нулю.
+  const c0 = origin.y - origin.x;
+  const cMin = top - right;
+  const cMax = bottom - left;
+  const kStart = Math.ceil((cMin - c0) / HATCH_STEP);
+  const kEnd = Math.floor((cMax - c0) / HATCH_STEP);
+
+  if (kEnd < kStart) return;
 
   _ctx.save();
   _ctx.strokeStyle = DRAW_COLORS.wallHatch;
@@ -75,15 +101,17 @@ function hatch() {
   _ctx.lineCap = 'butt';
   _ctx.setLineDash([HATCH_LONG, HATCH_GAP, HATCH_SHORT, HATCH_GAP]);
 
-  // Привязка к мировому нулю: при pan/zoom рисунок не «ездит» по стенам.
-  const phase = ((origin.y - origin.x) % HATCH_STEP + HATCH_STEP) % HATCH_STEP;
+  // Якорим фазу штрихов по миру, чтобы при pan/zoom они не "скользили" по стене.
+  const dashPeriod = HATCH_LONG + HATCH_GAP + HATCH_SHORT + HATCH_GAP;
+  const dashAnchor = (origin.x + origin.y) / Math.SQRT2;
+  _ctx.lineDashOffset = -(((dashAnchor % dashPeriod) + dashPeriod) % dashPeriod);
 
-  const margin = Math.hypot(W, H) + HATCH_STEP * 4;
-  for (let offset = -margin + phase; offset <= margin; offset += HATCH_STEP) {
-    const x1 = -margin;
-    const y1 = x1 + offset;
-    const x2 = W + margin;
-    const y2 = x2 + offset;
+  for (let k = kStart; k <= kEnd; k++) {
+    const c = c0 + k * HATCH_STEP;
+    const x1 = left;
+    const y1 = x1 + c;
+    const x2 = right;
+    const y2 = x2 + c;
 
     _ctx.beginPath();
     _ctx.moveTo(x1, y1);
@@ -93,7 +121,6 @@ function hatch() {
 
   _ctx.restore();
 }
-
 function wallInteriorSide(wall, fallback = 1) {
   const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
   const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
@@ -454,12 +481,16 @@ function drawWalls(selectedItems) {
 
   // Pass 1: fill обрезанным полигоном
   for (const { style, ptA, ptB, ptC, ptD } of wallData) {
+    const left = Math.min(ptA.x, ptB.x, ptC.x, ptD.x);
+    const top = Math.min(ptA.y, ptB.y, ptC.y, ptD.y);
+    const right = Math.max(ptA.x, ptB.x, ptC.x, ptD.x);
+    const bottom = Math.max(ptA.y, ptB.y, ptC.y, ptD.y);
     fillWall(() => {
       _ctx.beginPath();
       _ctx.moveTo(ptA.x, ptA.y); _ctx.lineTo(ptB.x, ptB.y);
       _ctx.lineTo(ptC.x, ptC.y); _ctx.lineTo(ptD.x, ptD.y);
       _ctx.closePath();
-    }, style.fill);
+    }, style.fill, { left, top, right, bottom });
   }
 
   // Pass 2: fill joint rects (ортогональные углы)
@@ -469,7 +500,7 @@ function drawWalls(selectedItems) {
     const tl = toScreen(jr.left, jr.top), br = toScreen(jr.right, jr.bottom);
     const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
     const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr-rl, rb-rt); }, style.fill);
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr-rl, rb-rt); }, style.fill, { left: rl, top: rt, right: rr, bottom: rb });
   }
 
   // Pass 3: stroke outlines
@@ -600,7 +631,7 @@ function drawWallJoints(selectedItems) {
     const rl = Math.min(tl.x, br.x), rt = Math.min(tl.y, br.y);
     const rr = Math.max(tl.x, br.x), rb = Math.max(tl.y, br.y);
     // Заливка стыка
-    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill);
+    fillWall(() => { _ctx.beginPath(); _ctx.rect(rl, rt, rr - rl, rb - rt); }, style.fill, { left: rl, top: rt, right: rr, bottom: rb });
     // Контур — только boundary edges (внешние грани стыка)
     _ctx.save();
     _ctx.strokeStyle = style.stroke;
