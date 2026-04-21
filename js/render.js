@@ -910,7 +910,7 @@ function drawWallDimensions() {
 
     const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
-    const nx = -uy, ny = ux;
+    const nx = -uy, ny = ux;           // нормаль к оси стены
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
@@ -952,14 +952,19 @@ function drawWallDimensions() {
 
     const IN_OFF = (halfT + 80) * interiorSign;
 
+    // Направление для смещения текста — перпендикуляр к линии (в экранных координатах)
+    const dirX = ux, dirY = uy;
+    const textNormalX = -dirY;
+    const textNormalY = dirX;
+
     if (!hasOpenings) {
       drawChain([0, wlen], IN_OFF, '#111111');
       const pt = sp(wlen / 2, IN_OFF);
       const OFFSET_MM = 150;
       const offsetPx = OFFSET_MM * _getScale();
       const labelPos = {
-        x: pt.x + ny * offsetPx,   // текст НАД линией
-        y: pt.y - nx * offsetPx
+        x: pt.x + textNormalX * offsetPx,
+        y: pt.y + textNormalY * offsetPx
       };
       drawAlignedTextBox(`${Math.round(wlen)} мм`, labelPos, angle, {
         font: '500 9px Onest, Inter, sans-serif',
@@ -988,8 +993,8 @@ function drawWallDimensions() {
       const mid = (seg.from + seg.to) / 2;
       const pt  = sp(mid, IN_OFF);
       const labelPos = {
-        x: pt.x + ny * offsetPx,
-        y: pt.y - nx * offsetPx
+        x: pt.x + textNormalX * offsetPx,
+        y: pt.y + textNormalY * offsetPx
       };
       drawAlignedTextBox(`${Math.round(seg.to - seg.from)} мм`, labelPos, angle, {
         font: `${seg.isOpening ? '700' : '500'} 9px Onest, Inter, sans-serif`,
