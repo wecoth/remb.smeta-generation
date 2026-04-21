@@ -47,6 +47,28 @@ function fillWall(pathFn, fill) {
 
 function hatch() {
   if (_hatchPat) return _hatchPat;
+  
+  const SIZE = 24;               // было 12 → стало 24 (в 2 раза крупнее)
+  const pc = document.createElement('canvas');
+  pc.width = SIZE;
+  pc.height = SIZE;
+  const px = pc.getContext('2d');
+  
+  px.strokeStyle = DRAW_COLORS.wallHatch;
+  px.lineWidth = 2.0;            // было 1 → стало 2 (жирнее)
+  
+  // Две диагональные линии для равномерного заполнения увеличенного тайла
+  px.beginPath();
+  px.moveTo(-2, SIZE + 2);
+  px.lineTo(SIZE + 2, -2);
+  px.moveTo(SIZE / 2, -2);
+  px.lineTo(SIZE + 2, SIZE / 2);
+  px.stroke();
+  
+  _hatchPat = _ctx.createPattern(pc, 'repeat');
+  return _hatchPat;
+}
+  if (_hatchPat) return _hatchPat;
   const pc = document.createElement('canvas');
   pc.width = 12;
   pc.height = 12;
