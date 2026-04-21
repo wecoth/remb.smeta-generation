@@ -41,33 +41,40 @@ function sg(wall) { // screen geometry
 
 function hatch() {
   const scale = _getScale();
-  // Если масштаб не изменился, возвращаем кэшированный паттерн
+  
+  // Если масштаб не изменился — возвращаем кэш
   if (_hatchCache && _hatchCache.scale === scale) {
     return _hatchCache.pattern;
   }
-  
-  const STEP_MM = 20;               // расстояние между линиями в миллиметрах (крупнее)
-  const STEP = STEP_MM * scale;     // переводим в пиксели
+
+  const STEP_MM = 20;           // расстояние между линиями в мм (можно менять)
+  const STEP = STEP_MM * scale; // в пикселях
   const SIZE = Math.max(8, Math.ceil(STEP));
-  
+
   const pc = document.createElement('canvas');
   pc.width = SIZE;
   pc.height = SIZE;
   const px = pc.getContext('2d');
-  
+
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1.5 * scale;       // чуть потолще для выразительности
-  
-  // Диагональные линии (как у бетона)
+  px.lineWidth = 1.5 * scale;   // толщина линий
+
   px.beginPath();
-  px.moveTo(-SIZE, 0);
-  px.lineTo(SIZE * 2, SIZE);
-  px.moveTo(0, -SIZE);
-  px.lineTo(SIZE, SIZE * 2);
+
+  // ПАРАЛЛЕЛЬНЫЕ ДИАГОНАЛЬНЫЕ ЛИНИИ под 45° (как на втором скриншоте)
+  // Направление \ (слева-сверху → справа-снизу)
+  const start = -SIZE * 2;
+  const end = SIZE * 2;
+  for (let offset = start; offset < end; offset += STEP) {
+    px.moveTo(offset, 0);
+    px.lineTo(offset + SIZE, SIZE);
+  }
+
   px.stroke();
-  
+
   const pattern = _ctx.createPattern(pc, 'repeat');
   _hatchCache = { pattern, scale };
+
   return pattern;
 }
 
