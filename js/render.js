@@ -1252,7 +1252,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   _canvas    = oc;
   _ctx       = octx;
   _getScale  = () => scale;
-  _hatchPat; = null;
+  _hatchPat  = null;
   // Масштабируем шрифты пропорционально ширине output (базовый = 800px)
   _fontScale = Math.max(1, outW / 800);
 
