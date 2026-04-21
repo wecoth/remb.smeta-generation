@@ -322,26 +322,43 @@ function drawMeasures(selectedItems) {
   if (!appState.measures || !appState.measures.length) return;
   
   _ctx.save();
-  _ctx.strokeStyle = '#9ca3af';   // серый, как у обычных размеров
+  _ctx.strokeStyle = '#9ca3af';   // серый
   _ctx.lineWidth = 1.0;
-  _ctx.setLineDash([]);           // сплошная линия
+  _ctx.setLineDash([]);           // сплошная
   _ctx.lineCap = 'round';
   
   for (const m of appState.measures) {
     const p1 = toScreen(m.x1, m.y1);
     const p2 = toScreen(m.x2, m.y2);
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    if (len < 1) continue;
     
-    // Основная линия (без отступа, т.к. это уже сохранённый замер)
+    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const dirX = (p2.x - p1.x) / len;
+    const dirY = (p2.y - p1.y) / len;
+    
+    // Основная линия
     _ctx.beginPath();
     _ctx.moveTo(p1.x, p1.y);
     _ctx.lineTo(p2.x, p2.y);
     _ctx.stroke();
-
+    
+    // Прямые засечки (перпендикулярно линии)
+    const TICK = 6 * _fontScale;
+    const perpX = -dirY * TICK;
+    const perpY = dirX * TICK;
+    
+    _ctx.beginPath();
+    _ctx.moveTo(p1.x - perpX, p1.y - perpY);
+    _ctx.lineTo(p1.x + perpX, p1.y + perpY);
+    _ctx.moveTo(p2.x - perpX, p2.y - perpY);
+    _ctx.lineTo(p2.x + perpX, p2.y + perpY);
+    _ctx.stroke();
+    
     // Подпись с белым фоном
     const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
     drawAlignedTextBox(m.label, mid, angle, {
-      textColor: '#374151',                        // тёмно-серый текст
+      textColor: '#374151',
       background: 'rgba(255,255,255,0.95)',
       font: '600 9px Onest, Inter, sans-serif'
     });
@@ -823,18 +840,18 @@ function drawTempMeasure(ps) {
   _ctx.stroke();
   
   // Засечки 45° на концах
+    // Прямые засечки (перпендикулярно линии)
   const TICK = 6 * _fontScale;
-  const tickAngle = angle + Math.PI / 4;
-  const cosTick = Math.cos(tickAngle) * TICK;
-  const sinTick = Math.sin(tickAngle) * TICK;
+  const perpX = -dirY * TICK;  // нормаль к линии
+  const perpY = dirX * TICK;
   
   _ctx.beginPath();
   // Засечка у стартовой точки
-  _ctx.moveTo(p1.x - cosTick, p1.y - sinTick);
-  _ctx.lineTo(p1.x + cosTick, p1.y + sinTick);
+  _ctx.moveTo(p1.x - perpX, p1.y - perpY);
+  _ctx.lineTo(p1.x + perpX, p1.y + perpY);
   // Засечка у конечной точки
-  _ctx.moveTo(p2.x - cosTick, p2.y - sinTick);
-  _ctx.lineTo(p2.x + cosTick, p2.y + sinTick);
+  _ctx.moveTo(p2.x - perpX, p2.y - perpY);
+  _ctx.lineTo(p2.x + perpX, p2.y + perpY);
   _ctx.stroke();
   
   // Текст с белым фоном по центру
