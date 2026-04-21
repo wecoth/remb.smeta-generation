@@ -47,11 +47,15 @@ function fillWall(pathFn, fill) {
 
 function hatch() {
   const scale = _getScale();
-  if (_hatchCache && _hatchCache.scale === scale) {
+  const panX = _panX;   // нужно получить текущее панорамирование
+  const panY = _panY;   // (переменные должны быть доступны, возможно через замыкание или глобально)
+  
+  const cacheKey = `${scale}_${panX}_${panY}`;
+  if (_hatchCache && _hatchCache.key === cacheKey) {
     return _hatchCache.pattern;
   }
 
-  const STEP_MM = 45;                     // расстояние между длинными линиями (мм)
+  const STEP_MM = 45;
   const STEP = STEP_MM * scale;
   const SIZE = Math.max(24, Math.ceil(STEP * 1.8));
 
@@ -65,7 +69,13 @@ function hatch() {
 
   const OVER = SIZE * 2;
 
-  // 1. Длинные диагональные линии (основные)
+  // Смещаем начало координат внутри паттерна на величину панорамирования
+  // Это компенсирует движение холста, делая штриховку "приклеенной" к мировым координатам
+  const offsetX = panX % SIZE;
+  const offsetY = panY % SIZE;
+  px.translate(-offsetX, -offsetY);
+
+  // Длинные линии
   px.beginPath();
   for (let offset = -OVER; offset < SIZE + OVER; offset += STEP) {
     px.moveTo(offset, 0);
@@ -73,7 +83,7 @@ function hatch() {
   }
   px.stroke();
 
-  // 2. Короткие диагональные отрезки между длинными (то, что ты просил: ____ _ ____ _)
+  // Короткие отрезки
   const SHORT_LEN = STEP * 0.48;
   px.beginPath();
   for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
@@ -85,7 +95,7 @@ function hatch() {
   px.stroke();
 
   const pattern = _ctx.createPattern(pc, 'repeat');
-  _hatchCache = { pattern, scale };
+  _hatchCache = { pattern, key: cacheKey };
   return pattern;
 }
 
