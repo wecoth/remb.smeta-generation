@@ -42,14 +42,13 @@ function sg(wall) { // screen geometry
 function hatch() {
   const scale = _getScale();
   
-  // Если масштаб не изменился — возвращаем кэш
   if (_hatchCache && _hatchCache.scale === scale) {
     return _hatchCache.pattern;
   }
 
-  const STEP_MM = 75;           // расстояние между линиями в мм (можно менять)
-  const STEP = STEP_MM * scale; // в пикселях
-  const SIZE = Math.max(8, Math.ceil(STEP));
+  const STEP_MM = 45;           // ← СИЛЬНО КРУПНЕЕ (было 20, теперь 45)
+  const STEP = STEP_MM * scale;
+  const SIZE = Math.max(24, Math.ceil(STEP * 1.8)); // большой тайл для хорошего повторения
 
   const pc = document.createElement('canvas');
   pc.width = SIZE;
@@ -57,17 +56,26 @@ function hatch() {
   const px = pc.getContext('2d');
 
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1.5 * scale;   // толщина линий
+  px.lineWidth = 1.8 * scale;   // чуть толще, как в ГОСТ-чертежах
 
   px.beginPath();
 
-  // ПАРАЛЛЕЛЬНЫЕ ДИАГОНАЛЬНЫЕ ЛИНИИ под 45° (как на втором скриншоте)
-  // Направление \ (слева-сверху → справа-снизу)
-  const start = -SIZE * 2;
-  const end = SIZE * 2;
-  for (let offset = start; offset < end; offset += STEP) {
+  const OVER = SIZE * 2; // перекрытие по краям, чтобы не было пробелов
+
+  // 1. ДЛИННЫЕ диагональные линии (основные, как в ГОСТ)
+  for (let offset = -OVER; offset < SIZE + OVER; offset += STEP) {
     px.moveTo(offset, 0);
     px.lineTo(offset + SIZE, SIZE);
+  }
+
+  // 2. КОРОТКИЕ диагональные отрезки между длинными (то, что ты просил)
+  const SHORT_LEN = STEP * 0.48;           // длина коротких ~половина шага
+  for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
+    // короткие отрезки размещены в промежутках
+    const x1 = offset + SIZE * 0.22;
+    const y1 = SIZE * 0.18;
+    px.moveTo(x1, y1);
+    px.lineTo(x1 + SHORT_LEN, y1 + SHORT_LEN);
   }
 
   px.stroke();
@@ -76,12 +84,6 @@ function hatch() {
   _hatchCache = { pattern, scale };
 
   return pattern;
-}
-
-function fillWall(pathFn, fill) {
-  _ctx.save(); pathFn(); _ctx.fillStyle = fill; _ctx.fill();
-  const h = hatch(); if (h) { pathFn(); _ctx.fillStyle = h; _ctx.fill(); }
-  _ctx.restore();
 }
 
 function wallInteriorSide(wall, fallback = 1) {
