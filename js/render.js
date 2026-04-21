@@ -899,6 +899,14 @@ function drawTick45(screenPt, angle) {
   _ctx.lineTo(screenPt.x + Math.cos(a) * TICK, screenPt.y + Math.sin(a) * TICK);
 }
 
+function drawStraightTick(screenPt, angle, lengthPx = 8) {
+  const TICK = lengthPx * _fontScale;
+  const perpX = -Math.sin(angle) * TICK;
+  const perpY =  Math.cos(angle) * TICK;
+  _ctx.moveTo(screenPt.x - perpX, screenPt.y - perpY);
+  _ctx.lineTo(screenPt.x + perpX, screenPt.y + perpY);
+}
+
 // ══════════════════════════════════════════════════════════════════
 // РАЗМЕРНЫЕ ЦЕПОЧКИ
 // Снаружи: общий размер угол-угол с засечками 45°
@@ -925,7 +933,6 @@ function drawWallDimensions() {
     });
     const sp = (along, normalOff) => toScreen(worldPt(along, normalOff).x, worldPt(along, normalOff).y);
 
-    // Проёмы
     const wallOpenings = appState.openings
       .filter(op => op.wallId === wall.id)
       .map(op => ({
@@ -936,7 +943,6 @@ function drawWallDimensions() {
       .sort((a, b) => a.start - b.start);
     const hasOpenings = wallOpenings.length > 0;
 
-    // Рисует одну размерную линию по набору tick-позиций
     const drawChain = (ticks, normalOff, lineColor) => {
       const sorted = [...new Set(ticks)].sort((a, b) => a - b);
       if (sorted.length < 2) return;
@@ -944,43 +950,42 @@ function drawWallDimensions() {
       const p1 = sp(sorted[0] + GAP, normalOff);
       const p2 = sp(sorted[sorted.length-1] - GAP, normalOff);
       _ctx.strokeStyle = lineColor;
-      _ctx.lineWidth = 0.7;
+      _ctx.lineWidth = 1.5;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
-      // Засечки на всех точках кроме самых крайних
       for (const pos of sorted) {
         if (pos < sorted[0] + GAP * 0.3 || pos > sorted[sorted.length-1] - GAP * 0.3) continue;
-        drawTick45(sp(pos, normalOff), angle);
+        drawStraightTick(sp(pos, normalOff), angle, 8);
       }
-      drawTick45(p1, angle);
-      drawTick45(p2, angle);
+      drawStraightTick(p1, angle, 8);
+      drawStraightTick(p2, angle, 8);
       _ctx.stroke();
     };
 
-    // ── ВНУТРИ: цепочка ──────────────────────────────────────
-    // Если нет проёмов — один размер угол-угол внутри.
-    // Если есть проёмы — цепочка сегментов, общий размер не рисуем.
     const IN_OFF = (halfT + 80) * interiorSign;
 
     if (!hasOpenings) {
-      // Простой размер угол-угол
-      drawChain([0, wlen], IN_OFF, '#9ca3af');
+      drawChain([0, wlen], IN_OFF, '#111111');
       const pt = sp(wlen / 2, IN_OFF);
-      drawAlignedTextBox(`${Math.round(wlen)} мм`, pt, angle, {
+      const OFFSET_MM = 300;
+      const offsetPx = OFFSET_MM * _getScale();
+      const labelPos = {
+        x: pt.x - ny * offsetPx,
+        y: pt.y + nx * offsetPx
+      };
+      drawAlignedTextBox(`${Math.round(wlen)} мм`, labelPos, angle, {
         font: '500 9px Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
-        textColor: '#374151',
+        textColor: '#111111',
       });
       continue;
     }
 
-    // Цепочка с проёмами
     const chainTicks = [0, wlen];
     for (const { start, end } of wallOpenings) { chainTicks.push(start); chainTicks.push(end); }
-    drawChain(chainTicks, IN_OFF, '#9ca3af');
+    drawChain(chainTicks, IN_OFF, '#111111');
 
-    // Подписи сегментов
     const segs = [];
     let cursor = 0;
     for (const { start, end } of wallOpenings) {
@@ -990,13 +995,19 @@ function drawWallDimensions() {
     }
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
+    const OFFSET_MM = 50;
+    const offsetPx = OFFSET_MM * _getScale();
     for (const seg of segs) {
       const mid = (seg.from + seg.to) / 2;
       const pt  = sp(mid, IN_OFF);
-      drawAlignedTextBox(`${Math.round(seg.to - seg.from)} мм`, pt, angle, {
+      const labelPos = {
+        x: pt.x - ny * offsetPx,
+        y: pt.y + nx * offsetPx
+      };
+      drawAlignedTextBox(`${Math.round(seg.to - seg.from)} мм`, labelPos, angle, {
         font: `${seg.isOpening ? '700' : '500'} 9px Onest, Inter, sans-serif`,
         background: seg.isOpening ? 'rgba(239,246,255,0.97)' : 'rgba(255,255,255,0.97)',
-        textColor:  seg.isOpening ? '#2563eb' : '#374151',
+        textColor: seg.isOpening ? '#2563eb' : '#111111',
       });
     }
   }
