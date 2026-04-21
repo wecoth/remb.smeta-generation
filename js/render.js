@@ -323,7 +323,7 @@ function drawMeasures(selectedItems) {
   
   _ctx.save();
   _ctx.strokeStyle = '#111111';
-  _ctx.lineWidth = 1.5;
+  _ctx.lineWidth = 1.0;
   _ctx.setLineDash([]);
   _ctx.lineCap = 'round';
   
@@ -342,20 +342,13 @@ function drawMeasures(selectedItems) {
     _ctx.lineTo(p2.x, p2.y);
     _ctx.stroke();
     
-    // Прямые засечки
-    const TICK = 8 * _fontScale;
-    const perpX = -dirY * TICK;
-    const perpY = dirX * TICK;
-    
-    _ctx.beginPath();
-    _ctx.moveTo(p1.x - perpX, p1.y - perpY);
-    _ctx.lineTo(p1.x + perpX, p1.y + perpY);
-    _ctx.moveTo(p2.x - perpX, p2.y - perpY);
-    _ctx.lineTo(p2.x + perpX, p2.y + perpY);
+    // Косые засечки
+    drawTick45(p1, angle);
+    drawTick45(p2, angle);
     _ctx.stroke();
     
-    // Текст над линией с фиксированным отступом в мм
-    const OFFSET_MM = 100;
+    // Текст над линией
+    const OFFSET_MM = 80;
     const offsetPx = OFFSET_MM * _getScale();
     const normalX = -dirY;
     const normalY = dirX;
@@ -830,8 +823,8 @@ function drawTempMeasure(ps) {
   const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
   
   _ctx.save();
-  _ctx.strokeStyle = '#111111';
-  _ctx.lineWidth = 1.5;
+  _ctx.strokeStyle = '#111111';   // чёрный
+  _ctx.lineWidth = 1.0;           // тонкая
   _ctx.setLineDash([]);
   _ctx.lineCap = 'round';
   
@@ -846,21 +839,14 @@ function drawTempMeasure(ps) {
   _ctx.lineTo(endGap.x, endGap.y);
   _ctx.stroke();
   
-  // Прямые засечки
-  const TICK = 8 * _fontScale;
-  const perpX = -dirY * TICK;
-  const perpY = dirX * TICK;
-  
-  _ctx.beginPath();
-  _ctx.moveTo(p1.x - perpX, p1.y - perpY);
-  _ctx.lineTo(p1.x + perpX, p1.y + perpY);
-  _ctx.moveTo(p2.x - perpX, p2.y - perpY);
-  _ctx.lineTo(p2.x + perpX, p2.y + perpY);
+  // Косые засечки 45°
+  drawTick45(p1, angle);
+  drawTick45(p2, angle);
   _ctx.stroke();
   
-  // Текст над линией с фиксированным отступом в мм
-  const OFFSET_MM = 100;                     // отступ в мировых миллиметрах
-  const offsetPx = OFFSET_MM * _getScale();  // переводим в пиксели
+  // Текст над линией с фиксированным отступом
+  const OFFSET_MM = 80;
+  const offsetPx = OFFSET_MM * _getScale();
   const normalX = -dirY;
   const normalY = dirX;
   const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
@@ -951,13 +937,13 @@ function drawWallDimensions() {
       const p1 = sp(sorted[0] + GAP, normalOff);
       const p2 = sp(sorted[sorted.length-1] - GAP, normalOff);
       _ctx.strokeStyle = lineColor;
-      _ctx.lineWidth = 0.7;                    // тонкая линия
+      _ctx.lineWidth = 1.0;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
       for (const pos of sorted) {
         if (pos < sorted[0] + GAP * 0.3 || pos > sorted[sorted.length-1] - GAP * 0.3) continue;
-        drawTick45(sp(pos, normalOff), angle); // косые засечки
+        drawTick45(sp(pos, normalOff), angle);
       }
       drawTick45(p1, angle);
       drawTick45(p2, angle);
@@ -967,10 +953,9 @@ function drawWallDimensions() {
     const IN_OFF = (halfT + 80) * interiorSign;
 
     if (!hasOpenings) {
-      drawChain([0, wlen], IN_OFF, '#9ca3af'); // серый цвет
+      drawChain([0, wlen], IN_OFF, '#111111');
       const pt = sp(wlen / 2, IN_OFF);
-      // Смещение текста над линией (фиксированное)
-      const OFFSET_MM = 300;
+      const OFFSET_MM = 80;
       const offsetPx = OFFSET_MM * _getScale();
       const labelPos = {
         x: pt.x - ny * offsetPx,
@@ -979,14 +964,14 @@ function drawWallDimensions() {
       drawAlignedTextBox(`${Math.round(wlen)} мм`, labelPos, angle, {
         font: '500 9px Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
-        textColor: '#374151',
+        textColor: '#111111',
       });
       continue;
     }
 
     const chainTicks = [0, wlen];
     for (const { start, end } of wallOpenings) { chainTicks.push(start); chainTicks.push(end); }
-    drawChain(chainTicks, IN_OFF, '#9ca3af');
+    drawChain(chainTicks, IN_OFF, '#111111');
 
     const segs = [];
     let cursor = 0;
@@ -997,7 +982,7 @@ function drawWallDimensions() {
     }
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
-    const OFFSET_MM = 300;
+    const OFFSET_MM = 80;
     const offsetPx = OFFSET_MM * _getScale();
     for (const seg of segs) {
       const mid = (seg.from + seg.to) / 2;
@@ -1009,7 +994,7 @@ function drawWallDimensions() {
       drawAlignedTextBox(`${Math.round(seg.to - seg.from)} мм`, labelPos, angle, {
         font: `${seg.isOpening ? '700' : '500'} 9px Onest, Inter, sans-serif`,
         background: seg.isOpening ? 'rgba(239,246,255,0.97)' : 'rgba(255,255,255,0.97)',
-        textColor: seg.isOpening ? '#2563eb' : '#374151',
+        textColor: seg.isOpening ? '#2563eb' : '#111111',
       });
     }
   }
