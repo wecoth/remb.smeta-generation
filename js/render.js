@@ -11,14 +11,14 @@ import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewpo
 import { exteriorWallIds } from './room.js';
 import { polygonCentroid } from './geometry.js';
 
-let _canvas, _ctx, _hatchPat = null;
+let _canvas, _ctx, _hatchCache = null;
 let _getScale = () => 0.12;
 let _fontScale = 1; // множитель шрифта для offscreen рендера (PDF)
 
 export function initRenderer(canvas, ctx, getScaleFn) {
   _canvas = canvas; _ctx = ctx;
   _getScale = getScaleFn || (() => 0.12);
-  _hatchPat = null;
+  _hatchCache = null;
 }
 
 // ── Utilities ─────────────────────────────────────────────────────
@@ -40,12 +40,35 @@ function sg(wall) { // screen geometry
 }
 
 function hatch() {
-  if (_hatchPat) return _hatchPat;
-  const pc = document.createElement('canvas'); pc.width = 12; pc.height = 12;
+  const scale = _getScale();
+  // Если масштаб не изменился, возвращаем кэшированный паттерн
+  if (_hatchCache && _hatchCache.scale === scale) {
+    return _hatchCache.pattern;
+  }
+  
+  const STEP_MM = 2;                // расстояние между линиями штриховки в миллиметрах
+  const STEP = STEP_MM * scale;     // переводим в пиксели
+  const SIZE = Math.max(4, Math.ceil(STEP));
+  
+  const pc = document.createElement('canvas');
+  pc.width = SIZE;
+  pc.height = SIZE;
   const px = pc.getContext('2d');
-  px.strokeStyle = DRAW_COLORS.wallHatch; px.lineWidth = 1;
-  px.beginPath(); px.moveTo(-2, 12); px.lineTo(12, -2); px.moveTo(4, 12); px.lineTo(12, 4); px.stroke();
-  _hatchPat = _ctx.createPattern(pc, 'repeat'); return _hatchPat;
+  
+  px.strokeStyle = DRAW_COLORS.wallHatch;
+  px.lineWidth = 1 * scale;         // толщина линии тоже в мировых единицах
+  
+  // Диагональные линии
+  px.beginPath();
+  px.moveTo(-SIZE, 0);
+  px.lineTo(SIZE * 2, SIZE);
+  px.moveTo(0, -SIZE);
+  px.lineTo(SIZE, SIZE * 2);
+  px.stroke();
+  
+  const pattern = _ctx.createPattern(pc, 'repeat');
+  _hatchCache = { pattern, scale };
+  return pattern;
 }
 
 function fillWall(pathFn, fill) {
@@ -1237,7 +1260,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   const savedCanvas   = _canvas;
   const savedCtx      = _ctx;
   const savedGetScale = _getScale;
-  const savedHatch    = _hatchPat;
+  const savedHatch    = _hatchCache;
 
   // Переключаем на offscreen
   _canvas    = oc;
