@@ -342,7 +342,7 @@ function drawMeasures(selectedItems) {
     _ctx.lineTo(p2.x, p2.y);
     _ctx.stroke();
     
-    // Косые засечки
+    // Косые засечки (статичные)
     drawTick45(p1, angle);
     drawTick45(p2, angle);
     _ctx.stroke();
@@ -823,8 +823,8 @@ function drawTempMeasure(ps) {
   const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
   
   _ctx.save();
-  _ctx.strokeStyle = '#111111';   // чёрный
-  _ctx.lineWidth = 1.0;           // тонкая
+  _ctx.strokeStyle = '#111111';
+  _ctx.lineWidth = 1.0;
   _ctx.setLineDash([]);
   _ctx.lineCap = 'round';
   
@@ -839,13 +839,13 @@ function drawTempMeasure(ps) {
   _ctx.lineTo(endGap.x, endGap.y);
   _ctx.stroke();
   
-  // Косые засечки 45°
+  // Косые засечки (статичные в мировых единицах)
   drawTick45(p1, angle);
   drawTick45(p2, angle);
   _ctx.stroke();
   
-  // Текст над линией с фиксированным отступом
-  const OFFSET_MM = 80;
+  // Текст над линией с фиксированным отступом в мм
+  const OFFSET_MM = 80;                     // измените по вкусу
   const offsetPx = OFFSET_MM * _getScale();
   const normalX = -dirY;
   const normalY = dirX;
@@ -910,7 +910,7 @@ function drawWallDimensions() {
 
     const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
-    const nx = -uy, ny = ux;           // нормаль к оси стены
+    const nx = -uy, ny = ux;
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
@@ -951,8 +951,6 @@ function drawWallDimensions() {
     };
 
     const IN_OFF = (halfT + 80) * interiorSign;
-
-    // Направление для смещения текста — перпендикуляр к линии (в экранных координатах)
     const dirX = ux, dirY = uy;
     const textNormalX = -dirY;
     const textNormalY = dirX;
@@ -960,7 +958,7 @@ function drawWallDimensions() {
     if (!hasOpenings) {
       drawChain([0, wlen], IN_OFF, '#111111');
       const pt = sp(wlen / 2, IN_OFF);
-      const OFFSET_MM = -80;
+      const OFFSET_MM = -80;          // положительное — над линией (можно менять)
       const offsetPx = OFFSET_MM * _getScale();
       const labelPos = {
         x: pt.x + textNormalX * offsetPx,
