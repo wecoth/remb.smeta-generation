@@ -47,14 +47,13 @@ function fillWall(pathFn, fill) {
 
 function hatch() {
   const scale = _getScale();
-  
   if (_hatchCache && _hatchCache.scale === scale) {
     return _hatchCache.pattern;
   }
 
-  const STEP_MM = 45;           // ← СИЛЬНО КРУПНЕЕ (было 20, теперь 45)
+  const STEP_MM = 45;                     // расстояние между длинными линиями (мм)
   const STEP = STEP_MM * scale;
-  const SIZE = Math.max(24, Math.ceil(STEP * 1.8)); // большой тайл для хорошего повторения
+  const SIZE = Math.max(24, Math.ceil(STEP * 1.8));
 
   const pc = document.createElement('canvas');
   pc.width = SIZE;
@@ -62,33 +61,31 @@ function hatch() {
   const px = pc.getContext('2d');
 
   px.strokeStyle = DRAW_COLORS.wallHatch;
-  px.lineWidth = 1.8 * scale;   // чуть толще, как в ГОСТ-чертежах
+  px.lineWidth = 1.8 * scale;
 
+  const OVER = SIZE * 2;
+
+  // 1. Длинные диагональные линии (основные)
   px.beginPath();
-
-  const OVER = SIZE * 2; // перекрытие по краям, чтобы не было пробелов
-
-  // 1. ДЛИННЫЕ диагональные линии (основные, как в ГОСТ)
   for (let offset = -OVER; offset < SIZE + OVER; offset += STEP) {
     px.moveTo(offset, 0);
     px.lineTo(offset + SIZE, SIZE);
   }
+  px.stroke();
 
-  // 2. КОРОТКИЕ диагональные отрезки между длинными (то, что ты просил)
-  const SHORT_LEN = STEP * 0.48;           // длина коротких ~половина шага
+  // 2. Короткие диагональные отрезки между длинными (то, что ты просил: ____ _ ____ _)
+  const SHORT_LEN = STEP * 0.48;
+  px.beginPath();
   for (let offset = -OVER + STEP / 2; offset < SIZE + OVER; offset += STEP) {
-    // короткие отрезки размещены в промежутках
     const x1 = offset + SIZE * 0.22;
     const y1 = SIZE * 0.18;
     px.moveTo(x1, y1);
     px.lineTo(x1 + SHORT_LEN, y1 + SHORT_LEN);
   }
-
   px.stroke();
 
   const pattern = _ctx.createPattern(pc, 'repeat');
   _hatchCache = { pattern, scale };
-
   return pattern;
 }
 
