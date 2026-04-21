@@ -908,13 +908,12 @@ function drawWallDimensions() {
     const wlen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (wlen < 100) continue;
 
-    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const angle  = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
     const ux = Math.cos(angle), uy = Math.sin(angle);
     const nx = -uy, ny = ux;
     const interiorSign = wallInteriorSide(wall, 1);
     const halfT = wall.thickness / 2;
 
-    // Точки размерной линии (уже смещённые внутрь комнаты)
     const worldPt = (along, normalOff) => ({
       x: wall.x1 + ux * along + nx * normalOff,
       y: wall.y1 + uy * along + ny * normalOff,
@@ -951,19 +950,16 @@ function drawWallDimensions() {
       _ctx.stroke();
     };
 
-    const IN_OFF = (halfT + 80) * interiorSign; // базовое смещение размерной линии
+    const IN_OFF = (halfT + 80) * interiorSign;
 
     if (!hasOpenings) {
       drawChain([0, wlen], IN_OFF, '#111111');
-      // Центр отрезка в мировых координатах на размерной линии
-      const midWorld = worldPt(wlen / 2, IN_OFF);
-      const ptScreen = toScreen(midWorld.x, midWorld.y);
-      // Дополнительное смещение текста по той же нормали
-      const OFFSET_MM = 80;
+      const pt = sp(wlen / 2, IN_OFF);
+      const OFFSET_MM = 150;
       const offsetPx = OFFSET_MM * _getScale();
       const labelPos = {
-        x: ptScreen.x + nx * offsetPx,
-        y: ptScreen.y + ny * offsetPx
+        x: pt.x + ny * offsetPx,   // текст НАД линией
+        y: pt.y - nx * offsetPx
       };
       drawAlignedTextBox(`${Math.round(wlen)} мм`, labelPos, angle, {
         font: '500 9px Onest, Inter, sans-serif',
@@ -986,15 +982,14 @@ function drawWallDimensions() {
     }
     if (cursor < wlen - 1) segs.push({ from: cursor, to: wlen, isOpening: false });
 
-    const OFFSET_MM = 80;
+    const OFFSET_MM = 150;
     const offsetPx = OFFSET_MM * _getScale();
     for (const seg of segs) {
       const mid = (seg.from + seg.to) / 2;
-      const midWorld = worldPt(mid, IN_OFF);
-      const ptScreen = toScreen(midWorld.x, midWorld.y);
+      const pt  = sp(mid, IN_OFF);
       const labelPos = {
-        x: ptScreen.x + nx * offsetPx,
-        y: ptScreen.y + ny * offsetPx
+        x: pt.x + ny * offsetPx,
+        y: pt.y - nx * offsetPx
       };
       drawAlignedTextBox(`${Math.round(seg.to - seg.from)} мм`, labelPos, angle, {
         font: `${seg.isOpening ? '700' : '500'} 9px Onest, Inter, sans-serif`,
