@@ -67,7 +67,7 @@ export let exteriorWallIds = new Set();
  *  - сбора граничных стен помещения,
  *  - определения толщин стен в isDeadZone.
  */
-function findAllWallsForEdge(ax, ay, bx, by, walls, eps = 3) {
+export function findAllWallsForEdge(ax, ay, bx, by, walls, eps = 3) {
   const midX = (ax + bx) / 2, midY = (ay + by) / 2;
   const edgeLen = Math.hypot(bx - ax, by - ay);
   if (edgeLen < 1) return [];
@@ -582,7 +582,7 @@ function round2(v) { return Math.round(v * 100) / 100; }
 function wallStart(w) { return { x: w.cx1 ?? w.x1, y: w.cy1 ?? w.y1 }; }
 function wallEnd(w)   { return { x: w.cx2 ?? w.x2, y: w.cy2 ?? w.y2 }; }
 
-function wallFullLengthMm(w) {
+export function wallFullLengthMm(w) {
   const s = wallStart(w), e = wallEnd(w);
   return Math.hypot(e.x - s.x, e.y - s.y);
 }
@@ -676,7 +676,7 @@ function computeCornerStats(polygon) {
   return { inner, outer };
 }
 
-function computeRoomMetrics({
+export function computeRoomMetrics({
   boundaryWalls, interiorWalls, openings, heightMm, polygon,
   entranceDoorId, hasDividers, netAreaMm2,
 }) {
