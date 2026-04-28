@@ -2,6 +2,18 @@
 import { appState } from './state.js';
 import { clamp, applyWallOffset, segmentIntersection } from './geometry.js';
 
+let _mitreCache = null;
+let _mitreCacheKey = '';
+
+function lineLineIntersect(a, b, c, d) {
+  const r = { x: b.x - a.x, y: b.y - a.y };
+  const s = { x: d.x - c.x, y: d.y - c.y };
+  const denom = r.x * s.y - r.y * s.x;
+  if (Math.abs(denom) < 0.0001) return null;
+  const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / denom;
+  return { x: a.x + r.x * t, y: a.y + r.y * t };
+}
+
 // ── Contour helpers ──────────────────────────────────────────────
 
 export function getWallContourPoint(wall, endpoint) {
@@ -170,12 +182,83 @@ export function getWallJointItemsForEndpoint(jointMap, wall, endpoint) {
   return jointMap.get(getWallJointKey(getWallJointPoint(wall, endpoint))) || [];
 }
 
+function computeMitrePoint(wallA, wallB, jointPoint, eps = 0.5) {
+  const getOuterLine = (w) => {
+    const base = getWallContourSegment(w);
+    const len = Math.hypot(base.x2 - base.x1, base.y2 - base.y1);
+    if (len < 1) return null;
+    const ux = (base.x2 - base.x1) / len;
+    const uy = (base.y2 - base.y1) / len;
+    const nx = -uy, ny = ux;
+    const sign = getWallOffsetMode(w) === 'right' ? 1 : -1;
+    const t = w.thickness;
+    return {
+      p1: { x: base.x1 + sign * nx * t, y: base.y1 + sign * ny * t },
+      p2: { x: base.x2 + sign * nx * t, y: base.y2 + sign * ny * t },
+      ux, uy
+    };
+  };
+
+  const lineA = getOuterLine(wallA);
+  const lineB = getOuterLine(wallB);
+  if (!lineA || !lineB) return null;
+
+  const hit = lineLineIntersect(
+    { x: lineA.p1.x, y: lineA.p1.y },
+    { x: lineA.p2.x, y: lineA.p2.y },
+    { x: lineB.p1.x, y: lineB.p1.y },
+    { x: lineB.p2.x, y: lineB.p2.y }
+  );
+  if (!hit) return null;
+
+  const dist = Math.hypot(hit.x - jointPoint.x, hit.y - jointPoint.y);
+  const maxDist = Math.max(wallA.thickness, wallB.thickness) * 3;
+  if (dist > maxDist) return null;
+
+  return hit;
+}
+
+export function computeMitreMap() {
+  const key = JSON.stringify(appState.walls.map(w =>
+    `${w.id},${w.cx1 ?? w.x1},${w.cy1 ?? w.y1},${w.cx2 ?? w.x2},${w.cy2 ?? w.y2},${w.thickness},${w.offset}`
+  ));
+  if (_mitreCache && _mitreCacheKey === key) return _mitreCache;
+
+  const map = new Map();
+  for (const w of appState.walls) {
+    map.set(w.id, { start: null, end: null });
+  }
+
+  const jointMap = buildWallJointMap();
+  for (const items of jointMap.values()) {
+    if (items.length < 2) continue;
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const wi = items[i], wj = items[j];
+        if (wi.wall.id === wj.wall.id) continue;
+        const mitre = computeMitrePoint(wi.wall, wj.wall, wi.point);
+        if (!mitre) continue;
+
+        for (const item of [wi, wj]) {
+          const entry = map.get(item.wall.id);
+          if (entry) entry[item.endpoint] = mitre;
+        }
+      }
+    }
+  }
+
+  _mitreCache = map;
+  _mitreCacheKey = key;
+  return map;
+}
+
 // ── Joint rects (cached — invalidated when walls change) ──────────
 let _jointRectsCache = null;
 let _jointRectsCacheKey = '';
 
 export function invalidateJointCache() {
   _jointRectsCache = null;
+  _mitreCache = null;
 }
 
 export function getWallJointRects(jointMap = null) {
