@@ -66,16 +66,82 @@
     overflow:hidden;
   }
   .sidebar {
-    width: clamp(300px, 33.333vw, 560px);
-    min-width: 300px;
+    width: var(--sidebar-w, 380px);
+    min-width: 220px;
+    max-width: 72%;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--line2,#e8e8e8);
+    border-right: none;
     background: #fff;
     height: 100%;
     overflow: hidden;
+    transition: none;
   }
+
+  /* ── SPLITTER ─────────────────────────────────────────── */
+  .smeta-splitter {
+    width: 5px;
+    flex-shrink: 0;
+    background: #e8e8e8;
+    cursor: col-resize;
+    position: relative;
+    z-index: 20;
+    transition: background 0.15s;
+    user-select: none;
+  }
+  .smeta-splitter::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 32px;
+    background: #c0c0c0;
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  .smeta-splitter:hover,
+  .smeta-splitter.dragging {
+    background: #d0d0d0;
+  }
+  .smeta-splitter:hover::after,
+  .smeta-splitter.dragging::after {
+    background: #888;
+  }
+
+  /* ── THUMBNAIL MODE (правая панель слишком узкая) ─────── */
+  .smeta-preview-panel.thumb-mode .spp-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 6px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .smeta-preview-panel.thumb-mode .spp-page {
+    width: 100% !important;
+    height: auto !important;
+    margin-bottom: 0 !important;
+    display: flex;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .smeta-preview-panel.thumb-mode .spp-a4 {
+    transform-origin: top center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+    border-radius: 3px;
+    outline: 2px solid transparent;
+    transition: outline 0.15s;
+  }
+  .smeta-preview-panel.thumb-mode .spp-page:hover .spp-a4 {
+    outline: 2px solid #3a5ed0;
+  }
+  .smeta-preview-panel.thumb-mode .spp-page.spp-hidden { display: none !important; }
+  /* В thumb-режиме header и табы скрываем — листы говорят сами за себя */
+  .smeta-preview-panel.thumb-mode .spp-header { display: none; }
   .sidebar-head {
     padding:18px 20px 14px;
     border-bottom:1px solid var(--line2,#e8e8e8);
@@ -554,6 +620,9 @@
   </div><!-- /sidebar-scroll -->
 </div><!-- /sidebar -->
 
+<!-- SPLITTER -->
+<div class="smeta-splitter" id="smetaSplitter"></div>
+
 <!-- RIGHT: live preview panel -->
 <div class="smeta-preview-panel" id="smetaPreviewPanel">
   <div class="spp-header">
@@ -997,6 +1066,126 @@
   setTimeout(resetSppScroll, 50);
   setTimeout(resetSppScroll, 200);
   setTimeout(resetSppScroll, 600);
+</script>
+
+<!-- ══ RESIZABLE SPLITTER ════════════════════════════════════════ -->
+<script>
+(function() {
+  var STORAGE_KEY = 'remb_sidebar_w';
+  var THUMB_THRESHOLD = 320;
+
+  var splitter = document.getElementById('smetaSplitter');
+  var sidebar  = document.querySelector('.smeta-shell .sidebar');
+  var preview  = document.getElementById('smetaPreviewPanel');
+  if (!splitter || !sidebar || !preview) return;
+
+  var saved = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+  if (saved && saved >= 220) {
+    sidebar.style.width = saved + 'px';
+    document.documentElement.style.setProperty('--sidebar-w', saved + 'px');
+  }
+
+  function updateThumbMode() {
+    var previewW = preview.getBoundingClientRect().width;
+    if (previewW < THUMB_THRESHOLD) {
+      preview.classList.add('thumb-mode');
+      applyThumbScale();
+    } else {
+      preview.classList.remove('thumb-mode');
+      if (window.setA4Scale) window.setA4Scale();
+    }
+  }
+
+  function applyThumbScale() {
+    var previewW = preview.getBoundingClientRect().width;
+    var thumbW   = Math.max(60, previewW - 16);
+    var sc       = Math.min(1, thumbW / 1123);
+    var scaledH  = Math.round(794 * sc);
+    document.querySelectorAll('.spp-a4').forEach(function(p) {
+      p.style.transform = 'scale(' + sc + ')';
+      p.style.transformOrigin = 'top center';
+    });
+    document.querySelectorAll('.spp-page:not(.spp-hidden)').forEach(function(w) {
+      w.style.height = scaledH + 'px';
+    });
+  }
+
+  preview.addEventListener('click', function(e) {
+    if (!preview.classList.contains('thumb-mode')) return;
+    var shell    = document.querySelector('.smeta-shell');
+    var shellW   = shell ? shell.getBoundingClientRect().width : window.innerWidth;
+    var newSideW = Math.round(shellW * 0.38);
+    sidebar.style.width = newSideW + 'px';
+    document.documentElement.style.setProperty('--sidebar-w', newSideW + 'px');
+    localStorage.setItem(STORAGE_KEY, newSideW);
+    updateThumbMode();
+  });
+
+  var dragging = false;
+  var startX   = 0;
+  var startW   = 0;
+
+  splitter.addEventListener('mousedown', function(e) {
+    dragging = true;
+    startX   = e.clientX;
+    startW   = sidebar.getBoundingClientRect().width;
+    splitter.classList.add('dragging');
+    document.body.style.cursor     = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var shell  = document.querySelector('.smeta-shell');
+    var shellW = shell ? shell.getBoundingClientRect().width : window.innerWidth;
+    var maxW   = Math.round(shellW * 0.82);
+    var newW   = Math.min(maxW, Math.max(220, startW + (e.clientX - startX)));
+    sidebar.style.width = newW + 'px';
+    document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
+    updateThumbMode();
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging');
+    document.body.style.cursor     = '';
+    document.body.style.userSelect = '';
+    var w = parseInt(sidebar.style.width, 10);
+    if (w >= 220) localStorage.setItem(STORAGE_KEY, w);
+    if (window.setA4Scale) window.setA4Scale();
+  });
+
+  splitter.addEventListener('touchstart', function(e) {
+    dragging = true;
+    startX   = e.touches[0].clientX;
+    startW   = sidebar.getBoundingClientRect().width;
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!dragging) return;
+    var shell  = document.querySelector('.smeta-shell');
+    var shellW = shell ? shell.getBoundingClientRect().width : window.innerWidth;
+    var maxW   = Math.round(shellW * 0.82);
+    var newW   = Math.min(maxW, Math.max(220, startW + (e.touches[0].clientX - startX)));
+    sidebar.style.width = newW + 'px';
+    document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
+    updateThumbMode();
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchend', function() {
+    if (!dragging) return;
+    dragging = false;
+    var w = parseInt(sidebar.style.width, 10);
+    if (w >= 220) localStorage.setItem(STORAGE_KEY, w);
+    if (window.setA4Scale) window.setA4Scale();
+  });
+
+  setTimeout(updateThumbMode, 300);
+})();
 </script>
 </body>
 </html>
