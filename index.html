@@ -169,15 +169,37 @@
   .spp-header {
     background:#fff;
     border-bottom:1px solid var(--line2,#e8e8e8);
-    padding:0 20px;
+    padding:0 12px;
     flex-shrink:0;
     display:flex;
     align-items:center;
-    height:48px;
-    gap:6px;
+    min-height:44px;
+    height:auto;
+    flex-wrap:wrap;
+    gap:4px;
   }
   /* Toggle chips */
-  .spp-toggle-bar { display:flex;gap:5px;align-items:center;flex-wrap:wrap; }
+  .spp-toggle-bar {
+    display:flex;
+    gap:4px;
+    align-items:center;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    overflow-y:hidden;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+    max-width:100%;
+  }
+  .spp-toggle-bar::-webkit-scrollbar { display:none; }
+
+  /* Узкая панель: текст в чипах прячем, только точка */
+  .smeta-preview-panel.narrow-mode .spp-toggle .tog-label { display:none; }
+  .smeta-preview-panel.narrow-mode .spp-toggle {
+    padding:5px 7px;
+    min-width:22px;
+  }
+  /* Очень узкая: заголовок панели вовсе скрываем */
+  .smeta-preview-panel.thumb-mode .spp-header { display:none; }
   .spp-toggle {
     display:flex;align-items:center;gap:5px;
     padding:4px 12px 4px 8px;
@@ -629,23 +651,23 @@
     <div class="spp-toggle-bar" id="sppToggles">
       <label class="spp-toggle active" title="Обложка КП">
         <input type="checkbox" checked data-page="cover">
-        <span class="tog-dot"></span>Обложка
+        <span class="tog-dot"></span><span class="tog-label">Обложка</span>
       </label>
       <label class="spp-toggle active" title="Планирование работ">
         <input type="checkbox" checked data-page="plan">
-        <span class="tog-dot"></span>Планировка
+        <span class="tog-dot"></span><span class="tog-label">Планировка</span>
       </label>
       <label class="spp-toggle active" title="Обмерный план — чертёж с размерами">
         <input type="checkbox" checked data-page="blueprint">
-        <span class="tog-dot"></span>Обмерный план
+        <span class="tog-dot"></span><span class="tog-label">Обмерный план</span>
       </label>
       <label class="spp-toggle active" title="Смета СМР">
         <input type="checkbox" checked data-page="smr">
-        <span class="tog-dot"></span>СМР
+        <span class="tog-dot"></span><span class="tog-label">СМР</span>
       </label>
       <label class="spp-toggle active" title="Смета материалов">
         <input type="checkbox" checked data-page="mat">
-        <span class="tog-dot"></span>Материалы
+        <span class="tog-dot"></span><span class="tog-label">Материалы</span>
       </label>
     </div>
   </div>
@@ -1072,7 +1094,8 @@
 <script>
 (function() {
   var STORAGE_KEY = 'remb_sidebar_w';
-  var THUMB_THRESHOLD = 320;
+  var THUMB_THRESHOLD = 200;   // px — правая панель: thumbnail столбик
+  var NARROW_THRESHOLD = 420;  // px — правая панель: текст в чипах скрыть
 
   var splitter = document.getElementById('smetaSplitter');
   var sidebar  = document.querySelector('.smeta-shell .sidebar');
@@ -1087,6 +1110,12 @@
 
   function updateThumbMode() {
     var previewW = preview.getBoundingClientRect().width;
+    // Адаптация тогглов под ширину
+    if (previewW < NARROW_THRESHOLD) {
+      preview.classList.add('narrow-mode');
+    } else {
+      preview.classList.remove('narrow-mode');
+    }
     if (previewW < THUMB_THRESHOLD) {
       preview.classList.add('thumb-mode');
       applyThumbScale();
@@ -1098,15 +1127,15 @@
 
   function applyThumbScale() {
     var previewW = preview.getBoundingClientRect().width;
-    var thumbW   = Math.max(60, previewW - 16);
+    var thumbW   = Math.max(40, previewW - 16);
     var sc       = Math.min(1, thumbW / 1123);
     var scaledH  = Math.round(794 * sc);
     document.querySelectorAll('.spp-a4').forEach(function(p) {
       p.style.transform = 'scale(' + sc + ')';
-      p.style.transformOrigin = 'top center';
+      p.style.transformOrigin = 'top left';
     });
     document.querySelectorAll('.spp-page:not(.spp-hidden)').forEach(function(w) {
-      w.style.height = scaledH + 'px';
+      w.style.height = (scaledH + 8) + 'px';
     });
   }
 
