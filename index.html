@@ -501,42 +501,15 @@
   </div>
   <div class="sidebar-scroll">
 
-    <!-- COMPANY -->
-    <div class="sec-label">Компания</div>
-    <div class="card">
-      <div class="logo-upload" id="logoZone">
-        <input type="file" id="logoInput" accept="image/*" onchange="window._smetaModule.handleLogo(event)">
-        <img id="logoPreview" alt="">
-        <div id="logoPlaceholder">
-          <div class="up-icon">⊕</div>
-          <div class="up-text">Загрузить <strong>логотип</strong></div>
-        </div>
-      </div>
-      <div class="field">
-        <label>Название компании</label>
-        <input type="text" id="companyName" placeholder="СтройКомфорт" oninput="window._smetaModule.liveUpdate()">
-      </div>
-      <div class="field">
-        <label>Слоган</label>
-        <input type="text" id="companySlogan" placeholder="Качество под ключ" oninput="window._smetaModule.liveUpdate()">
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>ФИО исполнителя</label>
-          <input type="text" id="executorName" placeholder="ИП Иванов И.И." oninput="window._smetaModule.liveUpdate()">
-        </div>
-        <div class="field">
-          <label>Телефон</label>
-          <input type="text" id="companyPhone" placeholder="+7 (000) 000-00-00" oninput="window._smetaModule.liveUpdate()">
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>ОГРН / ИНН <span style="font-weight:300;font-size:10px">(опц.)</span></label>
-          <input type="text" id="companyOgrn" placeholder="ОГРН 123456789012" oninput="window._smetaModule.liveUpdate()">
-        </div>
-      </div>
-    </div>
+    <!-- COMPANY → кнопка профиля -->
+    <button class="btn-open-profile" onclick="window._auth.openProfile()">
+      <span class="bop-icon">⚙</span>
+      <span class="bop-text">
+        <span class="bop-title" id="sidebarCompanyName">Настройки компании</span>
+        <span class="bop-sub">Логотип, название, контакты</span>
+      </span>
+      <span class="bop-arrow">›</span>
+    </button>
 
     <!-- OBJECT -->
     <div class="sec-label">Объект</div>
@@ -1218,6 +1191,246 @@
 
   setTimeout(updateThumbMode, 300);
 })();
+</script>
+
+<!-- ══════════════════════════════════════════
+     AUTH SCREEN
+══════════════════════════════════════════ -->
+<div id="authScreen" style="display:none">
+  <div class="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-logo">REMB</div>
+      <div class="auth-subtitle">Система документации</div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin" onclick="window._auth.switchTab('login')">Войти</button>
+        <button class="auth-tab" id="tabReg" onclick="window._auth.switchTab('register')">Регистрация</button>
+      </div>
+
+      <div id="authError" class="auth-error" style="display:none"></div>
+
+      <div class="auth-fields">
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="authEmail" placeholder="you@company.ru" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>Пароль</label>
+          <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password">
+        </div>
+      </div>
+
+      <button class="auth-submit" id="authSubmitBtn" onclick="window._auth.submit()">
+        <span id="authBtnText">Войти</span>
+        <span id="authBtnLoader" style="display:none">…</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PROFILE SCREEN
+══════════════════════════════════════════ -->
+<div id="profileScreen" style="display:none">
+  <div class="profile-overlay" onclick="window._auth.closeProfile(event)">
+    <div class="profile-card">
+      <div class="profile-header">
+        <div class="profile-title">Настройки компании</div>
+        <button class="profile-close" onclick="window._auth.closeProfile()">✕</button>
+      </div>
+
+      <div class="profile-body">
+        <!-- Логотип -->
+        <div class="profile-logo-zone" id="profileLogoZone" onclick="document.getElementById('profileLogoInput').click()">
+          <input type="file" id="profileLogoInput" accept="image/*" style="display:none" onchange="window._auth.handleProfileLogo(event)">
+          <img id="profileLogoPreview" alt="" style="display:none">
+          <div id="profileLogoPlaceholder">
+            <div style="font-size:28px">⊕</div>
+            <div style="font-size:12px;margin-top:4px">Загрузить логотип</div>
+          </div>
+        </div>
+
+        <div class="profile-field">
+          <label>Название компании</label>
+          <input type="text" id="profileCompanyName" placeholder="СтройКомфорт">
+        </div>
+        <div class="profile-field">
+          <label>Слоган</label>
+          <input type="text" id="profileSlogan" placeholder="Качество под ключ">
+        </div>
+        <div class="profile-field-row">
+          <div class="profile-field">
+            <label>ФИО исполнителя</label>
+            <input type="text" id="profileOwnerName" placeholder="ИП Иванов И.И.">
+          </div>
+          <div class="profile-field">
+            <label>Телефон</label>
+            <input type="text" id="profilePhone" placeholder="+7 (000) 000-00-00">
+          </div>
+        </div>
+        <div class="profile-field">
+          <label>ОГРН / ИНН <span style="font-weight:300;font-size:10px">(опц.)</span></label>
+          <input type="text" id="profileOgrn" placeholder="ОГРН 123456789012">
+        </div>
+
+        <div id="profileSaveMsg" style="display:none;text-align:center;font-size:13px;color:#27ae60;margin-top:8px">✓ Сохранено</div>
+      </div>
+
+      <div class="profile-footer">
+        <button class="profile-btn-save" onclick="window._auth.saveProfile()">Сохранить</button>
+        <button class="profile-btn-logout" onclick="window._auth.logout()">Выйти из аккаунта</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* ── AUTH ─────────────────────────────── */
+.auth-overlay {
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(15,20,40,0.72);
+  backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;
+}
+.auth-card {
+  background:#fff;border-radius:20px;
+  padding:40px 36px 36px;
+  width:380px;max-width:calc(100vw - 32px);
+  box-shadow:0 24px 64px rgba(0,0,0,0.18);
+}
+.auth-logo {
+  font:800 28px/1 Onest,Inter,sans-serif;
+  color:#1a1a2e;letter-spacing:-1px;
+  margin-bottom:4px;
+}
+.auth-subtitle {
+  font:400 13px/1 Onest,Inter,sans-serif;
+  color:#888;margin-bottom:28px;
+}
+.auth-tabs {
+  display:flex;gap:4px;margin-bottom:24px;
+  background:#f4f5f7;border-radius:10px;padding:3px;
+}
+.auth-tab {
+  flex:1;padding:8px;border:none;background:transparent;
+  font:500 13px/1 Onest,Inter,sans-serif;color:#888;
+  border-radius:8px;cursor:pointer;transition:all .18s;
+}
+.auth-tab.active {
+  background:#fff;color:#1a1a2e;
+  box-shadow:0 1px 4px rgba(0,0,0,.1);
+}
+.auth-error {
+  background:#fff0f0;border:1px solid #ffd0d0;
+  border-radius:8px;padding:10px 14px;
+  font:400 13px/1.4 Onest,Inter,sans-serif;color:#c0392b;
+  margin-bottom:16px;
+}
+.auth-fields { display:flex;flex-direction:column;gap:14px;margin-bottom:20px; }
+.auth-field { display:flex;flex-direction:column;gap:6px; }
+.auth-field label { font:500 12px/1 Onest,Inter,sans-serif;color:#555; }
+.auth-field input {
+  border:1.5px solid #e5e7eb;border-radius:10px;
+  padding:11px 14px;
+  font:400 14px/1 Onest,Inter,sans-serif;color:#1a1a2e;
+  outline:none;transition:border-color .15s;
+}
+.auth-field input:focus { border-color:#4a6fe3; }
+.auth-submit {
+  width:100%;padding:13px;border:none;border-radius:10px;
+  background:#4a6fe3;color:#fff;
+  font:600 14px/1 Onest,Inter,sans-serif;
+  cursor:pointer;transition:background .15s;
+}
+.auth-submit:hover { background:#3a5fd3; }
+
+/* ── PROFILE BUTTON IN SIDEBAR ─────── */
+.btn-open-profile {
+  display:flex;align-items:center;gap:12px;
+  width:calc(100% - 32px);margin:8px 16px 0;
+  padding:12px 14px;
+  border:1.5px solid #e5e7eb;border-radius:12px;
+  background:#f9fafb;cursor:pointer;
+  transition:all .15s;text-align:left;
+}
+.btn-open-profile:hover { background:#f0f4ff;border-color:#c5d3f8; }
+.bop-icon { font-size:18px;flex-shrink:0; }
+.bop-text { flex:1;display:flex;flex-direction:column;gap:3px; }
+.bop-title { font:600 13px/1 Onest,Inter,sans-serif;color:#1a1a2e; }
+.bop-sub { font:400 11px/1 Onest,Inter,sans-serif;color:#888; }
+.bop-arrow { font-size:18px;color:#ccc;flex-shrink:0; }
+
+/* ── PROFILE SCREEN ────────────────── */
+.profile-overlay {
+  position:fixed;inset:0;z-index:9998;
+  background:rgba(15,20,40,0.5);
+  backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+}
+.profile-card {
+  background:#fff;border-radius:20px;
+  width:440px;max-width:calc(100vw - 32px);
+  max-height:90vh;display:flex;flex-direction:column;
+  box-shadow:0 24px 64px rgba(0,0,0,0.18);
+}
+.profile-header {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 24px 16px;
+  border-bottom:1px solid #f0f0f0;
+}
+.profile-title { font:600 16px/1 Onest,Inter,sans-serif;color:#1a1a2e; }
+.profile-close {
+  border:none;background:none;font-size:18px;
+  color:#aaa;cursor:pointer;padding:4px 8px;
+  border-radius:6px;transition:background .15s;
+}
+.profile-close:hover { background:#f4f5f7;color:#555; }
+.profile-body { padding:20px 24px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px; }
+.profile-logo-zone {
+  width:90px;height:90px;border-radius:12px;
+  border:2px dashed #d0d5e0;background:#f9fafb;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;color:#aaa;transition:border-color .15s;overflow:hidden;
+  align-self:center;
+}
+.profile-logo-zone:hover { border-color:#4a6fe3;color:#4a6fe3; }
+#profileLogoPreview { width:100%;height:100%;object-fit:contain; }
+.profile-field { display:flex;flex-direction:column;gap:6px; }
+.profile-field label { font:500 12px/1 Onest,Inter,sans-serif;color:#555; }
+.profile-field input {
+  border:1.5px solid #e5e7eb;border-radius:10px;
+  padding:10px 14px;
+  font:400 14px/1 Onest,Inter,sans-serif;color:#1a1a2e;
+  outline:none;transition:border-color .15s;
+}
+.profile-field input:focus { border-color:#4a6fe3; }
+.profile-field-row { display:flex;gap:12px; }
+.profile-field-row .profile-field { flex:1; }
+.profile-footer {
+  padding:16px 24px;border-top:1px solid #f0f0f0;
+  display:flex;gap:10px;
+}
+.profile-btn-save {
+  flex:1;padding:11px;border:none;border-radius:10px;
+  background:#4a6fe3;color:#fff;
+  font:600 13px/1 Onest,Inter,sans-serif;cursor:pointer;
+  transition:background .15s;
+}
+.profile-btn-save:hover { background:#3a5fd3; }
+.profile-btn-logout {
+  padding:11px 16px;border:1.5px solid #ffd0d0;border-radius:10px;
+  background:#fff;color:#e74c3c;
+  font:500 13px/1 Onest,Inter,sans-serif;cursor:pointer;
+  transition:all .15s;
+}
+.profile-btn-logout:hover { background:#fff0f0; }
+</style>
+
+<script src="js/auth.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', async () => {
+    await window._auth.checkAuth();
+  });
 </script>
 </body>
 </html>
