@@ -45,48 +45,22 @@ export class RoomTool extends BaseTool {
     thickness: 0, height: 2700, offset: 'left', isDivider: true
   }))];
 
-  const points = findAllIntersections(allWalls, 2, 'smart');  // включаем только свободные торцы
+  const points = findAllIntersections(allWalls);
   if (points.length < 3) {
     this.hoverPolygon = null;
     this.ui.doRedraw();
     return true;
   }
 
-  const { vertices, edges } = buildWallGraph(allWalls, points, 2, 'smart');
-
-  // Вспомогательная функция: найти ребро по двум соседним вершинам полигона
-  const getEdgeBetween = (v1, v2) => {
-    return edges.find(e => {
-      const a = vertices[e.v1], b = vertices[e.v2];
-      return (Math.hypot(a.x - v1.x, a.y - v1.y) < 2 && Math.hypot(b.x - v2.x, b.y - v2.y) < 2) ||
-             (Math.hypot(a.x - v2.x, a.y - v2.y) < 2 && Math.hypot(b.x - v1.x, b.y - v1.y) < 2);
-    });
-  };
-
+  const { vertices, edges } = buildWallGraph(allWalls, points);
   const faces = findFaces(vertices, edges);
 
   let best = null;
   let bestArea = Infinity;
-
   for (const face of faces) {
     const poly = face.map(v => ({ x: v.x, y: v.y }));
     if (poly.length < 3) continue;
     if (polygonArea(poly) < 50000) continue;   // меньше 0.05 м²
-
-    // Проверяем, что **все** рёбра полигона являются внутренними гранями стен
-    let allInner = true;
-    for (let i = 0; i < poly.length; i++) {
-      const p1 = poly[i];
-      const p2 = poly[(i + 1) % poly.length];
-      const edge = getEdgeBetween(p1, p2);
-      // Разделители (толщина 0) тоже допустимы, они не имеют внутренней грани, но их пропускаем
-      if (!edge || !edge.faceKinds || (!edge.faceKinds.includes('inner') && !edge.wallIds.some(id => String(id).startsWith('div_')))) {
-        allInner = false;
-        break;
-      }
-    }
-    if (!allInner) continue;   // игнорируем контуры, содержащие внешние грани или торцы
-
     if (isPointInPolygon(world, poly)) {
       const alreadyRoom = appState.rooms.some(r =>
         r.polygon && isPointInPolygon(world, r.polygon) &&
@@ -101,7 +75,7 @@ export class RoomTool extends BaseTool {
       }
     }
   }
-
+           
   this.hoverPolygon = best;
   this.ui.updateCoordinatesLabel(world, null, null);
   this.ui.doRedraw();
