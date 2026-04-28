@@ -699,10 +699,7 @@ html, body {
 /* Каждый лист — блочный элемент, отступ снизу между листами */
 .spp-page {
   width: 100%;
-  /* flex-контейнер — центрирует лист по горизонтали при любом масштабе */
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  display: block;
   overflow: visible;
   margin-bottom: 0;
   flex-shrink: 0;
