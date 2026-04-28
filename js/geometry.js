@@ -388,10 +388,6 @@ export function findAllIntersections(walls, eps = 2, includeEnds = true) {
 export function buildWallGraph(walls, points, eps = 2, includeEnds = true) {
   const EPS_PERP = 2;
   const EPS_ALONG = 2;
-
-for (const w of walls) {
-    for (const s of wallSegments(w, walls, includeEnds)) allSegs.push(s);
-  }
   
   const vertices = points.map((p, i) => ({ ...p, id: i }));
   const rawEdges = [];
@@ -399,7 +395,7 @@ for (const w of walls) {
   // Все сегменты всех стен
   const allSegs = [];
   for (const w of walls) {
-    for (const s of wallSegments(w)) allSegs.push(s);
+    for (const s of wallSegments(w, walls, includeEnds)) allSegs.push(s);
   }
 
   function segId(s) {
