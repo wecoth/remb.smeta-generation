@@ -800,23 +800,25 @@ function _applyA4Scale() {
   const cs = getComputedStyle(body);
   const padL = parseFloat(cs.paddingLeft)  || 0;
   const padR = parseFloat(cs.paddingRight) || 0;
-  const SIDE_MARGIN = 16;
+  const SIDE_MARGIN = 24;
   const availW = Math.max(100, bodyRect.width - padL - padR - SIDE_MARGIN * 2);
 
-  const sc = Math.min(1, Math.max(0.25, availW / NATIVE_W));
+  const sc = Math.min(1, Math.max(0.08, availW / NATIVE_W));
+  const scaledW = Math.round(NATIVE_W * sc);
   const scaledH = Math.round(NATIVE_H * sc);
 
+  // transform-origin: top left — масштабируем от верхнего левого угла.
+  // .spp-page (flex, justify-content:center) центрирует визуально уменьшенный лист.
   document.querySelectorAll('.spp-a4').forEach(page => {
     page.style.transform = `scale(${sc})`;
-    page.style.transformOrigin = 'top center';
+    page.style.transformOrigin = 'top left';
   });
 
-  // При transform:scale layout-box не меняется — .spp-a4 остаётся 794px высотой.
-  // Чтобы следующая страница начиналась ПОСЛЕ визуального конца текущей,
-  // задаём высоту .spp-page = scaledH (визуальная высота после scale).
-  // display:block на .spp-page — страницы всегда стакаются вертикально.
+  // layout-box после scale() не меняется (остаётся 1123×794).
+  // Задаём .spp-page: высоту = scaledH, ширину = scaledW + зазор,
+  // чтобы следующий лист шёл сразу после визуального конца текущего.
   document.querySelectorAll('.spp-page:not(.spp-hidden)').forEach(wrap => {
-    wrap.style.height = scaledH + 'px';
+    wrap.style.height = (scaledH + 24) + 'px';
   });
 }
 // Also expose globally for inline scripts
