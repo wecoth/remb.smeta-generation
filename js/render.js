@@ -8,7 +8,7 @@ import {
   areWallsCollinear,
 } from './wall.js';
 import { exteriorWallIds } from './room.js';
-import { polygonCentroid, isPointInPolygon } from './geometry.js';
+import { polygonCentroid, isPointInPolygon, polygonSignedArea } from './geometry.js';
 import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewport as _setViewportFn } from './snapping.js';
 
 let _canvas, _ctx, _hatchPat = null;
@@ -217,7 +217,7 @@ export function redraw(ps) {
   drawDividers(ps.selectedItems);
   drawMeasures(ps.selectedItems);   // ← добавить
   drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  drawWallDimensions();
+  drawRoomDimensions();
   drawOpeningLeaders(exteriorWallIds);
   drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
   // Stage 1: базовая линия для выделенных стен (жёлтый пунктир)
@@ -1109,6 +1109,116 @@ function drawStraightTick(screenPt, angle, lengthPx = 8) {
 // Внутри:  цепочка угол→проём→угол (только если есть проёмы)
 // ══════════════════════════════════════════════════════════════════
 
+function drawRoomDimensions() {
+  const scale = _getScale();
+  if (scale < 0.07 || !appState.rooms?.length) return;
+
+  _ctx.save();
+  const LINE_OFF_MM  = 120;
+  const TEXT_OFF_MM  = 230;
+  const GAP_MM       = 8;
+  const MIN_SEG_MM   = 50;
+  const MIN_INLINE_MM = 300;
+  const LEADER_OUT_MM = 280;
+  const SHELF_MM      = 320;
+
+  for (const room of appState.rooms) {
+    const poly = room.polygon;
+    if (!poly || poly.length < 3) continue;
+
+    const signedArea = polygonSignedArea(poly);
+
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      if (segLen < MIN_SEG_MM) continue;
+
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      const ux = Math.cos(angle), uy = Math.sin(angle);
+
+      // Outward normal: for CCW polygon (signedArea > 0) right normal points out
+      const outward = signedArea > 0
+        ? { x: uy, y: -ux }
+        : { x: -uy, y: ux };
+
+      const lineOffX = outward.x * LINE_OFF_MM;
+      const lineOffY = outward.y * LINE_OFF_MM;
+      const textOffX = outward.x * TEXT_OFF_MM;
+      const textOffY = outward.y * TEXT_OFF_MM;
+
+      const label = `${Math.round(segLen)} мм`;
+
+      const wA = { x: a.x + ux * GAP_MM + lineOffX, y: a.y + uy * GAP_MM + lineOffY };
+      const wB = { x: b.x - ux * GAP_MM + lineOffX, y: b.y - uy * GAP_MM + lineOffY };
+      const wL = {
+        x: (a.x + b.x) / 2 + textOffX,
+        y: (a.y + b.y) / 2 + textOffY,
+      };
+
+      const sA = toScreen(wA.x, wA.y);
+      const sB = toScreen(wB.x, wB.y);
+      const sL = toScreen(wL.x, wL.y);
+
+      if (segLen >= MIN_INLINE_MM) {
+        // Inline dimension line
+        _ctx.strokeStyle = '#111';
+        _ctx.lineWidth = 1.0;
+        _ctx.setLineDash([]);
+        _ctx.beginPath();
+        _ctx.moveTo(sA.x, sA.y);
+        _ctx.lineTo(sB.x, sB.y);
+        drawTick45(sA, angle);
+        drawTick45(sB, angle);
+        _ctx.stroke();
+        drawAlignedTextBox(label, sL, angle, {
+          font: '500 13px Merriweather, Onest, Inter, sans-serif',
+          background: 'rgba(255,255,255,0.95)',
+          textColor: '#111',
+        });
+      } else {
+        // Leader line for short segments
+        const attachW = {
+          x: (a.x + b.x) / 2 + outward.x * 0,
+          y: (a.y + b.y) / 2 + outward.y * 0,
+        };
+        const diagW = {
+          x: (a.x + b.x) / 2 + outward.x * LEADER_OUT_MM,
+          y: (a.y + b.y) / 2 + outward.y * LEADER_OUT_MM,
+        };
+        const shelfW  = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
+        const midShelfW = { x: (diagW.x + shelfW.x) / 2, y: (diagW.y + shelfW.y) / 2 };
+
+        const pA = toScreen(attachW.x, attachW.y);
+        const pD = toScreen(diagW.x,   diagW.y);
+        const pE = toScreen(shelfW.x,  shelfW.y);
+        const pM = toScreen(midShelfW.x, midShelfW.y);
+
+        _ctx.strokeStyle = '#444';
+        _ctx.lineWidth = 0.8;
+        _ctx.setLineDash([3, 3]);
+        _ctx.beginPath();
+        _ctx.moveTo(pA.x, pA.y);
+        _ctx.lineTo(pD.x, pD.y);
+        _ctx.lineTo(pE.x, pE.y);
+        _ctx.stroke();
+        _ctx.setLineDash([]);
+        _ctx.beginPath();
+        _ctx.arc(pA.x, pA.y, 2, 0, Math.PI * 2);
+        _ctx.fillStyle = '#444';
+        _ctx.fill();
+        drawAlignedTextBox(label, pM, angle, {
+          font: '500 13px Merriweather, Onest, Inter, sans-serif',
+          background: 'rgba(255,255,255,0.95)',
+          textColor: '#333',
+        });
+      }
+    }
+  }
+
+  _ctx.restore();
+}
+
 function drawWallDimensions() {
   const scale = _getScale();
   if (scale < 0.07 || !appState.rooms?.length) return;
@@ -1557,7 +1667,7 @@ export function renderToImage(outW, outH, withDimensions = false) {
   drawWallJoints(empty);
   drawOpenings(empty, 'start', 1);
   if (withDimensions) {
-    drawWallDimensions();
+    drawRoomDimensions();
     drawOpeningLeaders(exteriorWallIds);
   }
 
