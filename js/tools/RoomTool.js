@@ -45,14 +45,14 @@ export class RoomTool extends BaseTool {
       thickness: 0, height: 2700, offset: 'left', isDivider: true
     }))];
 
-    const points = findAllIntersections(allWalls);
+    const points = findAllIntersections(allWalls, 2, 'smart');
     if (points.length < 3) {
       this.hoverPolygon = null;
       this.ui.doRedraw();
       return true;
     }
 
-    const { vertices, edges } = buildWallGraph(allWalls, points);
+    const { vertices, edges } = buildWallGraph(allWalls, points, 2, 'smart');
     const faces = findFaces(vertices, edges);
 
     let best = null;
