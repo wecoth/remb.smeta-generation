@@ -66,11 +66,14 @@ export class RoomTool extends BaseTool {
           r.polygon && isPointInPolygon(world, r.polygon) &&
           Math.abs(polygonArea(r.polygon) - polygonArea(poly)) < 100
         );
-        if (!alreadyRoom) {
-          best = poly;
-          break;
+                if (!alreadyRoom) {
+          const area = polygonArea(poly);
+          if (!best || area < polygonArea(best)) {
+            best = poly;
+          }
+          // break не нужен – перебираем все полигоны
         }
-      }
+      
     }
 
     this.hoverPolygon = best;
