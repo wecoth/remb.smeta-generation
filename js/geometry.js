@@ -227,7 +227,7 @@ function wallEnds(w) {
  * Для разделителя — только одна inner (нет толщины, нет торцов).
  */
 function wallSegments(w) {
-  return wallFaces(w);
+  return [...wallFaces(w), ...wallEnds(w)];   // вернуть торцы
 }
 
 /**
