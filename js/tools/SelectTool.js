@@ -451,6 +451,14 @@ export class SelectTool extends BaseTool {
     }
     if (bestWall) return { type: 'wall', id: bestWall.id };
 
+    // --- НАЧАЛО ВСТАВКИ: проверка попадания в полигон комнаты ---
+    for (const r of (appState.rooms || [])) {
+      if (!r.polygon) continue;
+      if (isPointInPolygon(worldPoint, r.polygon)) {
+        return { type: 'room', id: r.key };
+      }
+    }
+    
     return null;
   }
 
