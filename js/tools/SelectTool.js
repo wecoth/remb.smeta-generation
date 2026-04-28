@@ -15,6 +15,7 @@ import {
   invalidateJointCache,
 } from '../wall.js';
 import { hitTestWallResizeHandle, getOpeningScreenBounds } from '../render.js';
+import { isPointInPolygon } from '../geometry.js';
 import { EventBus } from '../eventBus.js';
 
 function distanceToSegment(px, py, x1, y1, x2, y2) {
@@ -451,10 +452,9 @@ export class SelectTool extends BaseTool {
     }
     if (bestWall) return { type: 'wall', id: bestWall.id };
 
-    // --- НАЧАЛО ВСТАВКИ: проверка попадания в полигон комнаты ---
-    for (const r of (appState.rooms || [])) {
+        for (const r of (appState.rooms || [])) {
       if (!r.polygon) continue;
-      if (isPointInPolygon(worldPoint, r.polygon)) {
+      if (isPointInPolygon({ x: wx, y: wy }, r.polygon)) {
         return { type: 'room', id: r.key };
       }
     }
