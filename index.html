@@ -1129,10 +1129,13 @@
     var previewW = preview.getBoundingClientRect().width;
     var thumbW   = Math.max(40, previewW - 16);
     var sc       = Math.min(1, thumbW / 1123);
+    var scaledW  = Math.round(1123 * sc);
     var scaledH  = Math.round(794 * sc);
     document.querySelectorAll('.spp-a4').forEach(function(p) {
       p.style.transform = 'scale(' + sc + ')';
       p.style.transformOrigin = 'top left';
+      var offset = Math.max(0, Math.round((thumbW - scaledW) / 2));
+      p.style.marginLeft = offset + 'px';
     });
     document.querySelectorAll('.spp-page:not(.spp-hidden)').forEach(function(w) {
       w.style.height = (scaledH + 8) + 'px';
