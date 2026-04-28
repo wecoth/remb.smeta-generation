@@ -615,28 +615,21 @@ function drawWalls(selectedItems) {
   }
 
   // Pass 3: stroke outlines
-  for (const { w, g, isSel, style, sj, ej, myJoints, ptA, ptB, ptC, ptD } of wallData) {
-    _ctx.save();
-    _ctx.strokeStyle = style.stroke; _ctx.lineWidth = isSel ? 1.5 : 1;
-    _ctx.lineCap = 'butt'; _ctx.lineJoin = 'miter'; _ctx.miterLimit = 10;
-    _ctx.beginPath();
-    drawClippedFace(ptA, ptB, myJoints); // грань ab
-    drawClippedFace(ptD, ptC, myJoints); // грань dc
-
-    // Stage 4: торцевые заглушки не рисуем если:
-    //   a) конец стыкуется с другой стеной (sj/ej), ИЛИ
-    //   b) конец касается коллинеарной стены — шов был бы виден поперёк непрерывной стены
-    const jmapStart = getWallJointItemsForEndpoint(jmap, w, 'start').filter(it => it.wall.id !== w.id);
-    const jmapEnd   = getWallJointItemsForEndpoint(jmap, w, 'end').filter(it => it.wall.id !== w.id);
-    const collinearAtStart = jmapStart.some(it => areWallsCollinear(w, it.wall));
-    const collinearAtEnd   = jmapEnd.some(it => areWallsCollinear(w, it.wall));
-
-    if (!ej && !collinearAtEnd)   { _ctx.moveTo(g.b.x, g.b.y); _ctx.lineTo(g.c.x, g.c.y); }
-    if (!sj && !collinearAtStart) { _ctx.moveTo(g.d.x, g.d.y); _ctx.lineTo(g.a.x, g.a.y); }
-    _ctx.stroke();
-
-    _ctx.restore();
-  }
+  // Pass 3: stroke outlines
+for (const { w, g, isSel, style, ptA, ptB, ptC, ptD } of wallData) {
+  _ctx.save();
+  _ctx.strokeStyle = style.stroke;
+  _ctx.lineWidth = isSel ? 2.5 : 1;  // можно сделать жирнее для выделенных
+  _ctx.lineCap = 'butt';
+  _ctx.lineJoin = 'miter';
+  _ctx.beginPath();
+  _ctx.moveTo(ptA.x, ptA.y);
+  _ctx.lineTo(ptB.x, ptB.y);
+  _ctx.lineTo(ptC.x, ptC.y);
+  _ctx.lineTo(ptD.x, ptD.y);
+  _ctx.closePath();
+  _ctx.stroke();
+  _ctx.restore();
 }
 
 // Пересечение двух бесконечных линий в 2D.
