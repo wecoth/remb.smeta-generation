@@ -726,6 +726,8 @@ function drawClippedFace(sa, ea, joints) {
     _ctx.lineTo(ea.x, ea.y);
   }
 
+  }
+
 function drawWallJoints(selectedItems) {
   for (const jr of getWallJointRects()) {
     const isSel = jr.wallIds.some(id => sel('wall', id, selectedItems));
