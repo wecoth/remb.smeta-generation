@@ -121,8 +121,9 @@ export function initPlanner(domRefs) {
     doRedraw();
   });
 
-  dom.btnRecalc?.addEventListener('click', () => {
-    EventBus.emit('walls:changed');
+    dom.btnRecalc?.addEventListener('click', () => {
+    // Ручной пересчёт отключён – комнаты создаются инструментом «Комната»
+    // EventBus.emit('walls:changed');
     doRedraw();
   });
 
