@@ -124,7 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
   updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
   clearHistory();
   forceRedraw();
-});
+    });
+  });
 
   // ── Autosave every 30s ──
   setInterval(autosaveToLocalStorage, 30000);
