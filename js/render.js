@@ -238,6 +238,25 @@ export function redraw(ps) {
   if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
   if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentObjectSnap) drawObjectSnap(ps.currentObjectSnap);
   drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
+  // Подсветка будущей комнаты (RoomTool)
+if (ps.roomToolHover) {
+  _ctx.save();
+  _ctx.fillStyle = 'rgba(74,111,227,0.15)';
+  _ctx.strokeStyle = 'rgba(74,111,227,0.65)';
+  _ctx.lineWidth = 2;
+  _ctx.setLineDash([]);
+  _ctx.beginPath();
+  const first = toScreen(ps.roomToolHover[0].x, ps.roomToolHover[0].y);
+  _ctx.moveTo(first.x, first.y);
+  for (let i = 1; i < ps.roomToolHover.length; i++) {
+    const p = toScreen(ps.roomToolHover[i].x, ps.roomToolHover[i].y);
+    _ctx.lineTo(p.x, p.y);
+  }
+  _ctx.closePath();
+  _ctx.fill();
+  _ctx.stroke();
+  _ctx.restore();
+}
   drawCursorGhost(ps);
 }
 
