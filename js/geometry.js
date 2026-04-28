@@ -208,6 +208,33 @@ function wallFaces(w) {
  *
  * Для разделителя торцов нет (return []).
  */
+// Проверяет, является ли конец стены свободным (не пристыкованным к другой стене)
+function isEndpointFree(wall, endpoint, allWalls, eps = 2) {
+  const base = wallBase(wall);
+  const pt = endpoint === 'start' ? { x: base.x1, y: base.y1 } : { x: base.x2, y: base.y2 };
+  
+  for (const other of allWalls) {
+    if (other === wall || other.id === wall.id) continue;
+    // Игнорируем разделители (thickness = 0), они не закрывают торец
+    if ((other.thickness || 0) < 0.5) continue;
+    
+    const ob = wallBase(other);
+    const segLen = Math.hypot(ob.x2 - ob.x1, ob.y2 - ob.y1);
+    if (segLen < 1) continue;
+    
+    // Проверяем, лежит ли наш конец на базовой линии другой стены
+    const dx = pt.x - ob.x1, dy = pt.y - ob.y1;
+    const ux = (ob.x2 - ob.x1) / segLen, uy = (ob.y2 - ob.y1) / segLen;
+    const along = dx * ux + dy * uy;
+    const perp = Math.abs(dx * (-uy) + dy * ux);
+    
+    if (along >= -eps && along <= segLen + eps && perp <= eps) {
+      return false;   // нашли стену, которая закрывает этот конец
+    }
+  }
+  return true;   // никто не примыкает – конец свободен
+}
+
 function wallEnds(w) {
   const inner = wallBase(w);
   const opp = wallOppositeFace(w);
@@ -226,8 +253,28 @@ function wallEnds(w) {
  *
  * Для разделителя — только одна inner (нет толщины, нет торцов).
  */
-function wallSegments(w) {
-  return [...wallFaces(w), ...wallEnds(w)];   // вернуть торцы
+function wallSegments(w, allWalls, includeEnds = true) {
+  const faces = wallFaces(w);
+  if (!includeEnds) return faces;
+  
+  if (includeEnds === 'smart') {
+    // Добавляем только свободные торцы
+    const inner = wallBase(w);
+    const opp = wallOppositeFace(w);
+    if (!opp) return faces;               // разделители без торцов
+    
+    const ends = [];
+    if (isEndpointFree(w, 'start', allWalls)) {
+      ends.push({ x1: inner.x1, y1: inner.y1, x2: opp.x1, y2: opp.y1, wall: w, faceKind: 'end-start' });
+    }
+    if (isEndpointFree(w, 'end', allWalls)) {
+      ends.push({ x1: inner.x2, y1: inner.y2, x2: opp.x2, y2: opp.y2, wall: w, faceKind: 'end-end' });
+    }
+    return [...faces, ...ends];
+  }
+  
+  // По умолчанию – все торцы (как раньше)
+  return [...faces, ...wallEnds(w)];
 }
 
 /**
@@ -243,10 +290,13 @@ function wallSegments(w) {
  * Снаппинг при рисовании гарантирует точное совпадение концов соседних
  * стен. Допуск ~2 мм только на float-округления.
  */
-export function findAllIntersections(walls, eps = 2) {
+export function findAllIntersections(walls, eps = 2, includeEnds = true) {
   const EPS_MERGE = 2;
   const EPS_PERP  = 2;
 
+    for (const w of walls) {
+    for (const s of wallSegments(w, walls, includeEnds)) allSegs.push(s);
+  }
   // Все сегменты всех стен
   const allSegs = [];
   for (const w of walls) {
@@ -338,10 +388,14 @@ export function findAllIntersections(walls, eps = 2) {
  *
  * Параллельные дубликаты рёбер склеиваются.
  */
-export function buildWallGraph(walls, points, eps = 2) {
+export function buildWallGraph(walls, points, eps = 2, includeEnds = true) {
   const EPS_PERP = 2;
   const EPS_ALONG = 2;
 
+for (const w of walls) {
+    for (const s of wallSegments(w, walls, includeEnds)) allSegs.push(s);
+  }
+  
   const vertices = points.map((p, i) => ({ ...p, id: i }));
   const rawEdges = [];
 
