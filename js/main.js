@@ -103,8 +103,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Restore planner project from local storage (if exists) ──
-  if (loadFromLocalStorage()) {
-    computeRooms(parseFloat(document.getElementById('inpWallHeight')?.value) || 2700);
+    if (loadFromLocalStorage()) {
+    // комнаты больше не пересчитываются автоматически
+    // computeRooms(...) – вызов удалён
     updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
     clearHistory();
     forceRedraw();
@@ -118,12 +119,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnLoadProject')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
     uploadProject(f, err => {
-      if (err) { alert('Ошибка загрузки: ' + err.message); return; }
-      computeRooms(parseFloat(document.getElementById('inpWallHeight')?.value) || 2700);
-      updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
-      clearHistory(); forceRedraw();
-    });
-  });
+  if (err) { alert('Ошибка загрузки: ' + err.message); return; }
+  // computeRooms(...) – удалён вызов, комнаты теперь создаются вручную
+  updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
+  clearHistory();
+  forceRedraw();
+});
 
   // ── Autosave every 30s ──
   setInterval(autosaveToLocalStorage, 30000);
