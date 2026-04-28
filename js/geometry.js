@@ -255,13 +255,15 @@ function wallEnds(w) {
  * Для разделителя — только одна inner (нет толщины, нет торцов).
  */
 function wallSegments(w, allWalls, includeEnds = true) {
-  const inner = wallBase(w);
-  const opp  = wallOppositeFace(w);
+  const innerBase = wallBase(w);
+  const oppBase  = wallOppositeFace(w);
+  const inner = { ...innerBase, wall: w, faceKind: 'inner' };
   const mitreMap = computeMitreMap();
   const mitre = mitreMap.get(w.id);
   const ends = [];
 
-  if (opp && includeEnds && includeEnds !== false) {
+  if (oppBase && includeEnds && includeEnds !== false) {
+    const opp = { ...oppBase };
     // Стартовый торец
     if (mitre?.start) {
       ends.push({
@@ -295,10 +297,12 @@ function wallSegments(w, allWalls, includeEnds = true) {
         wall: w, faceKind: 'end-end'
       });
     }
+
+    const oppFace = { ...opp, wall: w, faceKind: 'outer' };
+    return [inner, oppFace, ...ends].filter(Boolean);
   }
 
-  if (!opp) return [inner];
-  return [inner, opp, ...ends].filter(Boolean);
+  return [inner];
 }
 
 /**
