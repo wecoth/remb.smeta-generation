@@ -56,6 +56,7 @@ export class RoomTool extends BaseTool {
     const faces = findFaces(vertices, edges);
 
     let best = null;
+    let bestArea = Infinity;
     for (const face of faces) {
       const poly = face.map(v => ({ x: v.x, y: v.y }));
       if (poly.length < 3) continue;
@@ -66,14 +67,14 @@ export class RoomTool extends BaseTool {
           r.polygon && isPointInPolygon(world, r.polygon) &&
           Math.abs(polygonArea(r.polygon) - polygonArea(poly)) < 100
         );
-                if (!alreadyRoom) {
+        if (!alreadyRoom) {
           const area = polygonArea(poly);
-          if (!best || area < polygonArea(best)) {
+          if (area < bestArea) {
+            bestArea = area;
             best = poly;
           }
-          // break не нужен – перебираем все полигоны
         }
-      
+      }
     }
 
     this.hoverPolygon = best;
