@@ -800,22 +800,22 @@ function _applyA4Scale() {
   const cs = getComputedStyle(body);
   const padL = parseFloat(cs.paddingLeft)  || 0;
   const padR = parseFloat(cs.paddingRight) || 0;
-  const SIDE_MARGIN = 24;
-  const availW = Math.max(100, bodyRect.width - padL - padR - SIDE_MARGIN * 2);
+  // totalW — полная ширина body включая padding
+  const totalW = bodyRect.width;
+  // availW — ширина контента без padding (для расчёта масштаба)
+  const availW = Math.max(100, totalW - padL - padR);
 
   const sc = Math.min(1, Math.max(0.08, availW / NATIVE_W));
   const scaledW = Math.round(NATIVE_W * sc);
   const scaledH = Math.round(NATIVE_H * sc);
 
-  // Трюк для точного центрирования при scale():
-  // 1. transform-origin: top left (масштаб от левого верхнего угла)
-  // 2. сдвигаем лист на половину разницы между контейнером и масштабированной шириной
-  //    через marginLeft — это точно помещает лист по центру без смещений
+  // Центрирование: от левого края контента (padL) + половина оставшегося места
+  // marginLeft = padL + (availW - scaledW) / 2
+  const offset = Math.round(padL + Math.max(0, (availW - scaledW) / 2));
+
   document.querySelectorAll('.spp-a4').forEach(page => {
     page.style.transform = `scale(${sc})`;
     page.style.transformOrigin = 'top left';
-    // Смещение = (availW - scaledW) / 2, но не меньше 0
-    const offset = Math.max(0, Math.round((availW - scaledW) / 2));
     page.style.marginLeft = offset + 'px';
   });
 
