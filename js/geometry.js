@@ -3,6 +3,7 @@
 // МОДЕЛЬ ПОМЕЩЕНИЙ (Renga-style):
 // • Контур помещения = линии рисования стен (cx1,cy1 → cx2,cy2),
 //   которые при привязке 'left'/'right' лежат на ВНУТРЕННЕЙ ГРАНИ стены.
+import { computeMitreMap } from './wall.js';
 // • Толщина стен в построении графа НЕ участвует. Снаппинг при рисовании
 //   гарантирует, что концы соседних стен совпадают точно по cx/cy.
 // • Все допуски в графе — это допуски на ошибки округления плавающей точки
@@ -254,27 +255,50 @@ function wallEnds(w) {
  * Для разделителя — только одна inner (нет толщины, нет торцов).
  */
 function wallSegments(w, allWalls, includeEnds = true) {
-  const faces = wallFaces(w);
-  if (!includeEnds) return faces;
-  
-  if (includeEnds === 'smart') {
-    // Добавляем только свободные торцы
-    const inner = wallBase(w);
-    const opp = wallOppositeFace(w);
-    if (!opp) return faces;               // разделители без торцов
-    
-    const ends = [];
-    if (isEndpointFree(w, 'start', allWalls)) {
-      ends.push({ x1: inner.x1, y1: inner.y1, x2: opp.x1, y2: opp.y1, wall: w, faceKind: 'end-start' });
+  const inner = wallBase(w);
+  const opp  = wallOppositeFace(w);
+  const mitreMap = computeMitreMap();
+  const mitre = mitreMap.get(w.id);
+  const ends = [];
+
+  if (opp && includeEnds && includeEnds !== false) {
+    // Стартовый торец
+    if (mitre?.start) {
+      ends.push({
+        x1: inner.x1, y1: inner.y1,
+        x2: mitre.start.x, y2: mitre.start.y,
+        wall: w, faceKind: 'end-start'
+      });
+      opp.x1 = mitre.start.x;
+      opp.y1 = mitre.start.y;
+    } else {
+      ends.push({
+        x1: inner.x1, y1: inner.y1,
+        x2: opp.x1, y2: opp.y1,
+        wall: w, faceKind: 'end-start'
+      });
     }
-    if (isEndpointFree(w, 'end', allWalls)) {
-      ends.push({ x1: inner.x2, y1: inner.y2, x2: opp.x2, y2: opp.y2, wall: w, faceKind: 'end-end' });
+
+    // Конечный торец
+    if (mitre?.end) {
+      ends.push({
+        x1: inner.x2, y1: inner.y2,
+        x2: mitre.end.x, y2: mitre.end.y,
+        wall: w, faceKind: 'end-end'
+      });
+      opp.x2 = mitre.end.x;
+      opp.y2 = mitre.end.y;
+    } else {
+      ends.push({
+        x1: inner.x2, y1: inner.y2,
+        x2: opp.x2, y2: opp.y2,
+        wall: w, faceKind: 'end-end'
+      });
     }
-    return [...faces, ...ends];
   }
-  
-  // По умолчанию – все торцы (как раньше)
-  return [...faces, ...wallEnds(w)];
+
+  if (!opp) return [inner];
+  return [inner, opp, ...ends].filter(Boolean);
 }
 
 /**
