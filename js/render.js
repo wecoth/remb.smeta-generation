@@ -631,7 +631,8 @@ for (const { w, g, isSel, style, ptA, ptB, ptC, ptD } of wallData) {
   _ctx.stroke();
   _ctx.restore();
 }
-
+}
+  
 // Пересечение двух бесконечных линий в 2D.
 // Возвращает точку {x,y} или null если параллельны.
 function lineLineIntersect(a, b, c, d) {
@@ -725,8 +726,7 @@ function drawClippedFace(sa, ea, joints) {
     _ctx.moveTo(sa.x + dx * cur, sa.y + dy * cur);
     _ctx.lineTo(ea.x, ea.y);
   }
-
-  }
+}
 
 function drawWallJoints(selectedItems) {
   for (const jr of getWallJointRects()) {
