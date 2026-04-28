@@ -705,9 +705,7 @@ function computeRoomMetrics({
   let entranceDoorAreaM2 = 0;
 
   for (const w of boundaryWalls) {
-    const lenMm = hasDividers
-      ? wallLengthInRoomMm(w, polygon, allWallsForEdge)
-      : wallFullLengthMm(w);
+   const lenMm = wallLengthInRoomMm(w, polygon, allWallsForEdge);
     const lenM = lenMm / 1000;
     wallAreaGrossM2 += lenM * heightM;
   }
