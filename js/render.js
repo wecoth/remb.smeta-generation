@@ -725,7 +725,6 @@ function drawClippedFace(sa, ea, joints) {
     _ctx.moveTo(sa.x + dx * cur, sa.y + dy * cur);
     _ctx.lineTo(ea.x, ea.y);
   }
-}
 
 function drawWallJoints(selectedItems) {
   for (const jr of getWallJointRects()) {
