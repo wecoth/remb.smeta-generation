@@ -294,13 +294,10 @@ export function findAllIntersections(walls, eps = 2, includeEnds = true) {
   const EPS_MERGE = 2;
   const EPS_PERP  = 2;
 
-    for (const w of walls) {
-    for (const s of wallSegments(w, walls, includeEnds)) allSegs.push(s);
-  }
-  // Все сегменты всех стен
+    // Все сегменты всех стен
   const allSegs = [];
   for (const w of walls) {
-    for (const s of wallSegments(w)) allSegs.push(s);
+    for (const s of wallSegments(w, walls, includeEnds)) allSegs.push(s);
   }
 
   // Уникальный ID сегмента — для wallIds в вершинах
