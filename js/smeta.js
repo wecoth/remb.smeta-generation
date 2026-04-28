@@ -807,16 +807,18 @@ function _applyA4Scale() {
   const scaledW = Math.round(NATIVE_W * sc);
   const scaledH = Math.round(NATIVE_H * sc);
 
-  // transform-origin: top left — масштабируем от верхнего левого угла.
-  // .spp-page (flex, justify-content:center) центрирует визуально уменьшенный лист.
+  // Трюк для точного центрирования при scale():
+  // 1. transform-origin: top left (масштаб от левого верхнего угла)
+  // 2. сдвигаем лист на половину разницы между контейнером и масштабированной шириной
+  //    через marginLeft — это точно помещает лист по центру без смещений
   document.querySelectorAll('.spp-a4').forEach(page => {
     page.style.transform = `scale(${sc})`;
     page.style.transformOrigin = 'top left';
+    // Смещение = (availW - scaledW) / 2, но не меньше 0
+    const offset = Math.max(0, Math.round((availW - scaledW) / 2));
+    page.style.marginLeft = offset + 'px';
   });
 
-  // layout-box после scale() не меняется (остаётся 1123×794).
-  // Задаём .spp-page: высоту = scaledH, ширину = scaledW + зазор,
-  // чтобы следующий лист шёл сразу после визуального конца текущего.
   document.querySelectorAll('.spp-page:not(.spp-hidden)').forEach(wrap => {
     wrap.style.height = (scaledH + 24) + 'px';
   });
