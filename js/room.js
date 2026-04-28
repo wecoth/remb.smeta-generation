@@ -884,18 +884,18 @@ export function getComputedRooms() {
 let debounceTimer = null;
 const DEBOUNCE_MS = 20;
 
-EventBus.on('walls:changed', () => {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    computeRooms(_wallHeightFallback);
-    debounceTimer = null;
-  }, DEBOUNCE_MS);
-});
+//EventBus.on('walls:changed', () => {
+ // if (debounceTimer) clearTimeout(debounceTimer);
+  //debounceTimer = setTimeout(() => {
+    //computeRooms(_wallHeightFallback);
+    //debounceTimer = null;
+  //}, DEBOUNCE_MS);
+//});
 
-EventBus.on('dividers:changed', () => {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    computeRooms(_wallHeightFallback);
-    debounceTimer = null;
-  }, DEBOUNCE_MS);
-});
+//EventBus.on('dividers:changed', () => {
+  //if (debounceTimer) clearTimeout(debounceTimer);
+  //debounceTimer = setTimeout(() => {
+    //computeRooms(_wallHeightFallback);
+    //debounceTimer = null;
+  //}, DEBOUNCE_MS);
+//});
