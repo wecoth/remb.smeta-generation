@@ -692,14 +692,19 @@ html, body {
   display: block;
   padding: 24px 0 60px;
   background: #cbc8c2;
+  /* Контейнер для центрирования — листы масштабируются внутри */
+  box-sizing: border-box;
 }
 
 /* Каждый лист — блочный элемент, отступ снизу между листами */
 .spp-page {
   width: 100%;
-  display: block;
-  overflow: hidden;
-  margin-bottom: 24px;
+  /* flex-контейнер — центрирует лист по горизонтали при любом масштабе */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: visible;
+  margin-bottom: 0;
   flex-shrink: 0;
 }
 .spp-page.spp-hidden { display: none !important; }
@@ -712,19 +717,21 @@ html, body {
   min-height: 794px !important;
   max-width: none !important;
   max-height: none !important;
-  margin: 0 auto !important;
+  /* margin убран — центрирование через flex-родитель .spp-page */
+  margin: 0 !important;
   display: block;
   flex-shrink: 0;
   background: #fff;
   box-shadow: 0 4px 24px rgba(0,0,0,.22);
   border-radius: 2px;
   position: relative;
-  /* overflow visible — позволяет футеру выходить за границы листа */
   overflow: visible;
   font-family: 'Merriweather', serif;
   font-size: 13px;
   color: #1c1c1c;
-  transform-origin: top center;
+  /* transform-origin: top left — scale от верхнего левого угла,
+     центрирование делает flex-родитель */
+  transform-origin: top left;
   box-sizing: border-box;
 }
 
