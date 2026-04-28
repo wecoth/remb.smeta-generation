@@ -4,7 +4,7 @@ import { executeCommand } from '../commands/CommandHistory.js';
 import { AddRoomCommand } from '../commands/AddRoomCommand.js';
 import { appState } from '../state.js';
 import { findAllIntersections, buildWallGraph, findFaces,
-         polygonArea, isPointInPolygon } from '../geometry.js';
+         polygonArea, isPointInPolygon, projectPointOntoSegment } from '../geometry.js';
 
 export class RoomTool extends BaseTool {
   constructor(ui) {
@@ -55,28 +55,34 @@ export class RoomTool extends BaseTool {
     const { vertices, edges } = buildWallGraph(allWalls, points, 2, 'smart');
     const faces = findFaces(vertices, edges);
 
-    let best = null;
-    let bestArea = Infinity;
+        let best = null;
+    let bestDist = Infinity;
     for (const face of faces) {
       const poly = face.map(v => ({ x: v.x, y: v.y }));
       if (poly.length < 3) continue;
-      if (polygonArea(poly) < 50000) continue; // меньше 0.05 м²
+      if (polygonArea(poly) < 50000) continue;
       if (isPointInPolygon(world, poly)) {
-        // Проверяем, что комната ещё не существует
         const alreadyRoom = appState.rooms.some(r =>
           r.polygon && isPointInPolygon(world, r.polygon) &&
           Math.abs(polygonArea(r.polygon) - polygonArea(poly)) < 100
         );
         if (!alreadyRoom) {
-          const area = polygonArea(poly);
-          if (area < bestArea) {
-            bestArea = area;
+          // расстояние от world до контура полигона
+          let minDist = Infinity;
+          for (let i = 0; i < poly.length; i++) {
+            const a = poly[i];
+            const b = poly[(i + 1) % poly.length];
+            const proj = projectPointOntoSegment(world, { x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+            if (proj.distance < minDist) minDist = proj.distance;
+          }
+          if (minDist < bestDist) {
+            bestDist = minDist;
             best = poly;
           }
         }
       }
     }
-
+           
     this.hoverPolygon = best;
     this.ui.updateCoordinatesLabel(world, null, null);
     this.ui.doRedraw();
