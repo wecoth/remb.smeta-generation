@@ -56,23 +56,23 @@ export class DoorTool extends BaseTool {
     return { hoverOpening: this.hoverOpening };
   }
 
-  /** Читаем размеры — сначала из DOM по id, fallback на this.ui.dom */
+  /** Читаем размеры напрямую из DOM по id — надёжнее чем this.ui.dom */
   _getDims() {
     const wEl = document.getElementById('inpDoorWidth') || this.ui.dom.inpDoorWidth;
     const hEl = document.getElementById('inpDoorHeight') || this.ui.dom.inpDoorHeight;
-    const w = parseFloat(wEl?.value) || 900;
-    const h = parseFloat(hEl?.value) || 2100;
-    console.log('_getDims:', w, h, 'wEl.value:', wEl?.value, 'hEl.value:', hEl?.value);
-    return { w, h };
+    return {
+      w: parseFloat(wEl?.value) || 900,
+      h: parseFloat(hEl?.value) || 2100,
+    };
   }
 
   onMouseDown(pos, world, e) {
     if (!this.hoverOpening) return false;
 
+    // Читаем размеры из DOM в момент клика — гарантированно актуальные значения
     const { w, h } = this._getDims();
     const ho = { ...this.hoverOpening, width: w, height: h };
 
-    console.log('🚪 CLICK width:', ho.width, 'height:', ho.height);
     executeCommand(new AddOpeningCommand(ho));
     this.ui.doRedraw();
     return true;
