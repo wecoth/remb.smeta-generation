@@ -1114,8 +1114,8 @@ function drawRoomDimensions() {
   if (scale < 0.07 || !appState.rooms?.length) return;
 
   _ctx.save();
-  const LINE_OFF_MM   = 60;   // смещение размерной линии внутрь от контура
-  const TEXT_OFF_MM   = 60;   // смещение текста (совпадает с линией)
+  const LINE_OFF_MM   = 80;   // смещение размерной линии внутрь от контура
+  const TEXT_OFF_MM   = 160;   // смещение текста (совпадает с линией)
   const MIN_SEG_MM    = 30;   // минимальная длина сегмента для показа
   const MIN_INLINE_MM = 200;  // ниже этого — выноска, выше — inline
   const LEADER_OUT_MM = 180;
