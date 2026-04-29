@@ -4,7 +4,8 @@ import { executeCommand } from '../commands/CommandHistory.js';
 import { AddRoomCommand } from '../commands/AddRoomCommand.js';
 import { appState } from '../state.js';
 import { findAllIntersections, buildWallGraph, findFaces,
-         polygonArea, isPointInPolygon, projectPointOntoSegment } from '../geometry.js';
+         polygonArea, polygonCentroid, isPointInPolygon,
+         isPointInWall, projectPointOntoSegment } from '../geometry.js';
 
 export class RoomTool extends BaseTool {
   constructor(ui) {
@@ -55,23 +56,35 @@ export class RoomTool extends BaseTool {
   const { vertices, edges } = buildWallGraph(allWalls, points);
   const faces = findFaces(vertices, edges);
 
+  // Проверяем: кликнул ли пользователь внутрь тела стены?
+  const insideWall = appState.walls.some(w => isPointInWall(world, w));
+
   let best = null;
   let bestArea = Infinity;
-  for (const face of faces) {
-    const poly = face.map(v => ({ x: v.x, y: v.y }));
-    if (poly.length < 3) continue;
-    if (polygonArea(poly) < 50000) continue;   // меньше 0.05 м²
-    if (isPointInPolygon(world, poly)) {
+
+  if (!insideWall) {
+    for (const face of faces) {
+      const poly = face.map(v => ({ x: v.x, y: v.y }));
+      if (poly.length < 3) continue;
+      if (polygonArea(poly) < 50000) continue;   // меньше 0.05 м²
+      if (!isPointInPolygon(world, poly)) continue;
+
+      // Уже есть комната чей центроид лежит в этом же контуре?
+      const center = polygonCentroid(poly);
       const alreadyRoom = appState.rooms.some(r =>
-        r.polygon && isPointInPolygon(world, r.polygon) &&
-        Math.abs(polygonArea(r.polygon) - polygonArea(poly)) < 100
+        r.polygon && isPointInPolygon(center, r.polygon)
       );
-      if (!alreadyRoom) {
-        const area = polygonArea(poly);
-        if (area < bestArea) {
-          bestArea = area;
-          best = poly;
-        }
+      if (alreadyRoom) continue;
+
+      // Центроид кандидата лежит внутри тела стены? → артефакт стыка, пропускаем
+      const candCenter = polygonCentroid(poly);
+      const candInsideWall = appState.walls.some(w => isPointInWall(candCenter, w));
+      if (candInsideWall) continue;
+
+      const area = polygonArea(poly);
+      if (area < bestArea) {
+        bestArea = area;
+        best = poly;
       }
     }
   }
