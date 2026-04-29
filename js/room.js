@@ -885,213 +885,26 @@ export function getComputedRooms() {
 // Комнаты созданные пользователем сохраняются — обновляется только
 // polygon, площадь и метрики. Если контур разрушился — комната удаляется.
 // ══════════════════════════════════════════════════════════════════
-function refreshExistingRooms(wallHeightFallback = 2700) {
-  if (!appState.rooms?.length) { computeRooms(wallHeightFallback); return; } // нет комнат — создаём через полный пересчёт
-
-  const walls = appState.walls;
-  const dividers = appState.dividers || [];
-  const dividerWalls = dividers.map(d => ({
-    id: `div_${d.id}`,
-    x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
-    cx1: d.x1, cy1: d.y1, cx2: d.x2, cy2: d.y2,
-    thickness: 0, height: wallHeightFallback, offset: 'left', isDivider: true,
-  }));
-  const allWalls = [...walls, ...dividerWalls];
-
-  // Строим граф и находим все возможные контуры
-  let allCandidates = [];
-  if (allWalls.length >= 3) {
-    const points = findAllIntersections(allWalls);
-    if (points.length >= 3) {
-      const { vertices, edges } = buildWallGraph(allWalls, points);
-      if (edges.length >= 3) {
-        const faces = findFaces(vertices, edges);
-        const seenKeys = new Set();
-        for (const face of faces) {
-          const poly = face.map(v => ({ x: v.x, y: v.y }));
-          const sArea = polygonSignedArea(poly);
-          if (Math.abs(sArea) < 1) continue;
-          const c = polygonCentroid(poly);
-          const sign = sArea > 0 ? 'p' : 'n';
-          const key = `${Math.round(c.x/10)}_${Math.round(c.y/10)}_${sign}`;
-          if (seenKeys.has(key)) continue;
-          seenKeys.add(key);
-          allCandidates.push({ poly, area: Math.abs(sArea), center: c });
-        }
-        // Убираем внешний фейс (с максимальным bbox)
-        let exteriorIndex = 0, maxBbox = -Infinity;
-        for (let i = 0; i < allCandidates.length; i++) {
-          const bb = polygonBboxArea(allCandidates[i].poly);
-          if (bb > maxBbox) { maxBbox = bb; exteriorIndex = i; }
-        }
-        allCandidates.splice(exteriorIndex, 1);
-      }
-    }
-  }
-
-  // ПРОХОД 1: для каждой комнаты находим новый полигон и пересобираем boundaryWallIds.
-  // Результаты складываем в draftUpdates, чтобы во втором проходе знать
-  // актуальную топологию (какая стена граничит с одной или двумя комнатами).
-  const draftUpdates = [];
-  for (const room of appState.rooms) {
-    const roomCenter = room.center;
-    let bestCandidate = null, bestArea = Infinity;
-    for (const cand of allCandidates) {
-      if (cand.area < bestArea && isPointInPolygon(roomCenter, cand.poly)) {
-        bestArea = cand.area;
-        bestCandidate = cand;
-      }
-    }
-    if (!bestCandidate) continue; // контур разрушился — комната удаляется
-
-    const poly = bestCandidate.poly;
-    const grossArea = bestCandidate.area;
-
-    const boundaryWallIds = new Set();
-    const boundaryWallsList = [];
-    for (let k = 0; k < poly.length; k++) {
-      const a = poly[k], b = poly[(k + 1) % poly.length];
-      const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, allWalls);
-      for (const w of edgeWalls) {
-        if (!w.isDivider && !boundaryWallIds.has(w.id)) {
-          boundaryWallIds.add(w.id);
-          boundaryWallsList.push(w);
-        }
-      }
-    }
-
-    let totalLengthMm = 0, weightedHeightSum = 0;
-    for (const w of boundaryWallsList) {
-      const len = wallFullLengthMm(w);
-      totalLengthMm += len;
-      weightedHeightSum += len * (w.height || wallHeightFallback);
-    }
-    const heightMm = totalLengthMm > 0 ? weightedHeightSum / totalLengthMm : wallHeightFallback;
-
-    const center = polygonCentroid(poly);
-    const bbox = (() => {
-      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-      for (const p of poly) { minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y); }
-      return {minX,minY,maxX,maxY};
-    })();
-
-    draftUpdates.push({ room, poly, grossArea, boundaryWallIds, boundaryWallsList, heightMm, center, bbox });
-  }
-
-  // Между проходами: определяем внешние стены по НОВЫМ boundaryWallIds.
-  // Стена с counter == 1 → внешняя (только одна комната её использует).
-  // Стена с counter == 2 → межкомнатная.
-  const wallRoomCounter = new Map();
-  for (const { boundaryWallIds } of draftUpdates) {
-    for (const wid of boundaryWallIds) {
-      wallRoomCounter.set(wid, (wallRoomCounter.get(wid) || 0) + 1);
-    }
-  }
-  const localExteriorWalls = new Set();
-  for (const [wid, count] of wallRoomCounter) {
-    if (count === 1) localExteriorWalls.add(wid);
-  }
-
-  // ПРОХОД 2: вычисляем netAreaMm2 с учётом дверных проёмов и формируем updatedRooms.
-  const updatedRooms = [];
-  for (const { room, poly, grossArea, boundaryWallIds, boundaryWallsList, heightMm, center, bbox } of draftUpdates) {
-    // Чистая площадь = площадь полигона + доля дверных проёмов в граничных стенах.
-    // Межкомнатная дверь → +1/2 (ширина × толщина стены).
-    // Входная дверь (внешняя стена) → +целиком (ширина × толщина стены).
-    let netAreaMm2 = grossArea;
-    const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
-    for (const op of roomOpenings) {
-      if (op.type !== 'door') continue;
-      const wall = boundaryWallsList.find(w => w.id === op.wallId);
-      if (!wall) continue;
-      const isInterior = !localExteriorWalls.has(op.wallId);
-      if (isInterior) {
-        netAreaMm2 += (op.width * (wall.thickness || 0)) / 2;
-      } else {
-        netAreaMm2 += op.width * (wall.thickness || 0);
-      }
-    }
-
-    // Внутренние стены (перегородки), лежащие внутри этой комнаты
-    const interiorWalls = [];
-    for (const w of walls) {
-      if (boundaryWallIds.has(w.id)) continue;
-      const clipped = clipWallAxisToPolygon(w, poly);
-      let totalLen = 0;
-      for (const seg of clipped) totalLen += Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
-      if (totalLen > 1) interiorWalls.push({ wall: w, lengthMm: totalLen });
-    }
-
-    // Пересчитываем все метрики (площадь стен, периметр, окна и т.д.)
-    const entranceDoorId = detectEntranceDoor(roomOpenings, localExteriorWalls);
-    const hasDividers = boundaryWallsList.some(w => w.isDivider);
-    const metrics = computeRoomMetrics({
-      boundaryWalls: boundaryWallsList,
-      interiorWalls,
-      openings: roomOpenings,
-      heightMm,
-      polygon: poly,
-      entranceDoorId,
-      hasDividers,
-      netAreaMm2,
-      exteriorWallIds: localExteriorWalls,
-    });
-
-    updatedRooms.push({
-      ...room,
-      polygon: poly,
-      center,
-      cells: [{ x1: bbox.minX, y1: bbox.minY, x2: bbox.maxX, y2: bbox.maxY }],
-      boundarySegments: boundaryWallsList.map(w => ({
-        orientation: Math.abs(w.y2 - w.y1) < Math.abs(w.x2 - w.x1) ? 'h' : 'v',
-        x1: Math.min(w.x1, w.x2), y1: Math.min(w.y1, w.y2),
-        x2: Math.max(w.x1, w.x2), y2: Math.max(w.y1, w.y2),
-        length: Math.hypot(w.x2 - w.x1, w.y2 - w.y1),
-        wall: w,
-      })),
-      area: netAreaMm2 / 1e6,
-      volume: netAreaMm2 * heightMm / 1e9,
-      height: heightMm / 1000,
-      perimeter: metrics.perimeterFloorM,
-      wallArea: metrics.wallAreaNetM2,
-      openingsArea: metrics.openingsAreaM2,
-      metrics,
-      wallIds: [...boundaryWallIds],
-    });
-  }
-
-  appState.rooms = updatedRooms;
-  EventBus.emit('rooms:computed');
-}
-
 // ══════════════════════════════════════════════════════════════════
 // РЕАКТИВНОСТЬ
 // ══════════════════════════════════════════════════════════════════
+// Единственный путь пересчёта: computeRooms сохраняет имена через
+// appState.roomNameOverrides — рассинхрона быть не может.
+// refreshExistingRooms удалена: два разных алгоритма с одной целью
+// неизбежно расходились при крайних сценариях (проёмы до комнат,
+// перегородки, вложенные помещения).
+
 let debounceTimer = null;
 const DEBOUNCE_MS = 20;
 
-EventBus.on('walls:changed', () => {
+function scheduleRecompute() {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    refreshExistingRooms(_wallHeightFallback);
+    computeRooms(_wallHeightFallback);
     debounceTimer = null;
   }, DEBOUNCE_MS);
-});
+}
 
-EventBus.on('dividers:changed', () => {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    refreshExistingRooms(_wallHeightFallback);
-    debounceTimer = null;
-  }, DEBOUNCE_MS);
-});
-
-// Проёмы (двери, окна) влияют на площадь пола, площадь стен и периметр —
-// пересчитываем метрики комнат при любом изменении openings.
-EventBus.on('openings:changed', () => {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    refreshExistingRooms(_wallHeightFallback);
-    debounceTimer = null;
-  }, DEBOUNCE_MS);
-});
+EventBus.on('walls:changed',    scheduleRecompute);
+EventBus.on('dividers:changed', scheduleRecompute);
+EventBus.on('openings:changed', scheduleRecompute);
