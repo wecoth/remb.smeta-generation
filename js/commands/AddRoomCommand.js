@@ -29,18 +29,20 @@ export class AddRoomCommand extends BaseCommand {
       }
     }
 
-    const heightMm = boundaryWalls.length > 0 ? boundaryWalls[0].height || 2700 : 2700;
-    const metrics = computeRoomMetrics({
-      boundaryWalls,
-      interiorWalls: [],
-      openings: [],
-      heightMm,
-      polygon: this.polygon,
-      entranceDoorId: null,
-      hasDividers: false,
-      netAreaMm2: polygonArea(this.polygon),
-      exteriorWallIds: new Set(),
-    });
+    const allBoundaryWallIds = new Set(boundaryWalls.map(w => w.id));
+const roomOpenings = appState.openings.filter(op => allBoundaryWallIds.has(op.wallId));
+
+const metrics = computeRoomMetrics({
+  boundaryWalls,
+  interiorWalls: [],
+  openings: roomOpenings,               // ← реальные проёмы
+  heightMm,
+  polygon: this.polygon,
+  entranceDoorId: null,
+  hasDividers: false,
+  netAreaMm2: polygonArea(this.polygon), // чистая площадь пола (потом скорректируется)
+  exteriorWallIds: new Set(),           // можно оставить пустым для начального расчёта
+});
 
     const room = {
       key,
