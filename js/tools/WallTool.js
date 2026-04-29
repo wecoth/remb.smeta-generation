@@ -335,6 +335,34 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
 
   getWallPreviewEnd(world) {
     const screenPt = this.ui.mouseScreen ? { ...this.ui.mouseScreen } : toScreen(world.x, world.y);
+
+    // ── Шаг 0: ортогональное выравнивание по «сырому» углу (наивысший приоритет) ──
+    // Используем только сеточный snap (без объектных привязок), чтобы объектные
+    // привязки вблизи оси не сбивали угол и не ломали прилипание к 0°/90°/180°/270°.
+    if (!this.ui.shiftDown && this.drawStart) {
+      const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
+      const dx = rawGrid.x - this.drawStart.x;
+      const dy = rawGrid.y - this.drawStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len > 1) {
+        const angle = Math.atan2(dy, dx);
+        for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+          const diff = Math.abs(angle - sa);
+          if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
+            // Угол близок к оси — возвращаем выровненную точку немедленно,
+            // игнорируя объектные привязки, направляющие и tracking.
+            return {
+              x: this.drawStart.x + Math.cos(sa) * len,
+              y: this.drawStart.y + Math.sin(sa) * len,
+              snapType: null,
+              snappedToEndpoint: false,
+            };
+          }
+        }
+      }
+    }
+
+    // ── Шаг 1: обычный snap с объектными привязками ──
     const snappedBase = snap(world.x, world.y, {
       screenPoint: screenPt,
       includePerpendicular: !!this.drawStart,
@@ -344,29 +372,6 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     let rawEnd = { ...snappedBase };
     let finalSnapType = snappedBase.snapType || null;
     const hardSnap = snappedBase.snapType === 'endpoint' || snappedBase.snapType === 'corner' || snappedBase.snapType === 'intersection';
-
-    if (!hardSnap && !this.ui.shiftDown && this.drawStart) {
-      const dx = rawEnd.x - this.drawStart.x;
-      const dy = rawEnd.y - this.drawStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len > 1) {
-        let angle = Math.atan2(dy, dx);
-        for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-          const diff = Math.abs(angle - sa);
-          if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
-            angle = sa;
-            rawEnd = {
-              x: this.drawStart.x + Math.cos(angle) * len,
-              y: this.drawStart.y + Math.sin(angle) * len,
-            };
-            if (snappedBase.snapType === 'wallFace' || snappedBase.snapType === 'wallAxis') {
-              rawEnd.snapType = null;
-            }
-            break;
-          }
-        }
-      }
-    }
 
     if (this.currentGuideLine && !hardSnap) {
   // Применяем только объектные направляющие
