@@ -1113,6 +1113,8 @@ function drawRoomDimensions() {
   const scale = _getScale();
   if (scale < 0.07 || !appState.rooms?.length) return;
 
+console.log('drawRoomDimensions: LINE_OFF_MM =', LINE_OFF_MM);
+  
   _ctx.save();
   const LINE_OFF_MM   = 80;   // смещение размерной линии внутрь от контура
   const TEXT_OFF_MM   = 160;   // смещение текста (совпадает с линией)
@@ -1160,6 +1162,7 @@ function drawRoomDimensions() {
     return result;
   }
 
+  
   // Рисует один размерный отрезок (от pt1 до pt2 в мировых координатах)
   // со смещением inward на lineOff, засечками и текстом
   function drawOneDim(pt1, pt2, inward, angle, ux, uy, isOpening) {
