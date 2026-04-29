@@ -1121,8 +1121,6 @@ function drawRoomDimensions() {
   const LEADER_OUT_MM = 180;
   const SHELF_MM      = 200;
   const ANGLE_TOL     = 0.035; // ~2° — допуск коллинеарности
-
-  console.log('drawRoomDimensions: TEXT_OFF_MM =', TEXT_OFF_MM);
   
   // Схлопывает коллинеарные рёбра полигона в одно
   function mergeCollinear(poly) {
