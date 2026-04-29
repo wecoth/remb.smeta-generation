@@ -1149,8 +1149,22 @@ function drawRoomDimensions() {
 
       const label = `${Math.round(segLen)} мм`;
 
-      const wA = { x: a.x + ux * GAP_MM + lineOffX, y: a.y + uy * GAP_MM + lineOffY };
-      const wB = { x: b.x - ux * GAP_MM + lineOffX, y: b.y - uy * GAP_MM + lineOffY };
+      // Размерная линия точно от угла до угла (без GAP вдоль ребра)
+const wA = { x: a.x + lineOffX, y: a.y + lineOffY };
+const wB = { x: b.x + lineOffX, y: b.y + lineOffY };
+
+// Выносные линии: от точки полигона до размерной линии
+const eA0 = toScreen(a.x, a.y);
+const eB0 = toScreen(b.x, b.y);
+_ctx.strokeStyle = '#888';
+_ctx.lineWidth = 0.7;
+_ctx.setLineDash([]);
+_ctx.beginPath();
+_ctx.moveTo(eA0.x, eA0.y);
+_ctx.lineTo(toScreen(wA.x, wA.y).x, toScreen(wA.x, wA.y).y);
+_ctx.moveTo(eB0.x, eB0.y);
+_ctx.lineTo(toScreen(wB.x, wB.y).x, toScreen(wB.x, wB.y).y);
+_ctx.stroke();
       const wL = {
         x: (a.x + b.x) / 2 + textOffX,
         y: (a.y + b.y) / 2 + textOffY,
@@ -1227,7 +1241,6 @@ function drawWallDimensions() {
   // All distances in world mm
   const LINE_OFF_MM  = 120;   // dimension line offset from wall face (inside room)
   const TEXT_OFF_MM  = 230;   // text offset from wall face (inside room)
-  const GAP_MM       = 8;     // gap at ends of dimension line
   const MIN_SEG_MM   = 20;    // skip segments shorter than this
   const MIN_INLINE_MM = 300;  // segments shorter than this get a leader (world mm, zoom-independent)
   const LEADER_OUT_MM = 280;  // leader diagonal outward distance
