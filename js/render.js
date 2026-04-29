@@ -1114,8 +1114,8 @@ function drawRoomDimensions() {
   if (scale < 0.07 || !appState.rooms?.length) return;
 
   _ctx.save();
-  const LINE_OFF_MM  = 120;
-  const TEXT_OFF_MM  = 230;
+  const LINE_OFF_MM  = 40;
+  const TEXT_OFF_MM  = 80;
   const GAP_MM       = 8;
   const MIN_SEG_MM   = 50;
   const MIN_INLINE_MM = 300;
