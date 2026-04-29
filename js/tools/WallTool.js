@@ -336,10 +336,10 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
   getWallPreviewEnd(world) {
     const screenPt = this.ui.mouseScreen ? { ...this.ui.mouseScreen } : toScreen(world.x, world.y);
 
-    // ── Шаг 0: ортогональное выравнивание по «сырому» углу (наивысший приоритет) ──
-    // Используем только сеточный snap (без объектных привязок), чтобы объектные
-    // привязки вблизи оси не сбивали угол и не ломали прилипание к 0°/90°/180°/270°.
-    if (!this.ui.shiftDown && this.drawStart && !this.lengthMode) {
+    // ── Шаг 1: определяем направление (угол) по «сырой» точке от сетки ──
+    // Объектные привязки не участвуют — они не должны влиять на угол.
+    let lockedAngle = null; // если не null — направление зафиксировано по оси
+    if (!this.ui.shiftDown && this.drawStart) {
       const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
       const dx = rawGrid.x - this.drawStart.x;
       const dy = rawGrid.y - this.drawStart.y;
@@ -349,20 +349,27 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
         for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
           const diff = Math.abs(angle - sa);
           if (diff < 0.07 || Math.abs(diff - 2 * Math.PI) < 0.07) {
-            // Угол близок к оси — возвращаем выровненную точку немедленно,
-            // игнорируя объектные привязки, направляющие и tracking.
-            return {
-              x: this.drawStart.x + Math.cos(sa) * len,
-              y: this.drawStart.y + Math.sin(sa) * len,
-              snapType: null,
-              snappedToEndpoint: false,
-            };
+            lockedAngle = sa;
+            break;
           }
         }
       }
     }
 
-    // ── Шаг 1: обычный snap с объектными привязками ──
+    // ── Шаг 2: если угол зафиксирован и НЕ активен lengthMode — ранний возврат ──
+    // (обходим объектные привязки/направляющие/tracking — ортогональность важнее)
+    if (lockedAngle !== null && !this.lengthMode) {
+      const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
+      const len = Math.hypot(rawGrid.x - this.drawStart.x, rawGrid.y - this.drawStart.y);
+      return {
+        x: this.drawStart.x + Math.cos(lockedAngle) * len,
+        y: this.drawStart.y + Math.sin(lockedAngle) * len,
+        snapType: null,
+        snappedToEndpoint: false,
+      };
+    }
+
+    // ── Шаг 3: обычный snap с объектными привязками ──
     const snappedBase = snap(world.x, world.y, {
       screenPoint: screenPt,
       includePerpendicular: !!this.drawStart,
@@ -373,15 +380,15 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     let finalSnapType = snappedBase.snapType || null;
     const hardSnap = snappedBase.snapType === 'endpoint' || snappedBase.snapType === 'corner' || snappedBase.snapType === 'intersection';
 
+    // ── Шаг 4: направляющие (только объектные) ──
     if (this.currentGuideLine && !hardSnap) {
-  // Применяем только объектные направляющие
-  if (this.currentGuideLine.id !== 'wall:start-axis') {
-    const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
-    rawEnd = { ...rawEnd, ...projectPointToGuideLineWorld(rawEnd, axisGuide) };
-  }
-}
+      if (this.currentGuideLine.id !== 'wall:start-axis') {
+        const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
+        rawEnd = { ...rawEnd, ...projectPointToGuideLineWorld(rawEnd, axisGuide) };
+      }
+    }
 
-    // Stage 3: tracking lines
+    // ── Шаг 5: tracking lines ──
     if (this.activeTrackingPoint && !snappedBase.snapType && !this.currentGuideLine) {
       const tLines = getTrackingLines(this.activeTrackingPoint);
       const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, 16);
@@ -391,10 +398,20 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
       }
     }
 
+    // ── Шаг 6: lengthMode — применяем длину по зафиксированному углу (или по текущему направлению) ──
     if (this.lengthMode && this.lengthInput && this.drawStart) {
       const targetLen = parseFloat(this.lengthInput);
       if (!isNaN(targetLen) && targetLen > 0) {
-        if (this.currentGuideLine) {
+        if (lockedAngle !== null) {
+          // Угол ортогональный — применяем длину строго по оси
+          rawEnd = {
+            x: this.drawStart.x + Math.cos(lockedAngle) * targetLen,
+            y: this.drawStart.y + Math.sin(lockedAngle) * targetLen,
+            snapType: null,
+            snappedToEndpoint: false,
+          };
+        } else if (this.currentGuideLine) {
+          // Направляющая задаёт ось
           const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
           const ax = axisGuide.anchor.x - this.drawStart.x;
           const ay = axisGuide.anchor.y - this.drawStart.y;
@@ -415,6 +432,7 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
               ? p1 : p2;
           }
         } else {
+          // Свободное направление — нормируем по текущему вектору от drawStart до rawEnd
           const dx = rawEnd.x - this.drawStart.x;
           const dy = rawEnd.y - this.drawStart.y;
           const curLen = Math.hypot(dx, dy);
