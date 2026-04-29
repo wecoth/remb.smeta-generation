@@ -339,7 +339,7 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     // ── Шаг 0: ортогональное выравнивание по «сырому» углу (наивысший приоритет) ──
     // Используем только сеточный snap (без объектных привязок), чтобы объектные
     // привязки вблизи оси не сбивали угол и не ломали прилипание к 0°/90°/180°/270°.
-    if (!this.ui.shiftDown && this.drawStart) {
+    if (!this.ui.shiftDown && this.drawStart && !this.lengthMode) {
       const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
       const dx = rawGrid.x - this.drawStart.x;
       const dy = rawGrid.y - this.drawStart.y;
@@ -348,7 +348,7 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
         const angle = Math.atan2(dy, dx);
         for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
           const diff = Math.abs(angle - sa);
-          if (diff < 0.07 || Math.abs(diff - 2 * Math.PI) < 0.07) {
+          if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
             // Угол близок к оси — возвращаем выровненную точку немедленно,
             // игнорируя объектные привязки, направляющие и tracking.
             return {
