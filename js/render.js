@@ -1186,8 +1186,8 @@ function drawRoomDimensions() {
     _ctx.moveTo(e2.x, e2.y); _ctx.lineTo(sB.x, sB.y);
     _ctx.stroke();
     // Размерная линия
-    const lineColor = isOpening ? '#e07020' : '#111';
-    const textColor = isOpening ? '#e07020' : '#111';
+    const lineColor = isOpening ? '#111';
+    const textColor = isOpening ? '#111';
     if (len >= MIN_INLINE_MM) {
   _ctx.strokeStyle = lineColor;
   _ctx.lineWidth = 1.0;
@@ -1222,7 +1222,7 @@ function drawRoomDimensions() {
       const pD = toScreen(diagW.x, diagW.y);
       const pE = toScreen(shelfW.x, shelfW.y);
       const pM = toScreen(midShelfW.x, midShelfW.y);
-      _ctx.strokeStyle = isOpening ? '#e07020' : '#444';
+      _ctx.strokeStyle = isOpening ? '#444';
       _ctx.lineWidth = 0.8;
       _ctx.setLineDash([3, 3]);
       _ctx.beginPath();
@@ -1231,12 +1231,12 @@ function drawRoomDimensions() {
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.arc(pA.x, pA.y, 2, 0, Math.PI * 2);
-      _ctx.fillStyle = isOpening ? '#e07020' : '#444';
+      _ctx.fillStyle = isOpening ? '#444';
       _ctx.fill();
       drawAlignedTextBox(label, pM, angle, {
         font: '500 13px Merriweather, Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
-        textColor: isOpening ? '#e07020' : '#333',
+        textColor: isOpening ? '#333',
       });
     }
   }
