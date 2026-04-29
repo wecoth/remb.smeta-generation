@@ -886,7 +886,7 @@ export function getComputedRooms() {
 // polygon, площадь и метрики. Если контур разрушился — комната удаляется.
 // ══════════════════════════════════════════════════════════════════
 function refreshExistingRooms(wallHeightFallback = 2700) {
-  if (!appState.rooms?.length) return; // нет комнат — нечего обновлять
+  if (!appState.rooms?.length) { computeRooms(wallHeightFallback); return; } // нет комнат — создаём через полный пересчёт
 
   const walls = appState.walls;
   const dividers = appState.dividers || [];
@@ -1079,6 +1079,16 @@ EventBus.on('walls:changed', () => {
 });
 
 EventBus.on('dividers:changed', () => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    refreshExistingRooms(_wallHeightFallback);
+    debounceTimer = null;
+  }, DEBOUNCE_MS);
+});
+
+// Проёмы (двери, окна) влияют на площадь пола, площадь стен и периметр —
+// пересчитываем метрики комнат при любом изменении openings.
+EventBus.on('openings:changed', () => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     refreshExistingRooms(_wallHeightFallback);
