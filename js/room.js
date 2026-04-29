@@ -690,26 +690,21 @@ export function computeRoomMetrics({
     perimeterMm += Math.hypot(b.x - a.x, b.y - a.y);
   }
 
-  // Площадь стен помещения (gross) = сумма (длина в комнате × высота)
-  // только для граничных стен (разделители не считаются — у них нет толщины
-  // и нет физических стен).
-  let wallAreaGrossM2 = 0;
+  // Площадь стен помещения (gross) = периметр полигона × высота.
+  // Периметр уже правильно включает все рёбра контура, в том числе
+  // перегородки (они проходятся дважды — туда и обратно — поэтому
+  // обе стороны учитываются автоматически).
+  // Разделители (нулевая толщина) входят в полигон, но физической
+  // площади стен не дают — их длина вычитается отдельно ниже.
+  let wallAreaGrossM2 = (perimeterMm / 1000) * heightM;
   let narrowWallsLm = 0;
 
-  // Если есть разделители — длина стены в комнате = wallLengthInRoomMm.
-  // Иначе — полная длина стены (стандартный случай).
   const allWallsForEdge = [...boundaryWalls];
 
   let openingsAreaM2 = 0;
   let perimeterDeductMm = 0;
   let windowAreaM2 = 0, windowCount = 0, windowRevealsLm = 0;
   let entranceDoorAreaM2 = 0;
-
-  for (const w of boundaryWalls) {
-   const lenMm = wallLengthInRoomMm(w, polygon, allWallsForEdge);
-    const lenM = lenMm / 1000;
-    wallAreaGrossM2 += lenM * heightM;
-  }
 
   // Висящие перегородки — добавляют площадь стен с двух сторон + торцы
   for (const { wall, lengthMm } of interiorWalls) {
