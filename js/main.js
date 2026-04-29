@@ -36,14 +36,18 @@ function switchTab(tab) {
   appState.activeTab = tab;
   const plannerView = document.getElementById('plannerView');
   const smetaView   = document.getElementById('smetaView');
+  const kpView      = document.getElementById('kpView');
   const btnPlanner  = document.getElementById('tabPlanner');
   const btnSmeta    = document.getElementById('tabSmeta');
+  const btnKP       = document.getElementById('tabKP');
 
-  plannerView.style.display = tab === 'planner' ? 'flex' : 'none';
+  plannerView.style.display = tab === 'planner' ? 'flex'  : 'none';
   smetaView.style.display   = tab === 'smeta'   ? 'block' : 'none';
+  if (kpView) kpView.style.display = tab === 'kp' ? 'block' : 'none';
 
   btnPlanner?.classList.toggle('active', tab === 'planner');
   btnSmeta?.classList.toggle('active',   tab === 'smeta');
+  btnKP?.classList.toggle('active',      tab === 'kp');
 
   // Resize canvas when switching to planner tab
   if (tab === 'planner') {
@@ -57,6 +61,16 @@ function switchTab(tab) {
       }
     });
   }
+
+  // Re-scale A4 preview when switching to KP
+  if (tab === 'kp') {
+    requestAnimationFrame(() => {
+      if (typeof window.setA4Scale === 'function') {
+        window.setA4Scale();
+        setTimeout(window.setA4Scale, 80);
+      }
+    });
+  }
 }
 
 // ── DOM-ready init ────────────────────────────────────────────────
@@ -65,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tab buttons
   document.getElementById('tabPlanner')?.addEventListener('click', () => switchTab('planner'));
   document.getElementById('tabSmeta')?.addEventListener('click',   () => switchTab('smeta'));
+  document.getElementById('tabKP')?.addEventListener('click',      () => switchTab('kp'));
 
   // ── Init planner ──
   const canvas     = document.getElementById('planCanvas');
