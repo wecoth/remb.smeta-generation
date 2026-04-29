@@ -1191,21 +1191,30 @@ function drawRoomDimensions() {
     const lineColor = isOpening ? '#e07020' : '#111';
     const textColor = isOpening ? '#e07020' : '#111';
     if (len >= MIN_INLINE_MM) {
-      _ctx.strokeStyle = lineColor;
-      _ctx.lineWidth = 1.0;
-      _ctx.setLineDash([]);
-      _ctx.beginPath();
-      _ctx.moveTo(sA.x, sA.y);
-      _ctx.lineTo(sB.x, sB.y);
-      drawTick45(sA, angle);
-      drawTick45(sB, angle);
-      _ctx.stroke();
-      drawAlignedTextBox(label, sL, angle, {
-        font: '500 13px Merriweather, Onest, Inter, sans-serif',
-        background: 'rgba(255,255,255,0.95)',
-        textColor,
-      });
-    } else {
+  _ctx.strokeStyle = lineColor;
+  _ctx.lineWidth = 1.0;
+  _ctx.setLineDash([]);
+  _ctx.beginPath();
+  _ctx.moveTo(sA.x, sA.y);
+  _ctx.lineTo(sB.x, sB.y);
+  drawTick45(sA, angle);
+  drawTick45(sB, angle);
+  _ctx.stroke();
+  // Текст смещаем на TEXT_OFF_MM вместо LINE_OFF_MM
+  const textOffX = inward.x * TEXT_OFF_MM;
+  const textOffY = inward.y * TEXT_OFF_MM;
+  const textWorld = {
+    x: (pt1.x + pt2.x) / 2 + textOffX,
+    y: (pt1.y + pt2.y) / 2 + textOffY
+  };
+  const sText = toScreen(textWorld.x, textWorld.y);
+  drawAlignedTextBox(label, sText, angle, {
+    font: '500 13px Merriweather, Onest, Inter, sans-serif',
+    background: 'rgba(255,255,255,0.95)',
+    textColor,
+  });
+} else {
+  // ... остальной код без изменений
       // Выноска для коротких сегментов
       const midW = { x: (wA.x + wB.x) / 2, y: (wA.y + wB.y) / 2 };
       const diagW = { x: midW.x + inward.x * LEADER_OUT_MM, y: midW.y + inward.y * LEADER_OUT_MM };
