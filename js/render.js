@@ -1112,8 +1112,6 @@ function drawStraightTick(screenPt, angle, lengthPx = 8) {
 function drawRoomDimensions() {
   const scale = _getScale();
   if (scale < 0.07 || !appState.rooms?.length) return;
-
-console.log('drawRoomDimensions: LINE_OFF_MM =', LINE_OFF_MM);
   
   _ctx.save();
   const LINE_OFF_MM   = 80;   // смещение размерной линии внутрь от контура
@@ -1124,6 +1122,8 @@ console.log('drawRoomDimensions: LINE_OFF_MM =', LINE_OFF_MM);
   const SHELF_MM      = 200;
   const ANGLE_TOL     = 0.035; // ~2° — допуск коллинеарности
 
+  console.log('drawRoomDimensions: LINE_OFF_MM =', LINE_OFF_MM);
+  
   // Схлопывает коллинеарные рёбра полигона в одно
   function mergeCollinear(poly) {
     if (poly.length < 3) return poly;
