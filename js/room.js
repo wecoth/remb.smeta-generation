@@ -368,7 +368,7 @@ export function computeRooms(wallHeightFallback = 2700) {
     if (i === exteriorIndex) continue;
     const poly = dedupedFaces[i].poly;
     const area = polygonArea(poly);
-    if (area < 50000) continue; // < 0.05 м² — мусорные фейсы
+    if (area < 1500000) continue; // < 1.5 м² — мусорные фейсы и артефакты стыков
 
     // Фильтр "мёртвой зоны": если все рёбра фейса — реальные стены,
     // и минимальная "ширина" фейса (расстояние между его параллельными
@@ -878,6 +878,125 @@ export function getComputedRooms() {
   });
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// ОБНОВЛЕНИЕ СУЩЕСТВУЮЩИХ КОМНАТ (без создания новых)
+// Вызывается автоматически при walls:changed.
+// Комнаты созданные пользователем сохраняются — обновляется только
+// polygon, площадь и метрики. Если контур разрушился — комната удаляется.
+// ══════════════════════════════════════════════════════════════════
+function refreshExistingRooms(wallHeightFallback = 2700) {
+  if (!appState.rooms?.length) return; // нет комнат — нечего обновлять
+
+  const walls = appState.walls;
+  const dividers = appState.dividers || [];
+  const dividerWalls = dividers.map(d => ({
+    id: `div_${d.id}`,
+    x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
+    cx1: d.x1, cy1: d.y1, cx2: d.x2, cy2: d.y2,
+    thickness: 0, height: wallHeightFallback, offset: 'left', isDivider: true,
+  }));
+  const allWalls = [...walls, ...dividerWalls];
+
+  // Строим граф и находим все возможные контуры
+  let allCandidates = [];
+  if (allWalls.length >= 3) {
+    const points = findAllIntersections(allWalls);
+    if (points.length >= 3) {
+      const { vertices, edges } = buildWallGraph(allWalls, points);
+      if (edges.length >= 3) {
+        const faces = findFaces(vertices, edges);
+        const seenKeys = new Set();
+        for (const face of faces) {
+          const poly = face.map(v => ({ x: v.x, y: v.y }));
+          const sArea = polygonSignedArea(poly);
+          if (Math.abs(sArea) < 1) continue;
+          const c = polygonCentroid(poly);
+          const sign = sArea > 0 ? 'p' : 'n';
+          const key = `${Math.round(c.x/10)}_${Math.round(c.y/10)}_${sign}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+          allCandidates.push({ poly, area: Math.abs(sArea), center: c });
+        }
+        // Убираем внешний фейс (с максимальным bbox)
+        let exteriorIndex = 0, maxBbox = -Infinity;
+        for (let i = 0; i < allCandidates.length; i++) {
+          const bb = polygonBboxArea(allCandidates[i].poly);
+          if (bb > maxBbox) { maxBbox = bb; exteriorIndex = i; }
+        }
+        allCandidates.splice(exteriorIndex, 1);
+      }
+    }
+  }
+
+  // Для каждой существующей комнаты ищем кандидата содержащего её центр
+  const updatedRooms = [];
+  for (const room of appState.rooms) {
+    const roomCenter = room.center;
+    // Ищем наименьший кандидат который содержит центр комнаты
+    let bestCandidate = null, bestArea = Infinity;
+    for (const cand of allCandidates) {
+      if (cand.area < bestArea && isPointInPolygon(roomCenter, cand.poly)) {
+        bestArea = cand.area;
+        bestCandidate = cand;
+      }
+    }
+    if (!bestCandidate) continue; // контур разрушился — комната удаляется
+
+    // Пересчитываем метрики по новому полигону
+    const poly = bestCandidate.poly;
+    const grossArea = bestCandidate.area;
+
+    const boundaryWallIds = new Set();
+    const boundaryWallsList = [];
+    for (let k = 0; k < poly.length; k++) {
+      const a = poly[k], b = poly[(k + 1) % poly.length];
+      const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, allWalls);
+      for (const w of edgeWalls) {
+        if (!w.isDivider && !boundaryWallIds.has(w.id)) {
+          boundaryWallIds.add(w.id);
+          boundaryWallsList.push(w);
+        }
+      }
+    }
+
+    let totalLengthMm = 0, weightedHeightSum = 0;
+    for (const w of boundaryWallsList) {
+      const len = wallFullLengthMm(w);
+      totalLengthMm += len;
+      weightedHeightSum += len * (w.height || wallHeightFallback);
+    }
+    const heightMm = totalLengthMm > 0 ? weightedHeightSum / totalLengthMm : wallHeightFallback;
+
+    const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
+    const center = polygonCentroid(poly);
+    const bbox = (() => {
+      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      for (const p of poly) { minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y); }
+      return {minX,minY,maxX,maxY};
+    })();
+
+    updatedRooms.push({
+      ...room,
+      polygon: poly,
+      center,
+      cells: [{ x1: bbox.minX, y1: bbox.minY, x2: bbox.maxX, y2: bbox.maxY }],
+      boundarySegments: boundaryWallsList.map(w => ({
+        orientation: Math.abs(w.y2 - w.y1) < Math.abs(w.x2 - w.x1) ? 'h' : 'v',
+        x1: Math.min(w.x1, w.x2), y1: Math.min(w.y1, w.y2),
+        x2: Math.max(w.x1, w.x2), y2: Math.max(w.y1, w.y2),
+        length: Math.hypot(w.x2 - w.x1, w.y2 - w.y1),
+        wall: w,
+      })),
+      area: grossArea / 1e6,
+      wallIds: [...boundaryWallIds],
+    });
+  }
+
+  appState.rooms = updatedRooms;
+  EventBus.emit('rooms:computed');
+}
+
 // ══════════════════════════════════════════════════════════════════
 // РЕАКТИВНОСТЬ
 // ══════════════════════════════════════════════════════════════════
@@ -887,7 +1006,7 @@ const DEBOUNCE_MS = 20;
 EventBus.on('walls:changed', () => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    computeRooms(_wallHeightFallback);
+    refreshExistingRooms(_wallHeightFallback);
     debounceTimer = null;
   }, DEBOUNCE_MS);
 });
@@ -895,7 +1014,7 @@ EventBus.on('walls:changed', () => {
 EventBus.on('dividers:changed', () => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    computeRooms(_wallHeightFallback);
+    refreshExistingRooms(_wallHeightFallback);
     debounceTimer = null;
   }, DEBOUNCE_MS);
 });
