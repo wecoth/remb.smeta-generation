@@ -9,7 +9,7 @@ export class WindowTool extends BaseTool {
     super(ui);
     this.name = 'window';
     this.hoverOpening = null;
-    this._lastWorld = null;          // храним последние мировые координаты мыши
+    this._lastWorld = null;
     this._onWidthInput = null;
     this._onHeightInput = null;
   }
@@ -19,24 +19,29 @@ export class WindowTool extends BaseTool {
     this._lastWorld = null;
     this.ui.canvas.style.cursor = 'crosshair';
 
-    // Пересчитывать превью при изменении размеров в панели
     if (this.ui.dom.inpWindowWidth) {
       this._onWidthInput = () => this._updateHoverFromInput();
       this.ui.dom.inpWindowWidth.addEventListener('input', this._onWidthInput);
+      this.ui.dom.inpWindowWidth.addEventListener('change', this._onWidthInput);
     }
     if (this.ui.dom.inpWindowHeight) {
       this._onHeightInput = () => this._updateHoverFromInput();
       this.ui.dom.inpWindowHeight.addEventListener('input', this._onHeightInput);
+      this.ui.dom.inpWindowHeight.addEventListener('change', this._onHeightInput);
     }
 
     this.ui.doRedraw();
   }
 
   deactivate() {
-    if (this.ui.dom.inpWindowWidth && this._onWidthInput)
+    if (this.ui.dom.inpWindowWidth && this._onWidthInput) {
       this.ui.dom.inpWindowWidth.removeEventListener('input', this._onWidthInput);
-    if (this.ui.dom.inpWindowHeight && this._onHeightInput)
+      this.ui.dom.inpWindowWidth.removeEventListener('change', this._onWidthInput);
+    }
+    if (this.ui.dom.inpWindowHeight && this._onHeightInput) {
       this.ui.dom.inpWindowHeight.removeEventListener('input', this._onHeightInput);
+      this.ui.dom.inpWindowHeight.removeEventListener('change', this._onHeightInput);
+    }
     this._onWidthInput = null;
     this._onHeightInput = null;
     this._lastWorld = null;
@@ -49,18 +54,31 @@ export class WindowTool extends BaseTool {
     return { hoverOpening: this.hoverOpening };
   }
 
+  /** Читаем размеры напрямую из DOM по id — надёжнее чем this.ui.dom */
+  _getDims() {
+    const wEl = document.getElementById('inpWindowWidth') || this.ui.dom.inpWindowWidth;
+    const hEl = document.getElementById('inpWindowHeight') || this.ui.dom.inpWindowHeight;
+    return {
+      w: parseFloat(wEl?.value) || 1200,
+      h: parseFloat(hEl?.value) || 1500,
+    };
+  }
+
   onMouseDown(pos, world, e) {
-    if (this.hoverOpening) {
-      executeCommand(new AddOpeningCommand(this.hoverOpening));
-      this.ui.doRedraw();
-      return true;
-    }
-    return false;
+    if (!this.hoverOpening) return false;
+
+    // Читаем размеры из DOM в момент клика — гарантированно актуальные значения
+    const { w, h } = this._getDims();
+    const ho = { ...this.hoverOpening, width: w, height: h };
+
+    executeCommand(new AddOpeningCommand(ho));
+    this.ui.doRedraw();
+    return true;
   }
 
   onMouseMove(pos, world, e) {
-    this._lastWorld = world;                     // сохраняем позицию
-    this._updateHover(world);                    // пересчитываем hover
+    this._lastWorld = world;
+    this._updateHover(world);
     this.ui.updateCoordinatesLabel(world, null, null);
     this.ui.doRedraw();
     return true;
@@ -75,14 +93,10 @@ export class WindowTool extends BaseTool {
     return false;
   }
 
-  // Внутренние методы
-
-  /** Пересчёт hoverOpening по мировым координатам */
   _updateHover(world) {
     const hit = findClosestWall(world.x, world.y);
     if (hit) {
-      const w = parseFloat(this.ui.dom.inpWindowWidth?.value) || 1200;
-      const h = parseFloat(this.ui.dom.inpWindowHeight?.value) || 1500;
+      const { w, h } = this._getDims();
       const wlen = Math.hypot(hit.wall.x2 - hit.wall.x1, hit.wall.y2 - hit.wall.y1);
       const angle = Math.atan2(hit.wall.y2 - hit.wall.y1, hit.wall.x2 - hit.wall.x1);
       const nx = -Math.sin(angle), ny = Math.cos(angle);
@@ -97,7 +111,6 @@ export class WindowTool extends BaseTool {
     }
   }
 
-  /** Вызывается при изменении полей ввода – пересчитывает hover, если мышь над стеной */
   _updateHoverFromInput() {
     if (!this._lastWorld) return;
     this._updateHover(this._lastWorld);
