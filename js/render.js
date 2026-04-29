@@ -1137,15 +1137,15 @@ function drawRoomDimensions() {
       const angle = Math.atan2(b.y - a.y, b.x - a.x);
       const ux = Math.cos(angle), uy = Math.sin(angle);
 
-      // Outward normal: for CCW polygon (signedArea > 0) right normal points out
-      const outward = signedArea > 0
-        ? { x: uy, y: -ux }
-        : { x: -uy, y: ux };
+      // Inward normal: opposite of outward, so dimensions stay inside the room
+      const inward = signedArea > 0
+        ? { x: -uy, y: ux }   // CCW → left normal points inward
+        : { x: uy, y: -ux };  // CW  → right normal points inward
 
-      const lineOffX = outward.x * LINE_OFF_MM;
-      const lineOffY = outward.y * LINE_OFF_MM;
-      const textOffX = outward.x * TEXT_OFF_MM;
-      const textOffY = outward.y * TEXT_OFF_MM;
+      const lineOffX = inward.x * LINE_OFF_MM;
+      const lineOffY = inward.y * LINE_OFF_MM;
+      const textOffX = inward.x * TEXT_OFF_MM;
+      const textOffY = inward.y * TEXT_OFF_MM;
 
       const label = `${Math.round(segLen)} мм`;
 
@@ -1177,14 +1177,14 @@ function drawRoomDimensions() {
           textColor: '#111',
         });
       } else {
-        // Leader line for short segments
+        // Leader line for short segments (also inward)
         const attachW = {
-          x: (a.x + b.x) / 2 + outward.x * 0,
-          y: (a.y + b.y) / 2 + outward.y * 0,
+          x: (a.x + b.x) / 2,
+          y: (a.y + b.y) / 2,
         };
         const diagW = {
-          x: (a.x + b.x) / 2 + outward.x * LEADER_OUT_MM,
-          y: (a.y + b.y) / 2 + outward.y * LEADER_OUT_MM,
+          x: (a.x + b.x) / 2 + inward.x * LEADER_OUT_MM,
+          y: (a.y + b.y) / 2 + inward.y * LEADER_OUT_MM,
         };
         const shelfW  = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
         const midShelfW = { x: (diagW.x + shelfW.x) / 2, y: (diagW.y + shelfW.y) / 2 };
