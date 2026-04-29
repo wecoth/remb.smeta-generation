@@ -9,21 +9,23 @@ export class DoorTool extends BaseTool {
     super(ui);
     this.name = 'door';
     this.hoverOpening = null;
+    this._lastWorld = null;        // ← ДОБАВЛЕНО: храним последние мировые координаты мыши
     this._onWidthInput = null;
     this._onHeightInput = null;
   }
 
   activate() {
     this.hoverOpening = null;
+    this._lastWorld = null;        // ← ДОБАВЛЕНО
     this.ui.canvas.style.cursor = 'crosshair';
 
-    // Сброс превью при изменении размеров в панели
+    // ← ИЗМЕНЕНО: вместо сброса в null — пересчитываем превью с новыми размерами
     if (this.ui.dom.inpDoorWidth) {
-      this._onWidthInput = () => { this.hoverOpening = null; this.ui.doRedraw(); };
+      this._onWidthInput = () => this._updateHoverFromInput();
       this.ui.dom.inpDoorWidth.addEventListener('input', this._onWidthInput);
     }
     if (this.ui.dom.inpDoorHeight) {
-      this._onHeightInput = () => { this.hoverOpening = null; this.ui.doRedraw(); };
+      this._onHeightInput = () => this._updateHoverFromInput();
       this.ui.dom.inpDoorHeight.addEventListener('input', this._onHeightInput);
     }
 
@@ -39,6 +41,7 @@ export class DoorTool extends BaseTool {
     }
     this._onWidthInput = null;
     this._onHeightInput = null;
+    this._lastWorld = null;        // ← ДОБАВЛЕНО
     this.hoverOpening = null;
   }
 
@@ -60,6 +63,26 @@ export class DoorTool extends BaseTool {
   }
 
   onMouseMove(pos, world, e) {
+    this._lastWorld = world;       // ← ДОБАВЛЕНО: сохраняем позицию
+    this._updateHover(world);      // ← ИЗМЕНЕНО: вынесено в отдельный метод
+    this.ui.updateCoordinatesLabel(world, null, null);
+    this.ui.doRedraw();
+    return true;
+  }
+
+  onKeyDown(e) {
+    if (e.key === 'Escape') {
+      this.hoverOpening = null;
+      this.ui.doRedraw();
+      return true;
+    }
+    return false;
+  }
+
+  // ── Внутренние методы ─────────────────────────────────────────────
+
+  /** Пересчёт hoverOpening по мировым координатам */
+  _updateHover(world) {
     const hit = findClosestWall(world.x, world.y);
     if (hit) {
       const w = parseFloat(this.ui.dom.inpDoorWidth?.value) || 900;
@@ -85,17 +108,12 @@ export class DoorTool extends BaseTool {
     } else {
       this.hoverOpening = null;
     }
-    this.ui.updateCoordinatesLabel(world, null, null);
-    this.ui.doRedraw();
-    return true;
   }
 
-  onKeyDown(e) {
-    if (e.key === 'Escape') {
-      this.hoverOpening = null;
-      this.ui.doRedraw();
-      return true;
-    }
-    return false;
+  /** Вызывается при изменении полей ввода — пересчитывает hover без движения мыши */
+  _updateHoverFromInput() {
+    if (!this._lastWorld) return;
+    this._updateHover(this._lastWorld);
+    this.ui.doRedraw();
   }
 }
