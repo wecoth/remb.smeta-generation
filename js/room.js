@@ -929,24 +929,12 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
     }
   }
 
-  // Определяем внешние стены: стены, на которые ссылается ровно одна комната.
-  // Нужно для корректного распределения площади дверных проёмов.
-  const wallRoomCounter = new Map();
-  for (const room of appState.rooms) {
-    for (const wid of room.wallIds) {
-      wallRoomCounter.set(wid, (wallRoomCounter.get(wid) || 0) + 1);
-    }
-  }
-  const localExteriorWalls = new Set();
-  for (const [wid, count] of wallRoomCounter) {
-    if (count === 1) localExteriorWalls.add(wid);
-  }
-
-  // Для каждой существующей комнаты ищем кандидата содержащего её центр
-  const updatedRooms = [];
+  // ПРОХОД 1: для каждой комнаты находим новый полигон и пересобираем boundaryWallIds.
+  // Результаты складываем в draftUpdates, чтобы во втором проходе знать
+  // актуальную топологию (какая стена граничит с одной или двумя комнатами).
+  const draftUpdates = [];
   for (const room of appState.rooms) {
     const roomCenter = room.center;
-    // Ищем наименьший кандидат который содержит центр комнаты
     let bestCandidate = null, bestArea = Infinity;
     for (const cand of allCandidates) {
       if (cand.area < bestArea && isPointInPolygon(roomCenter, cand.poly)) {
@@ -956,7 +944,6 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
     }
     if (!bestCandidate) continue; // контур разрушился — комната удаляется
 
-    // Пересчитываем метрики по новому полигону
     const poly = bestCandidate.poly;
     const grossArea = bestCandidate.area;
 
@@ -988,9 +975,29 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
       return {minX,minY,maxX,maxY};
     })();
 
+    draftUpdates.push({ room, poly, grossArea, boundaryWallIds, boundaryWallsList, heightMm, center, bbox });
+  }
+
+  // Между проходами: определяем внешние стены по НОВЫМ boundaryWallIds.
+  // Стена с counter == 1 → внешняя (только одна комната её использует).
+  // Стена с counter == 2 → межкомнатная.
+  const wallRoomCounter = new Map();
+  for (const { boundaryWallIds } of draftUpdates) {
+    for (const wid of boundaryWallIds) {
+      wallRoomCounter.set(wid, (wallRoomCounter.get(wid) || 0) + 1);
+    }
+  }
+  const localExteriorWalls = new Set();
+  for (const [wid, count] of wallRoomCounter) {
+    if (count === 1) localExteriorWalls.add(wid);
+  }
+
+  // ПРОХОД 2: вычисляем netAreaMm2 с учётом дверных проёмов и формируем updatedRooms.
+  const updatedRooms = [];
+  for (const { room, poly, grossArea, boundaryWallIds, boundaryWallsList, heightMm, center, bbox } of draftUpdates) {
     // Чистая площадь = площадь полигона + доля дверных проёмов в граничных стенах.
-    // Логика зеркалит computeRooms: межкомнатная дверь → +1/2 (ширина × толщина),
-    // входная дверь (внешняя стена) → +целиком (ширина × толщина).
+    // Межкомнатная дверь → +1/2 (ширина × толщина стены).
+    // Входная дверь (внешняя стена) → +целиком (ширина × толщина стены).
     let netAreaMm2 = grossArea;
     const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
     for (const op of roomOpenings) {
