@@ -348,7 +348,7 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
         const angle = Math.atan2(dy, dx);
         for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
           const diff = Math.abs(angle - sa);
-          if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
+          if (diff < 0.07 || Math.abs(diff - 2 * Math.PI) < 0.07) {
             // Угол близок к оси — возвращаем выровненную точку немедленно,
             // игнорируя объектные привязки, направляющие и tracking.
             return {
