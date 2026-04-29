@@ -1114,8 +1114,8 @@ function drawRoomDimensions() {
   if (scale < 0.07 || !appState.rooms?.length) return;
 
   _ctx.save();
-  const LINE_OFF_MM   = 80;   // смещение размерной линии внутрь от контура
-  const TEXT_OFF_MM   = 200;   // смещение текста (совпадает с линией)
+  const LINE_OFF_MM   = 60;   // смещение размерной линии внутрь от контура
+  const TEXT_OFF_MM   = 60;   // смещение текста (совпадает с линией)
   const MIN_SEG_MM    = 30;   // минимальная длина сегмента для показа
   const MIN_INLINE_MM = 200;  // ниже этого — выноска, выше — inline
   const LEADER_OUT_MM = 180;
@@ -1160,11 +1160,170 @@ function drawRoomDimensions() {
     return result;
   }
 
+  // Рисует один размерный отрезок (от pt1 до pt2 в мировых координатах)
+  // со смещением inward на lineOff, засечками и текстом
+  function drawOneDim(pt1, pt2, inward, angle, ux, uy, isOpening) {
+    const len = Math.hypot(pt2.x - pt1.x, pt2.y - pt1.y);
+    if (len < MIN_SEG_MM) return;
+    const label = `${Math.round(len)} мм`;
+    const lineOffX = inward.x * LINE_OFF_MM;
+    const lineOffY = inward.y * LINE_OFF_MM;
+    const wA = { x: pt1.x + lineOffX, y: pt1.y + lineOffY };
+    const wB = { x: pt2.x + lineOffX, y: pt2.y + lineOffY };
+    const wL = { x: (pt1.x + pt2.x) / 2 + lineOffX, y: (pt1.y + pt2.y) / 2 + lineOffY };
+    const sA = toScreen(wA.x, wA.y);
+    const sB = toScreen(wB.x, wB.y);
+    const sL = toScreen(wL.x, wL.y);
+    // Выносные линии
+    const e1 = toScreen(pt1.x, pt1.y);
+    const e2 = toScreen(pt2.x, pt2.y);
+    _ctx.strokeStyle = '#999';
+    _ctx.lineWidth = 0.6;
+    _ctx.setLineDash([]);
+    _ctx.beginPath();
+    _ctx.moveTo(e1.x, e1.y); _ctx.lineTo(sA.x, sA.y);
+    _ctx.moveTo(e2.x, e2.y); _ctx.lineTo(sB.x, sB.y);
+    _ctx.stroke();
+    // Размерная линия
+    const lineColor = isOpening ? '#e07020' : '#111';
+    const textColor = isOpening ? '#e07020' : '#111';
+    if (len >= MIN_INLINE_MM) {
+      _ctx.strokeStyle = lineColor;
+      _ctx.lineWidth = 1.0;
+      _ctx.setLineDash([]);
+      _ctx.beginPath();
+      _ctx.moveTo(sA.x, sA.y);
+      _ctx.lineTo(sB.x, sB.y);
+      drawTick45(sA, angle);
+      drawTick45(sB, angle);
+      _ctx.stroke();
+      drawAlignedTextBox(label, sL, angle, {
+        font: '500 13px Merriweather, Onest, Inter, sans-serif',
+        background: 'rgba(255,255,255,0.95)',
+        textColor,
+      });
+    } else {
+      // Выноска для коротких сегментов
+      const midW = { x: (wA.x + wB.x) / 2, y: (wA.y + wB.y) / 2 };
+      const diagW = { x: midW.x + inward.x * LEADER_OUT_MM, y: midW.y + inward.y * LEADER_OUT_MM };
+      const shelfW = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
+      const midShelfW = { x: (diagW.x + shelfW.x) / 2, y: (diagW.y + shelfW.y) / 2 };
+      const pA = toScreen(midW.x, midW.y);
+      const pD = toScreen(diagW.x, diagW.y);
+      const pE = toScreen(shelfW.x, shelfW.y);
+      const pM = toScreen(midShelfW.x, midShelfW.y);
+      _ctx.strokeStyle = isOpening ? '#e07020' : '#444';
+      _ctx.lineWidth = 0.8;
+      _ctx.setLineDash([3, 3]);
+      _ctx.beginPath();
+      _ctx.moveTo(pA.x, pA.y); _ctx.lineTo(pD.x, pD.y); _ctx.lineTo(pE.x, pE.y);
+      _ctx.stroke();
+      _ctx.setLineDash([]);
+      _ctx.beginPath();
+      _ctx.arc(pA.x, pA.y, 2, 0, Math.PI * 2);
+      _ctx.fillStyle = isOpening ? '#e07020' : '#444';
+      _ctx.fill();
+      drawAlignedTextBox(label, pM, angle, {
+        font: '500 13px Merriweather, Onest, Inter, sans-serif',
+        background: 'rgba(255,255,255,0.95)',
+        textColor: isOpening ? '#e07020' : '#333',
+      });
+    }
+  }
+
+  // Найти стену из boundarySegments комнаты, на которой лежит ребро a→b
+  function findWallForEdge(room, a, b, ux, uy, edgeLen) {
+    if (!room.boundarySegments) return null;
+    const EPS = 5;
+    for (const bs of room.boundarySegments) {
+      const w = bs.wall;
+      if (!w) continue;
+      // Базовая линия стены
+      const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
+      const wx2 = w.cx2 ?? w.x2, wy2 = w.cy2 ?? w.y2;
+      const wlen = Math.hypot(wx2 - wx1, wy2 - wy1);
+      if (wlen < 1) continue;
+      const wux = (wx2 - wx1) / wlen, wuy = (wy2 - wy1) / wlen;
+      // Направления должны быть сонаправлены (или противонаправлены)
+      const dot = Math.abs(ux * wux + uy * wuy);
+      if (dot < 0.99) continue;
+      // Точка a должна лежать на стене (или рядом)
+      const dax = a.x - wx1, day = a.y - wy1;
+      const perpA = Math.abs(dax * (-wuy) + day * wux);
+      if (perpA > w.thickness / 2 + EPS * 2) continue;
+      return w;
+    }
+    return null;
+  }
+
+  // Дробит ребро a→b по проёмам стены wall
+  // Возвращает массив { pt1, pt2, isOpening }
+  function splitEdgeByOpenings(a, b, wall, ux, uy, edgeLen) {
+    const openings = appState.openings.filter(op => op.wallId === wall.id);
+    if (!openings.length) return [{ pt1: a, pt2: b, isOpening: false }];
+
+    // Проецируем точки a и b на ось стены
+    const wx1 = wall.cx1 ?? wall.x1, wy1 = wall.cy1 ?? wall.y1;
+    const wx2 = wall.cx2 ?? wall.x2, wy2 = wall.cy2 ?? wall.y2;
+    const wlen = Math.hypot(wx2 - wx1, wy2 - wy1);
+    const wux = (wx2 - wx1) / wlen, wuy = (wy2 - wy1) / wlen;
+
+    // Позиция точки a на оси стены
+    const tA = (a.x - wx1) * wux + (a.y - wy1) * wuy;
+    const tB = (b.x - wx1) * wux + (b.y - wy1) * wuy;
+    const dir = tB >= tA ? 1 : -1; // направление обхода ребра вдоль стены
+
+    // Собираем проёмы в локальных координатах вдоль стены [tStart, tEnd]
+    const cuts = openings.map(op => {
+      const c = op.t * wlen;
+      return { tStart: c - op.width / 2, tEnd: c + op.width / 2 };
+    }).sort((x, y) => x.tStart - y.tStart);
+
+    // Строим список точек: начало ребра, границы проёмов, конец ребра
+    const tMin = Math.min(tA, tB);
+    const tMax = Math.max(tA, tB);
+    const events = [tMin]; // начало
+    for (const cut of cuts) {
+      const s = Math.max(cut.tStart, tMin);
+      const e = Math.min(cut.tEnd,   tMax);
+      if (e > s + 1) { events.push(s); events.push(e); }
+    }
+    events.push(tMax); // конец
+
+    // Убираем дубли
+    const unique = [...new Set(events.map(v => Math.round(v)))].sort((a, b) => a - b);
+
+    // Превращаем t-значения обратно в точки мирового пространства
+    function tToPoint(t) {
+      return { x: wx1 + wux * t, y: wy1 + wuy * t };
+    }
+
+    // Если обход ребра был против направления стены — разворачиваем
+    const ordered = dir >= 0 ? unique : [...unique].reverse();
+
+    const result = [];
+    for (let k = 0; k < ordered.length - 1; k++) {
+      const t0 = ordered[k], t1 = ordered[k + 1];
+      const mid = (t0 + t1) / 2;
+      const isOpening = cuts.some(c => mid > c.tStart && mid < c.tEnd);
+      result.push({
+        pt1: tToPoint(Math.min(t0, t1)),
+        pt2: tToPoint(Math.max(t0, t1)),
+        isOpening,
+      });
+    }
+    // Если обход был обратный — разворачиваем pt1/pt2 в каждом сегменте
+    if (dir < 0) {
+      result.reverse();
+      for (const r of result) { const tmp = r.pt1; r.pt1 = r.pt2; r.pt2 = tmp; }
+    }
+    return result;
+  }
+
   for (const room of appState.rooms) {
     const rawPoly = room.polygon;
     if (!rawPoly || rawPoly.length < 3) continue;
 
-    // Схлопываем коллинеарные рёбра → только реальные углы комнаты
     const poly = mergeCollinear(rawPoly);
     if (poly.length < 2) continue;
 
@@ -1173,98 +1332,26 @@ function drawRoomDimensions() {
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i];
       const b = poly[(i + 1) % poly.length];
-      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      if (segLen < MIN_SEG_MM) continue;
+      const edgeLen = Math.hypot(b.x - a.x, b.y - a.y);
+      if (edgeLen < MIN_SEG_MM) continue;
 
       const angle = Math.atan2(b.y - a.y, b.x - a.x);
       const ux = Math.cos(angle), uy = Math.sin(angle);
 
-      // Направление внутрь комнаты
       const inward = signedArea > 0
         ? { x: -uy, y: ux }
         : { x: uy, y: -ux };
 
-      const lineOffX = inward.x * LINE_OFF_MM;
-      const lineOffY = inward.y * LINE_OFF_MM;
-      const textOffX = inward.x * TEXT_OFF_MM;
-      const textOffY = inward.y * TEXT_OFF_MM;
+      // Ищем стену на этом ребре
+      const wall = findWallForEdge(room, a, b, ux, uy, edgeLen);
 
-      const label = `${Math.round(segLen)} мм`;
+      // Дробим ребро по проёмам (если стена найдена и есть проёмы)
+      const subsegs = wall
+        ? splitEdgeByOpenings(a, b, wall, ux, uy, edgeLen)
+        : [{ pt1: a, pt2: b, isOpening: false }];
 
-      // Размерная линия — строго от угла до угла, смещённая внутрь
-      const wA = { x: a.x + lineOffX, y: a.y + lineOffY };
-      const wB = { x: b.x + lineOffX, y: b.y + lineOffY };
-      const wL = {
-        x: (a.x + b.x) / 2 + textOffX,
-        y: (a.y + b.y) / 2 + textOffY,
-      };
-
-      const sA = toScreen(wA.x, wA.y);
-      const sB = toScreen(wB.x, wB.y);
-      const sL = toScreen(wL.x, wL.y);
-
-      // Выносные линии от углов полигона до размерной линии
-      const eA = toScreen(a.x, a.y);
-      const eB = toScreen(b.x, b.y);
-      _ctx.strokeStyle = '#999';
-      _ctx.lineWidth = 0.6;
-      _ctx.setLineDash([]);
-      _ctx.beginPath();
-      _ctx.moveTo(eA.x, eA.y);
-      _ctx.lineTo(sA.x, sA.y);
-      _ctx.moveTo(eB.x, eB.y);
-      _ctx.lineTo(sB.x, sB.y);
-      _ctx.stroke();
-
-      if (segLen >= MIN_INLINE_MM) {
-        // Inline размерная линия
-        _ctx.strokeStyle = '#111';
-        _ctx.lineWidth = 1.0;
-        _ctx.setLineDash([]);
-        _ctx.beginPath();
-        _ctx.moveTo(sA.x, sA.y);
-        _ctx.lineTo(sB.x, sB.y);
-        drawTick45(sA, angle);
-        drawTick45(sB, angle);
-        _ctx.stroke();
-        drawAlignedTextBox(label, sL, angle, {
-          font: '500 13px Merriweather, Onest, Inter, sans-serif',
-          background: 'rgba(255,255,255,0.95)',
-          textColor: '#111',
-        });
-      } else {
-        // Выноска для коротких сегментов
-        const midW = { x: (wA.x + wB.x) / 2, y: (wA.y + wB.y) / 2 };
-        const diagW = {
-          x: midW.x + inward.x * LEADER_OUT_MM,
-          y: midW.y + inward.y * LEADER_OUT_MM,
-        };
-        const shelfW = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
-        const midShelfW = { x: (diagW.x + shelfW.x) / 2, y: (diagW.y + shelfW.y) / 2 };
-
-        const pA = toScreen(midW.x,  midW.y);
-        const pD = toScreen(diagW.x, diagW.y);
-        const pE = toScreen(shelfW.x, shelfW.y);
-        const pM = toScreen(midShelfW.x, midShelfW.y);
-
-        _ctx.strokeStyle = '#444';
-        _ctx.lineWidth = 0.8;
-        _ctx.setLineDash([3, 3]);
-        _ctx.beginPath();
-        _ctx.moveTo(pA.x, pA.y);
-        _ctx.lineTo(pD.x, pD.y);
-        _ctx.lineTo(pE.x, pE.y);
-        _ctx.stroke();
-        _ctx.setLineDash([]);
-        _ctx.beginPath();
-        _ctx.arc(pA.x, pA.y, 2, 0, Math.PI * 2);
-        _ctx.fillStyle = '#444';
-        _ctx.fill();
-        drawAlignedTextBox(label, pM, angle, {
-          font: '500 13px Merriweather, Onest, Inter, sans-serif',
-          background: 'rgba(255,255,255,0.95)',
-          textColor: '#333',
-        });
+      for (const sub of subsegs) {
+        drawOneDim(sub.pt1, sub.pt2, inward, angle, ux, uy, sub.isOpening);
       }
     }
   }
