@@ -498,6 +498,7 @@ export function computeRooms(wallHeightFallback = 2700) {
     // На контур помещения (cx/cy) проём НЕ влияет, поэтому grossArea его не учитывает.
     // Прибавляем 1/2 этой площади к каждой из двух комнат.
     const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
+    console.log("[computeRooms] boundaryWallIds:", [...boundaryWallIds], "openings:", appState.openings.map(o=>({wallId:o.wallId,type:o.type})), "roomOpenings found:", roomOpenings.length);
     for (const op of roomOpenings) {
       if (op.type !== 'door') continue;
       const wall = boundaryWallsList.find(w => w.id === op.wallId);
