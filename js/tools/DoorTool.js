@@ -9,15 +9,36 @@ export class DoorTool extends BaseTool {
     super(ui);
     this.name = 'door';
     this.hoverOpening = null;
+    this._onWidthInput = null;
+    this._onHeightInput = null;
   }
 
   activate() {
     this.hoverOpening = null;
     this.ui.canvas.style.cursor = 'crosshair';
+
+    // Сброс превью при изменении размеров в панели
+    if (this.ui.dom.inpDoorWidth) {
+      this._onWidthInput = () => { this.hoverOpening = null; this.ui.doRedraw(); };
+      this.ui.dom.inpDoorWidth.addEventListener('input', this._onWidthInput);
+    }
+    if (this.ui.dom.inpDoorHeight) {
+      this._onHeightInput = () => { this.hoverOpening = null; this.ui.doRedraw(); };
+      this.ui.dom.inpDoorHeight.addEventListener('input', this._onHeightInput);
+    }
+
     this.ui.doRedraw();
   }
 
   deactivate() {
+    if (this.ui.dom.inpDoorWidth && this._onWidthInput) {
+      this.ui.dom.inpDoorWidth.removeEventListener('input', this._onWidthInput);
+    }
+    if (this.ui.dom.inpDoorHeight && this._onHeightInput) {
+      this.ui.dom.inpDoorHeight.removeEventListener('input', this._onHeightInput);
+    }
+    this._onWidthInput = null;
+    this._onHeightInput = null;
     this.hoverOpening = null;
   }
 
