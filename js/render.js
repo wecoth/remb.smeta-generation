@@ -1114,17 +1114,59 @@ function drawRoomDimensions() {
   if (scale < 0.07 || !appState.rooms?.length) return;
 
   _ctx.save();
-  const LINE_OFF_MM  = 40;
-  const TEXT_OFF_MM  = 80;
-  const GAP_MM       = 8;
-  const MIN_SEG_MM   = 50;
-  const MIN_INLINE_MM = 300;
-  const LEADER_OUT_MM = 280;
-  const SHELF_MM      = 320;
+  const LINE_OFF_MM   = 80;   // смещение размерной линии внутрь от контура
+  const TEXT_OFF_MM   = 200;   // смещение текста (совпадает с линией)
+  const MIN_SEG_MM    = 30;   // минимальная длина сегмента для показа
+  const MIN_INLINE_MM = 200;  // ниже этого — выноска, выше — inline
+  const LEADER_OUT_MM = 180;
+  const SHELF_MM      = 200;
+  const ANGLE_TOL     = 0.035; // ~2° — допуск коллинеарности
+
+  // Схлопывает коллинеарные рёбра полигона в одно
+  function mergeCollinear(poly) {
+    if (poly.length < 3) return poly;
+    const result = [];
+    const n = poly.length;
+    // Находим первую "настоящую" вершину (не коллинеарная с соседями)
+    let startIdx = 0;
+    for (let i = 0; i < n; i++) {
+      const prev = poly[(i - 1 + n) % n];
+      const cur  = poly[i];
+      const next = poly[(i + 1) % n];
+      const a1 = Math.atan2(cur.y - prev.y, cur.x - prev.x);
+      const a2 = Math.atan2(next.y - cur.y, next.x - cur.x);
+      let diff = Math.abs(a1 - a2) % Math.PI;
+      if (diff > Math.PI / 2) diff = Math.PI - diff;
+      if (diff > ANGLE_TOL) { startIdx = i; break; }
+    }
+    // Обходим с startIdx, пропускаем промежуточные коллинеарные точки
+    let i = startIdx;
+    do {
+      result.push(poly[i]);
+      let j = (i + 1) % n;
+      const curAngle = Math.atan2(poly[j].y - poly[i].y, poly[j].x - poly[i].x);
+      // Продвигаемся вперёд пока следующие рёбра коллинеарны
+      while (true) {
+        const next2 = (j + 1) % n;
+        const nextAngle = Math.atan2(poly[next2].y - poly[j].y, poly[next2].x - poly[j].x);
+        let diff = Math.abs(curAngle - nextAngle) % Math.PI;
+        if (diff > Math.PI / 2) diff = Math.PI - diff;
+        if (diff > ANGLE_TOL) break; // смена направления — стоп
+        j = next2;
+        if (j === startIdx) break;
+      }
+      i = j;
+    } while (i !== startIdx);
+    return result;
+  }
 
   for (const room of appState.rooms) {
-    const poly = room.polygon;
-    if (!poly || poly.length < 3) continue;
+    const rawPoly = room.polygon;
+    if (!rawPoly || rawPoly.length < 3) continue;
+
+    // Схлопываем коллинеарные рёбра → только реальные углы комнаты
+    const poly = mergeCollinear(rawPoly);
+    if (poly.length < 2) continue;
 
     const signedArea = polygonSignedArea(poly);
 
@@ -1137,10 +1179,10 @@ function drawRoomDimensions() {
       const angle = Math.atan2(b.y - a.y, b.x - a.x);
       const ux = Math.cos(angle), uy = Math.sin(angle);
 
-      // Inward normal: opposite of outward, so dimensions stay inside the room
+      // Направление внутрь комнаты
       const inward = signedArea > 0
-        ? { x: -uy, y: ux }   // CCW → left normal points inward
-        : { x: uy, y: -ux };  // CW  → right normal points inward
+        ? { x: -uy, y: ux }
+        : { x: uy, y: -ux };
 
       const lineOffX = inward.x * LINE_OFF_MM;
       const lineOffY = inward.y * LINE_OFF_MM;
@@ -1149,22 +1191,9 @@ function drawRoomDimensions() {
 
       const label = `${Math.round(segLen)} мм`;
 
-      // Размерная линия точно от угла до угла (без GAP вдоль ребра)
-const wA = { x: a.x + lineOffX, y: a.y + lineOffY };
-const wB = { x: b.x + lineOffX, y: b.y + lineOffY };
-
-// Выносные линии: от точки полигона до размерной линии
-const eA0 = toScreen(a.x, a.y);
-const eB0 = toScreen(b.x, b.y);
-_ctx.strokeStyle = '#888';
-_ctx.lineWidth = 0.7;
-_ctx.setLineDash([]);
-_ctx.beginPath();
-_ctx.moveTo(eA0.x, eA0.y);
-_ctx.lineTo(toScreen(wA.x, wA.y).x, toScreen(wA.x, wA.y).y);
-_ctx.moveTo(eB0.x, eB0.y);
-_ctx.lineTo(toScreen(wB.x, wB.y).x, toScreen(wB.x, wB.y).y);
-_ctx.stroke();
+      // Размерная линия — строго от угла до угла, смещённая внутрь
+      const wA = { x: a.x + lineOffX, y: a.y + lineOffY };
+      const wB = { x: b.x + lineOffX, y: b.y + lineOffY };
       const wL = {
         x: (a.x + b.x) / 2 + textOffX,
         y: (a.y + b.y) / 2 + textOffY,
@@ -1174,8 +1203,21 @@ _ctx.stroke();
       const sB = toScreen(wB.x, wB.y);
       const sL = toScreen(wL.x, wL.y);
 
+      // Выносные линии от углов полигона до размерной линии
+      const eA = toScreen(a.x, a.y);
+      const eB = toScreen(b.x, b.y);
+      _ctx.strokeStyle = '#999';
+      _ctx.lineWidth = 0.6;
+      _ctx.setLineDash([]);
+      _ctx.beginPath();
+      _ctx.moveTo(eA.x, eA.y);
+      _ctx.lineTo(sA.x, sA.y);
+      _ctx.moveTo(eB.x, eB.y);
+      _ctx.lineTo(sB.x, sB.y);
+      _ctx.stroke();
+
       if (segLen >= MIN_INLINE_MM) {
-        // Inline dimension line
+        // Inline размерная линия
         _ctx.strokeStyle = '#111';
         _ctx.lineWidth = 1.0;
         _ctx.setLineDash([]);
@@ -1191,21 +1233,18 @@ _ctx.stroke();
           textColor: '#111',
         });
       } else {
-        // Leader line for short segments (also inward)
-        const attachW = {
-          x: (a.x + b.x) / 2,
-          y: (a.y + b.y) / 2,
-        };
+        // Выноска для коротких сегментов
+        const midW = { x: (wA.x + wB.x) / 2, y: (wA.y + wB.y) / 2 };
         const diagW = {
-          x: (a.x + b.x) / 2 + inward.x * LEADER_OUT_MM,
-          y: (a.y + b.y) / 2 + inward.y * LEADER_OUT_MM,
+          x: midW.x + inward.x * LEADER_OUT_MM,
+          y: midW.y + inward.y * LEADER_OUT_MM,
         };
-        const shelfW  = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
+        const shelfW = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
         const midShelfW = { x: (diagW.x + shelfW.x) / 2, y: (diagW.y + shelfW.y) / 2 };
 
-        const pA = toScreen(attachW.x, attachW.y);
-        const pD = toScreen(diagW.x,   diagW.y);
-        const pE = toScreen(shelfW.x,  shelfW.y);
+        const pA = toScreen(midW.x,  midW.y);
+        const pD = toScreen(diagW.x, diagW.y);
+        const pE = toScreen(shelfW.x, shelfW.y);
         const pM = toScreen(midShelfW.x, midShelfW.y);
 
         _ctx.strokeStyle = '#444';
@@ -1241,6 +1280,7 @@ function drawWallDimensions() {
   // All distances in world mm
   const LINE_OFF_MM  = 120;   // dimension line offset from wall face (inside room)
   const TEXT_OFF_MM  = 230;   // text offset from wall face (inside room)
+  const GAP_MM       = 8;     // gap at ends of dimension line
   const MIN_SEG_MM   = 20;    // skip segments shorter than this
   const MIN_INLINE_MM = 300;  // segments shorter than this get a leader (world mm, zoom-independent)
   const LEADER_OUT_MM = 280;  // leader diagonal outward distance
