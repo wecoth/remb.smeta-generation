@@ -55,6 +55,7 @@ export class DoorTool extends BaseTool {
 
   onMouseDown(pos, world, e) {
     if (this.hoverOpening) {
+      console.log('🚪 CLICK width:', this.hoverOpening.width, 'height:', this.hoverOpening.height);
       executeCommand(new AddOpeningCommand(this.hoverOpening));
       this.ui.doRedraw();
       return true;
