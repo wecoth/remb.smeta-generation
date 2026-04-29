@@ -245,18 +245,26 @@
   </div>
   <div class="topbar-pill-wrap">
     <div class="topbar-pill" id="topbarPill">
-      <button class="pill-btn active" id="tabSmeta" data-view="smeta">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-        Смета / КП
-      </button>
       <button class="pill-btn" id="tabPlanner" data-view="planner">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
         Чертёж
+      </button>
+      <button class="pill-btn active" id="tabSmeta" data-view="smeta">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Смета
+      </button>
+      <button class="pill-btn" id="tabKP" data-view="kp">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        КП
       </button>
       <div class="pill-slider" id="pillSlider"></div>
     </div>
   </div>
   <div class="topbar-actions">
+    <button class="tb-action-btn" id="btnCompanySettings" title="Настройки компании" onclick="window._auth.openProfile()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Настройки
+    </button>
     <label class="tb-action-btn" title="Загрузить проект">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Загрузить
@@ -493,24 +501,11 @@
 <div class="sidebar">
   <div class="sidebar-head">
     <div class="sidebar-head-left">
-      <h1>Генератор документации</h1>
-      <p>Заполните поля — получите PDF по шаблону</p>
-    </div>
-    <div class="sidebar-head-actions">
-      <button class="btn-generate" onclick="window._smetaModule.generatePDF()">⬇ Скачать PDF</button>
+      <h1>Смета</h1>
+      <p>Заполните поля — данные отразятся в КП</p>
     </div>
   </div>
   <div class="sidebar-scroll">
-
-    <!-- COMPANY → кнопка профиля -->
-    <button class="btn-open-profile" onclick="window._auth.openProfile()">
-      <span class="bop-icon">⚙</span>
-      <span class="bop-text">
-        <span class="bop-title" id="sidebarCompanyName">Настройки компании</span>
-        <span class="bop-sub">Логотип, название, контакты</span>
-      </span>
-      <span class="bop-arrow">›</span>
-    </button>
 
 
     <!-- Скрытые поля компании - liveUpdate() читает их напрямую -->
@@ -628,12 +623,19 @@
   </div><!-- /sidebar-scroll -->
 </div><!-- /sidebar -->
 
-<!-- SPLITTER -->
-<div class="smeta-splitter" id="smetaSplitter"></div>
+</div><!-- /smeta-shell -->
+</div><!-- /smetaView -->
 
-<!-- RIGHT: live preview panel -->
-<div class="smeta-preview-panel" id="smetaPreviewPanel">
-  <div class="spp-header">
+<!-- ════════════════════════════════════
+     KP VIEW
+════════════════════════════════════ -->
+<div id="kpView" style="display:none;height:100%;overflow:hidden">
+<div class="smeta-shell" style="flex-direction:column">
+
+<!-- KP header with PDF button -->
+<div class="kp-topbar">
+  <div class="kp-topbar-title">Коммерческое предложение</div>
+  <div class="kp-topbar-actions">
     <div class="spp-toggle-bar" id="sppToggles">
       <label class="spp-toggle active" title="Обложка КП">
         <input type="checkbox" checked data-page="cover">
@@ -657,6 +659,14 @@
       </label>
     </div>
   </div>
+  <button class="btn-generate" id="btnKpGeneratePDF" onclick="window._smetaModule.generatePDF()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Скачать PDF
+  </button>
+</div><!-- /kp-topbar -->
+
+<!-- KP preview panel -->
+<div class="smeta-preview-panel kp-full-preview" id="smetaPreviewPanel">
   <div class="spp-body" id="sppBody">
 
     <!-- 1. Cover page -->
@@ -833,10 +843,10 @@
 
 
   </div><!-- /spp-body -->
-</div><!-- /smeta-preview-panel -->
+</div><!-- /smeta-preview-panel (kp) -->
 
-</div><!-- /smeta-shell -->
-</div><!-- /smetaView -->
+</div><!-- /smeta-shell (kp) -->
+</div><!-- /kpView -->
 
 </div><!-- /app-views -->
 </div><!-- /app-shell -->
@@ -956,6 +966,7 @@
     var btns    = pill ? pill.querySelectorAll('.pill-btn') : [];
     var smeta   = document.getElementById('smetaView');
     var planner = document.getElementById('plannerView');
+    var kp      = document.getElementById('kpView');
 
     function moveTo(btn) {
       var pillRect = pill.getBoundingClientRect();
@@ -972,15 +983,14 @@
         var view = btn.dataset.view;
         if (smeta)   smeta.style.display   = view === 'smeta'   ? 'block' : 'none';
         if (planner) planner.style.display = view === 'planner' ? 'flex'  : 'none';
-        // Reset preview scroll to top when switching to smeta
-        if (view === 'smeta') {
+        if (kp)      kp.style.display      = view === 'kp'      ? 'block' : 'none';
+        // Reset preview scroll and re-scale A4 when switching to kp
+        if (view === 'kp') {
           var sppBody = document.getElementById('sppBody');
           if (sppBody) sppBody.scrollTop = 0;
-          // Re-run A4 scale now that .spp-body has real width
           if (typeof window.setA4Scale === 'function') {
             requestAnimationFrame(function() {
               window.setA4Scale();
-              // second pass after layout settles
               setTimeout(window.setA4Scale, 80);
             });
           }
