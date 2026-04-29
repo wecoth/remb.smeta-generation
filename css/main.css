@@ -942,3 +942,60 @@ html, body {
 #voiceIndicator:empty {
     display: none;
 }
+
+/* ── KP VIEW ─────────────────────────────────────────────── */
+#kpView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+#kpView .smeta-shell {
+  flex: 1;
+  flex-direction: column;
+  display: flex;
+  overflow: hidden;
+}
+
+.kp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  border-bottom: 1px solid var(--line2, #e8e8e8);
+  background: #fff;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.kp-topbar-title {
+  font: 600 14px/1 Onest, Inter, sans-serif;
+  color: #1a1a2e;
+  flex-shrink: 0;
+  padding-right: 12px;
+  border-right: 1px solid #e8e8e8;
+}
+.kp-topbar-actions {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.kp-topbar .btn-generate {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.kp-full-preview {
+  flex: 1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.kp-full-preview .spp-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
