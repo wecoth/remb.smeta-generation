@@ -9,15 +9,38 @@ export class WindowTool extends BaseTool {
     super(ui);
     this.name = 'window';
     this.hoverOpening = null;
+    // Ссылки на обработчики (для удаления)
+    this._onWidthInput = null;
+    this._onHeightInput = null;
   }
 
   activate() {
     this.hoverOpening = null;
     this.ui.canvas.style.cursor = 'crosshair';
+
+    // Сброс превью при любом изменении размеров в панели
+    if (this.ui.dom.inpWindowWidth) {
+      this._onWidthInput = () => { this.hoverOpening = null; this.ui.doRedraw(); };
+      this.ui.dom.inpWindowWidth.addEventListener('input', this._onWidthInput);
+    }
+    if (this.ui.dom.inpWindowHeight) {
+      this._onHeightInput = () => { this.hoverOpening = null; this.ui.doRedraw(); };
+      this.ui.dom.inpWindowHeight.addEventListener('input', this._onHeightInput);
+    }
+
     this.ui.doRedraw();
   }
 
   deactivate() {
+    // Убираем слушатели
+    if (this.ui.dom.inpWindowWidth && this._onWidthInput) {
+      this.ui.dom.inpWindowWidth.removeEventListener('input', this._onWidthInput);
+    }
+    if (this.ui.dom.inpWindowHeight && this._onHeightInput) {
+      this.ui.dom.inpWindowHeight.removeEventListener('input', this._onHeightInput);
+    }
+    this._onWidthInput = null;
+    this._onHeightInput = null;
     this.hoverOpening = null;
   }
 
