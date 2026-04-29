@@ -1012,6 +1012,31 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
       }
     }
 
+    // Внутренние стены (перегородки), лежащие внутри этой комнаты
+    const interiorWalls = [];
+    for (const w of walls) {
+      if (boundaryWallIds.has(w.id)) continue;
+      const clipped = clipWallAxisToPolygon(w, poly);
+      let totalLen = 0;
+      for (const seg of clipped) totalLen += Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
+      if (totalLen > 1) interiorWalls.push({ wall: w, lengthMm: totalLen });
+    }
+
+    // Пересчитываем все метрики (площадь стен, периметр, окна и т.д.)
+    const entranceDoorId = detectEntranceDoor(roomOpenings, localExteriorWalls);
+    const hasDividers = boundaryWallsList.some(w => w.isDivider);
+    const metrics = computeRoomMetrics({
+      boundaryWalls: boundaryWallsList,
+      interiorWalls,
+      openings: roomOpenings,
+      heightMm,
+      polygon: poly,
+      entranceDoorId,
+      hasDividers,
+      netAreaMm2,
+      exteriorWallIds: localExteriorWalls,
+    });
+
     updatedRooms.push({
       ...room,
       polygon: poly,
@@ -1025,6 +1050,12 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
         wall: w,
       })),
       area: netAreaMm2 / 1e6,
+      volume: netAreaMm2 * heightMm / 1e9,
+      height: heightMm / 1000,
+      perimeter: metrics.perimeterFloorM,
+      wallArea: metrics.wallAreaNetM2,
+      openingsArea: metrics.openingsAreaM2,
+      metrics,
       wallIds: [...boundaryWallIds],
     });
   }
