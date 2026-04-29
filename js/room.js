@@ -929,6 +929,19 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
     }
   }
 
+  // Определяем внешние стены: стены, на которые ссылается ровно одна комната.
+  // Нужно для корректного распределения площади дверных проёмов.
+  const wallRoomCounter = new Map();
+  for (const room of appState.rooms) {
+    for (const wid of room.wallIds) {
+      wallRoomCounter.set(wid, (wallRoomCounter.get(wid) || 0) + 1);
+    }
+  }
+  const localExteriorWalls = new Set();
+  for (const [wid, count] of wallRoomCounter) {
+    if (count === 1) localExteriorWalls.add(wid);
+  }
+
   // Для каждой существующей комнаты ищем кандидата содержащего её центр
   const updatedRooms = [];
   for (const room of appState.rooms) {
@@ -968,13 +981,29 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
     }
     const heightMm = totalLengthMm > 0 ? weightedHeightSum / totalLengthMm : wallHeightFallback;
 
-    const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
     const center = polygonCentroid(poly);
     const bbox = (() => {
       let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
       for (const p of poly) { minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y); }
       return {minX,minY,maxX,maxY};
     })();
+
+    // Чистая площадь = площадь полигона + доля дверных проёмов в граничных стенах.
+    // Логика зеркалит computeRooms: межкомнатная дверь → +1/2 (ширина × толщина),
+    // входная дверь (внешняя стена) → +целиком (ширина × толщина).
+    let netAreaMm2 = grossArea;
+    const roomOpenings = appState.openings.filter(op => boundaryWallIds.has(op.wallId));
+    for (const op of roomOpenings) {
+      if (op.type !== 'door') continue;
+      const wall = boundaryWallsList.find(w => w.id === op.wallId);
+      if (!wall) continue;
+      const isInterior = !localExteriorWalls.has(op.wallId);
+      if (isInterior) {
+        netAreaMm2 += (op.width * (wall.thickness || 0)) / 2;
+      } else {
+        netAreaMm2 += op.width * (wall.thickness || 0);
+      }
+    }
 
     updatedRooms.push({
       ...room,
@@ -988,7 +1017,7 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
         length: Math.hypot(w.x2 - w.x1, w.y2 - w.y1),
         wall: w,
       })),
-      area: grossArea / 1e6,
+      area: netAreaMm2 / 1e6,
       wallIds: [...boundaryWallIds],
     });
   }
