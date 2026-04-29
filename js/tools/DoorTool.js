@@ -56,20 +56,19 @@ export class DoorTool extends BaseTool {
     return { hoverOpening: this.hoverOpening };
   }
 
-  /** Единственный источник истины для размеров — всегда читаем из DOM */
+  /** Читаем размеры — сначала из DOM по id, fallback на this.ui.dom */
   _getDims() {
-    return {
-      w: parseFloat(this.ui.dom.inpDoorWidth?.value) || 900,
-      h: parseFloat(this.ui.dom.inpDoorHeight?.value) || 2100,
-    };
+    const wEl = document.getElementById('inpDoorWidth') || this.ui.dom.inpDoorWidth;
+    const hEl = document.getElementById('inpDoorHeight') || this.ui.dom.inpDoorHeight;
+    const w = parseFloat(wEl?.value) || 900;
+    const h = parseFloat(hEl?.value) || 2100;
+    console.log('_getDims:', w, h, 'wEl.value:', wEl?.value, 'hEl.value:', hEl?.value);
+    return { w, h };
   }
 
   onMouseDown(pos, world, e) {
     if (!this.hoverOpening) return false;
 
-    // Перечитываем размеры из DOM прямо в момент клика.
-    // Это гарантирует актуальные значения независимо от того,
-    // когда последний раз срабатывал onMouseMove или input.
     const { w, h } = this._getDims();
     const ho = { ...this.hoverOpening, width: w, height: h };
 
@@ -95,8 +94,6 @@ export class DoorTool extends BaseTool {
     }
     return false;
   }
-
-  // ── Внутренние методы ─────────────────────────────────────────────
 
   _updateHover(world) {
     const hit = findClosestWall(world.x, world.y);
