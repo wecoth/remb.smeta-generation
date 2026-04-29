@@ -1116,7 +1116,7 @@ function drawRoomDimensions() {
   _ctx.save();
   const LINE_OFF_MM   = 80;   // смещение размерной линии внутрь от контура
   const TEXT_OFF_MM   = 160;   // смещение текста (совпадает с линией)
-  const MIN_SEG_MM    = 5;   // минимальная длина сегмента для показа
+  const MIN_SEG_MM    = 30;   // минимальная длина сегмента для показа
   const MIN_INLINE_MM = 200;  // ниже этого — выноска, выше — inline
   const LEADER_OUT_MM = 180;
   const SHELF_MM      = 200;
@@ -1327,7 +1327,7 @@ function drawRoomDimensions() {
     const poly = mergeCollinear(rawPoly);
     if (poly.length < 2) continue;
 
-    const center = polygonCentroid(poly);
+    const signedArea = polygonSignedArea(poly);
 
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i];
@@ -1338,13 +1338,9 @@ function drawRoomDimensions() {
       const angle = Math.atan2(b.y - a.y, b.x - a.x);
       const ux = Math.cos(angle), uy = Math.sin(angle);
 
-      // Определяем направление внутрь через центроид — надёжнее чем знак площади
-      const midX = (a.x + b.x) / 2;
-      const midY = (a.y + b.y) / 2;
-      const nLeft  = { x: -uy, y:  ux };
-      const nRight = { x:  uy, y: -ux };
-      const dotLeft = (center.x - midX) * nLeft.x + (center.y - midY) * nLeft.y;
-      const inward = dotLeft > 0 ? nLeft : nRight;
+      const inward = signedArea > 0
+        ? { x: -uy, y: ux }
+        : { x: uy, y: -ux };
 
       // Ищем стену на этом ребре
       const wall = findWallForEdge(room, a, b, ux, uy, edgeLen);
