@@ -18,9 +18,8 @@ export class AddRoomCommand extends BaseCommand {
     const name = appState.roomNameOverrides[key] || defaultName;
     
     // Для метрик нужны граничные стены – найдём их через findAllWallsForEdge
-    // (это быстрый способ, не требующий глобального графа)
-    const boundaryWalls = [];
     const allWalls = appState.walls;
+    const boundaryWalls = [];
     for (let i = 0; i < this.polygon.length; i++) {
       const a = this.polygon[i], b = this.polygon[(i+1)%this.polygon.length];
       const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, allWalls);
@@ -29,20 +28,42 @@ export class AddRoomCommand extends BaseCommand {
       }
     }
 
-    const allBoundaryWallIds = new Set(boundaryWalls.map(w => w.id));
-const roomOpenings = appState.openings.filter(op => allBoundaryWallIds.has(op.wallId));
+    // Определяем высоту помещения по граничным стенам (взвешенная по длине)
+    let totalLengthMm = 0;
+    let weightedHeightSum = 0;
+    for (const w of boundaryWalls) {
+      const x1 = w.cx1 ?? w.x1;
+      const y1 = w.cy1 ?? w.y1;
+      const x2 = w.cx2 ?? w.x2;
+      const y2 = w.cy2 ?? w.y2;
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const h = w.height || 2700; // fallback на высоту по умолчанию
+      if (len > 0) {
+        totalLengthMm += len;
+        weightedHeightSum += len * h;
+      }
+    }
+    const heightMm = totalLengthMm > 0
+      ? weightedHeightSum / totalLengthMm
+      : 2700;
 
-const metrics = computeRoomMetrics({
-  boundaryWalls,
-  interiorWalls: [],
-  openings: roomOpenings,               // ← реальные проёмы
-  heightMm,
-  polygon: this.polygon,
-  entranceDoorId: null,
-  hasDividers: false,
-  netAreaMm2: polygonArea(this.polygon), // чистая площадь пола (потом скорректируется)
-  exteriorWallIds: new Set(),           // можно оставить пустым для начального расчёта
-});
+    // Ищем проёмы на граничных стенах для корректного учёта площади пола и стен
+    const allBoundaryWallIds = new Set(boundaryWalls.map(w => w.id));
+    const roomOpenings = appState.openings.filter(op => allBoundaryWallIds.has(op.wallId));
+
+    // Чистая площадь пола (пока без учёта долей проёмов, но для начального приближения сойдёт)
+    // В computeRoomMetrics она не используется для wallArea, только для объёма, поэтому можно оставить так.
+    const metrics = computeRoomMetrics({
+      boundaryWalls,
+      interiorWalls: [],
+      openings: roomOpenings,
+      heightMm,
+      polygon: this.polygon,
+      entranceDoorId: null,
+      hasDividers: false,
+      netAreaMm2: polygonArea(this.polygon),
+      exteriorWallIds: new Set(),
+    });
 
     const room = {
       key,
@@ -50,7 +71,7 @@ const metrics = computeRoomMetrics({
       cells: [],
       boundarySegments: boundaryWalls.map(w => ({
         orientation: 'h', // не важно
-        x1: 0, y1: 0, x2: 0, y2: 0, // будет заполнено при рендере?
+        x1: 0, y1: 0, x2: 0, y2: 0,
         wall: w,
       })),
       center: polygonCentroid(this.polygon),
