@@ -389,14 +389,16 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     }
 
     // ── Шаг 5: tracking lines ──
-    if (this.activeTrackingPoint && !snappedBase.snapType && !this.currentGuideLine) {
-      const tLines = getTrackingLines(this.activeTrackingPoint);
-      const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, 16);
-      if (tSnap) {
-        rawEnd = { ...rawEnd, x: tSnap.x, y: tSnap.y, snapType: 'tracking' };
-        finalSnapType = 'tracking';
-      }
-    }
+const weakSnapTypes = new Set(['wallFace', 'wallAxis', 'measureLine']);
+const canTryTracking = !snappedBase.snapType || weakSnapTypes.has(snappedBase.snapType);
+if (this.activeTrackingPoint && canTryTracking && !this.currentGuideLine) {
+  const tLines = getTrackingLines(this.activeTrackingPoint);
+  const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, 16);
+  if (tSnap) {
+    rawEnd = { ...rawEnd, x: tSnap.x, y: tSnap.y, snapType: 'tracking' };
+    finalSnapType = 'tracking';
+  }
+}
 
     // ── Шаг 6: lengthMode — применяем длину по зафиксированному углу (или по текущему направлению) ──
     if (this.lengthMode && this.lengthInput && this.drawStart) {
