@@ -255,54 +255,13 @@ function wallEnds(w) {
  * Для разделителя — только одна inner (нет толщины, нет торцов).
  */
 function wallSegments(w, allWalls, includeEnds = true) {
-  const innerBase = wallBase(w);
-  const oppBase  = wallOppositeFace(w);
-  const inner = { ...innerBase, wall: w, faceKind: 'inner' };
-  const mitreMap = computeMitreMap();
-  const mitre = mitreMap.get(w.id);
-  const ends = [];
-
-  if (oppBase && includeEnds && includeEnds !== false) {
-    const opp = { ...oppBase };
-    // Стартовый торец
-    if (mitre?.start) {
-      ends.push({
-        x1: inner.x1, y1: inner.y1,
-        x2: mitre.start.x, y2: mitre.start.y,
-        wall: w, faceKind: 'end-start'
-      });
-      opp.x1 = mitre.start.x;
-      opp.y1 = mitre.start.y;
-    } else {
-      ends.push({
-        x1: inner.x1, y1: inner.y1,
-        x2: opp.x1, y2: opp.y1,
-        wall: w, faceKind: 'end-start'
-      });
-    }
-
-    // Конечный торец
-    if (mitre?.end) {
-      ends.push({
-        x1: inner.x2, y1: inner.y2,
-        x2: mitre.end.x, y2: mitre.end.y,
-        wall: w, faceKind: 'end-end'
-      });
-      opp.x2 = mitre.end.x;
-      opp.y2 = mitre.end.y;
-    } else {
-      ends.push({
-        x1: inner.x2, y1: inner.y2,
-        x2: opp.x2, y2: opp.y2,
-        wall: w, faceKind: 'end-end'
-      });
-    }
-
-    const oppFace = { ...opp, wall: w, faceKind: 'outer' };
-    return [inner, oppFace, ...ends].filter(Boolean);
-  }
-
-  return [inner];
+  const base = {
+    x1: w.cx1 ?? w.x1,
+    y1: w.cy1 ?? w.y1,
+    x2: w.cx2 ?? w.x2,
+    y2: w.cy2 ?? w.y2,
+  };
+  return [ { ...base, wall: w, faceKind: 'inner' } ];
 }
 
 /**
