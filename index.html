@@ -135,8 +135,8 @@
   .smeta-btn.primary:hover { background:#2d2d4e; }
 
   /* Scroll area */
-  .smeta-scroll { flex:1;overflow-y:auto;padding:14px 20px 32px;display:flex;flex-direction:column;gap:10px;align-items:stretch; }
-  .smeta-scroll > * { max-width:1100px;width:100%; }
+  .smeta-scroll { flex:1;overflow-y:auto;padding:14px 24px 32px;display:flex;flex-direction:column;gap:10px;align-items:center; }
+  .smeta-scroll > * { max-width:960px;width:100%; }
 
   /* Section cards */
   .scard {
@@ -232,6 +232,10 @@
   }
   table.smeta-tbl tr:last-child td { border-bottom:none; }
   table.smeta-tbl tr:hover td { background:#fafafa; }
+  table.smeta-tbl tr[draggable] { cursor:default; }
+  table.smeta-tbl tr[draggable] .td-drag { cursor:grab; }
+  table.smeta-tbl tr.row-dragging td { opacity:.4; background:#f0f4ff; }
+  table.smeta-tbl tr.row-drag-over td { border-top:2px solid #4a6fe3 !important; }
   table.smeta-tbl td input,
   table.smeta-tbl td select {
     width:100%;padding:5px 10px;
@@ -677,7 +681,6 @@
     <div class="smeta-topbar">
       <div class="smeta-topbar-title">Смета</div>
       <div class="smeta-chip active" id="chipGeneral">Общий список</div>
-      <div class="smeta-chip" id="chipByRoom">По помещениям</div>
       <div class="smeta-topbar-sep"></div>
       <button class="smeta-btn" onclick="window._smetaModule.captureCanvas()">⊕ Захватить чертёж</button>
       <button class="smeta-btn">Экспорт Excel</button>
@@ -753,7 +756,6 @@
                     <th style="width:64px;text-align:right">Кол-во</th>
                     <th style="width:80px;text-align:right">Цена ₽</th>
                     <th style="width:88px;text-align:right">Сумма ₽</th>
-                    <th style="width:90px">Этап</th>
                     <th style="width:80px">Примечание</th>
                     <th style="width:28px"></th>
                   </tr>
