@@ -252,7 +252,7 @@
   }
   .drop-zone-btn:hover { background:#f5f5f7; }
 
-  .smeta-table-wrap { overflow-x:auto; }
+  .smeta-table-wrap { overflow-x:visible; }
   table.smeta-tbl {
     width:100%;border-collapse:collapse;font-size:12px;
     min-width:600px;
@@ -312,7 +312,7 @@
   .tbl-footer-total { font-size:13px;font-weight:600;color:#1a1a2e; }
   .tbl-footer-total-lbl { font-size:11px;color:#aaa;margin-right:6px; }
 
-  /* Insert row/section between rows */
+  /* Insert row/section between rows — compact plus button */
   .tr-insert-zone {
     position:relative;
     height:0;overflow:visible;
@@ -325,35 +325,50 @@
     position:absolute;left:0;right:0;
     display:flex;align-items:center;
     z-index:10;
-    opacity:0;transition:opacity .15s;
+    opacity:0;transition:opacity .12s;
     pointer-events:none;
-    height:20px;top:-10px;
+    height:16px;top:-8px;
   }
   tr.tr-insert-zone:hover .tr-insert-btn,
   .tr-insert-btn:hover {
     opacity:1;pointer-events:auto;
   }
-  /* show on hover of adjacent rows */
   table.smeta-tbl tr:hover + tr.tr-insert-zone .tr-insert-btn,
   table.smeta-tbl tr.tr-insert-zone:hover .tr-insert-btn { opacity:1;pointer-events:auto; }
   .tr-insert-line {
-    flex:1;height:1px;background:#4a6fe3;
+    flex:1;height:1px;background:#d0d8f0;
   }
   .tr-insert-actions {
-    display:flex;gap:2px;padding:0 8px;
+    display:flex;gap:4px;padding:0 6px;flex-shrink:0;
   }
+  /* Plus circle buttons */
   .tr-insert-act {
-    padding:2px 8px;border-radius:4px;
+    width:16px;height:16px;border-radius:50%;
     background:#4a6fe3;color:#fff;
-    font-size:10px;font-weight:500;
-    border:none;cursor:pointer;
+    font-size:12px;font-weight:400;line-height:14px;
+    border:none;cursor:pointer;padding:0;
+    display:flex;align-items:center;justify-content:center;
     font-family:Onest,Inter,sans-serif;
-    white-space:nowrap;line-height:16px;
-    transition:background .12s;
+    transition:background .12s, transform .1s;
+    flex-shrink:0;
+    position:relative;
   }
-  .tr-insert-act:hover { background:#3659c7; }
+  .tr-insert-act::before { content:'+'; }
+  .tr-insert-act:hover { background:#3659c7; transform:scale(1.15); }
+  /* Section button: slightly different color, tooltip distinguishes it */
   .tr-insert-act.section { background:#6b4ae3; }
-  .tr-insert-act.section:hover { background:#5537c0; }
+  .tr-insert-act.section:hover { background:#5537c0; transform:scale(1.15); }
+  /* Tooltip on hover */
+  .tr-insert-act[title]:hover::after {
+    content: attr(title);
+    position:absolute;
+    bottom:calc(100% + 4px);
+    left:50%;transform:translateX(-50%);
+    background:#1a1a2e;color:#fff;
+    font-size:10px;white-space:nowrap;
+    padding:2px 6px;border-radius:4px;
+    pointer-events:none;z-index:100;
+  }
 
   /* Block 4 — Gantt */
   .gantt-wrap { padding:14px 16px; }
