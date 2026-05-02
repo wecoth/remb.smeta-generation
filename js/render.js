@@ -215,7 +215,54 @@ export function hitTestWallResizeHandle(sp, tool, selectedItems) {
 
 // ── MAIN REDRAW ───────────────────────────────────────────────────
 
+export function redraw(ps) {
+  if (!_ctx || !_canvas) return;
+  _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
 
+  if (_plannerMode === 'finish') { redrawFinish(ps); return; }
+  if (_plannerMode === 'unroll') { redrawUnroll(ps); return; }
+
+  drawGrid();
+  drawRoomFills(ps.selectedItems);
+  drawWalls(ps.selectedItems);
+  drawWallJoints(ps.selectedItems);
+  drawDividers(ps.selectedItems);
+  drawMeasures(ps.selectedItems);
+  drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
+  drawRoomDimensions();
+  drawOpeningLeaders(exteriorWallIds);
+  drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
+  for (const item of ps.selectedItems) {
+    if (item.type !== 'wall') continue;
+    const wall = appState.walls.find(w => w.id === item.id);
+    if (wall) drawBaseLine(wall);
+  }
+  if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
+  if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
+  if (ps.tool === 'wall' && ps.trackingLines?.length) drawTrackingLines(ps.activeTrackingPoint, ps.trackingLines);
+  if (ps.tool === 'wall' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
+  if (ps.tool === 'divider' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempDivider(ps);
+  if (ps.tool === 'measure' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempMeasure(ps);
+  if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentGuideLine) drawGuideLine(ps.currentGuideLine);
+  if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
+  if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentObjectSnap) drawObjectSnap(ps.currentObjectSnap);
+  drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
+  if (ps.roomToolHover) {
+    _ctx.save();
+    _ctx.fillStyle = 'rgba(74,111,227,0.15)';
+    _ctx.strokeStyle = 'rgba(74,111,227,0.65)';
+    _ctx.lineWidth = 2; _ctx.setLineDash([]);
+    _ctx.beginPath();
+    const first = toScreen(ps.roomToolHover[0].x, ps.roomToolHover[0].y);
+    _ctx.moveTo(first.x, first.y);
+    for (let i = 1; i < ps.roomToolHover.length; i++) {
+      const p = toScreen(ps.roomToolHover[i].x, ps.roomToolHover[i].y);
+      _ctx.lineTo(p.x, p.y);
+    }
+    _ctx.closePath(); _ctx.fill(); _ctx.stroke(); _ctx.restore();
+  }
+  drawCursorGhost(ps);
+}
 
 function drawHoverHighlight(hoverItem, selectedItems, dh, ds) {
   _ctx.save();
