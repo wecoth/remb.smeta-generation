@@ -388,6 +388,8 @@ function _renderSmrTable() {
     _initInsertZones(tbody, 'smr');
     return;
   }
+
+  _smrRows.forEach((r, i) => {
     tbody.appendChild(makeInsertZone(i));
 
     const tr = document.createElement('tr');
@@ -580,6 +582,8 @@ function _renderMatTable() {
     _initInsertZones(tbody, 'mat');
     return;
   }
+
+  _matRows.forEach((r, i) => {
     tbody.appendChild(makeInsertZone(i));
 
     const tr = document.createElement('tr');
