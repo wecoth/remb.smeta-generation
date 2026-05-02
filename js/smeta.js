@@ -326,8 +326,8 @@ function _renderSmrTable() {
       <div class="tr-insert-btn">
         <div class="tr-insert-line"></div>
         <div class="tr-insert-actions">
-          <button class="tr-insert-act" data-i="${i}" data-table="smr" data-section="0">+ строка</button>
-          <button class="tr-insert-act section" data-i="${i}" data-table="smr" data-section="1">+ раздел</button>
+          <button class="tr-insert-act" data-i="${i}" data-table="smr" data-section="0" title="Строка"></button>
+          <button class="tr-insert-act section" data-i="${i}" data-table="smr" data-section="1" title="Раздел"></button>
         </div>
         <div class="tr-insert-line"></div>
       </div>
@@ -367,8 +367,8 @@ function _renderSmrTable() {
     <div class="tr-insert-btn">
       <div class="tr-insert-line"></div>
       <div class="tr-insert-actions">
-        <button class="tr-insert-act" data-i="${_smrRows.length - 1}" data-table="smr" data-section="0">+ строка</button>
-        <button class="tr-insert-act section" data-i="${_smrRows.length - 1}" data-table="smr" data-section="1">+ раздел</button>
+        <button class="tr-insert-act" data-i="${_smrRows.length - 1}" data-table="smr" data-section="0" title="Строка"></button>
+        <button class="tr-insert-act section" data-i="${_smrRows.length - 1}" data-table="smr" data-section="1" title="Раздел"></button>
       </div>
       <div class="tr-insert-line"></div>
     </div>
@@ -405,10 +405,12 @@ function _bindSmrEvents(tbody) {
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
     btn.addEventListener('click', e => {
       const i = +e.target.dataset.i;
+      const wasSection = _smrRows[i]?.isSection;
       _smrRows.splice(i, 1);
       if (!_smrRows.length) _showSmrDrop();
       else _renderSmrTable();
       _updateTotals();
+      if (wasSection) _syncSectionsToGantt();
     });
   });
 }
@@ -505,8 +507,8 @@ function _renderMatTable() {
       <div class="tr-insert-btn">
         <div class="tr-insert-line"></div>
         <div class="tr-insert-actions">
-          <button class="tr-insert-act" data-i="${i}" data-table="mat" data-section="0">+ строка</button>
-          <button class="tr-insert-act section" data-i="${i}" data-table="mat" data-section="1">+ раздел</button>
+          <button class="tr-insert-act" data-i="${i}" data-table="mat" data-section="0" title="Строка"></button>
+          <button class="tr-insert-act section" data-i="${i}" data-table="mat" data-section="1" title="Раздел"></button>
         </div>
         <div class="tr-insert-line"></div>
       </div>
@@ -544,8 +546,8 @@ function _renderMatTable() {
     <div class="tr-insert-btn">
       <div class="tr-insert-line"></div>
       <div class="tr-insert-actions">
-        <button class="tr-insert-act" data-i="${_matRows.length - 1}" data-table="mat" data-section="0">+ строка</button>
-        <button class="tr-insert-act section" data-i="${_matRows.length - 1}" data-table="mat" data-section="1">+ раздел</button>
+        <button class="tr-insert-act" data-i="${_matRows.length - 1}" data-table="mat" data-section="0" title="Строка"></button>
+        <button class="tr-insert-act section" data-i="${_matRows.length - 1}" data-table="mat" data-section="1" title="Раздел"></button>
       </div>
       <div class="tr-insert-line"></div>
     </div>
@@ -635,6 +637,12 @@ export function getMatTotal() {
 // When sections in SMR change, sync them as Gantt stages
 function _syncSectionsToGantt() {
   const sections = _smrRows.filter(r => r.isSection && r.name && r.name.trim());
+  const sectionNames = new Set(sections.map(s => s.name.trim()));
+
+  // Remove stages that no longer have a matching section
+  _stages = _stages.filter(s => sectionNames.has(s.name));
+
+  // Add new stages for sections not yet in gantt
   sections.forEach(sec => {
     const name = sec.name.trim();
     if (!name) return;
@@ -646,6 +654,7 @@ function _syncSectionsToGantt() {
       _stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
     }
   });
+
   _renderGantt();
   _renderPayments();
 }
