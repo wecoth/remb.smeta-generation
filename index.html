@@ -200,7 +200,12 @@
     font-family:Onest,Inter,sans-serif;
     width:100%;
   }
-  .obj-new-address::placeholder { color:var(--color-border-primary); }
+  .obj-new-address::placeholder { color:#c0c4cc;font-style:italic; }
+
+  /* All table inputs — placeholder clearly lighter than real text */
+  table.smeta-tbl td input::placeholder {
+    color:#ccc;font-style:italic;
+  }
 
   .obj-new-right {
     padding:10px 16px;
@@ -812,7 +817,7 @@
         <div class="obj-new-layout">
           <div class="obj-new-center">
             <div class="obj-new-lbl">Объект</div>
-            <input class="obj-new-address" id="hdrAddress" placeholder="Введите адрес объекта, напр. ул. Ленина, 12, кв. 34">
+            <input class="obj-new-address" id="hdrAddress" placeholder="Адрес объекта">
           </div>
           <div class="obj-new-right">
             <div class="obj-meta-cell">
