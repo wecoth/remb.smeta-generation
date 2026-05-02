@@ -245,12 +245,38 @@ function _initRowDnd(tbody, rows, onReorder) {
 
 // ── INSERT ZONES ──────────────────────────────────────────────────
 function _initInsertZones(tbody, table) {
-  tbody.querySelectorAll('.tr-insert-act').forEach(btn => {
+  // Close all open dropdowns
+  function _closeAll() {
+    tbody.querySelectorAll('.tr-insert-plus-wrap.open').forEach(w => {
+      w.classList.remove('open');
+      w.querySelector('.tr-insert-plus')?.classList.remove('active');
+      w.closest('.tr-insert-btn')?.classList.remove('open');
+    });
+  }
+
+  // Toggle dropdown on plus click
+  tbody.querySelectorAll('.tr-insert-plus').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      // data-i is the index of the row BEFORE which we insert
-      const beforeIdx = +btn.dataset.i;
-      const isSection = btn.dataset.section === '1';
+      const wrap = btn.closest('.tr-insert-plus-wrap');
+      const isOpen = wrap.classList.contains('open');
+      _closeAll();
+      if (!isOpen) {
+        wrap.classList.add('open');
+        btn.classList.add('active');
+        wrap.closest('.tr-insert-btn').classList.add('open');
+      }
+    });
+  });
+
+  // Dropdown item click
+  tbody.querySelectorAll('.tr-insert-dd-item').forEach(item => {
+    item.addEventListener('click', e => {
+      e.stopPropagation();
+      const beforeIdx = +item.dataset.i;
+      const isSection = item.dataset.section === '1';
+      _closeAll();
+
       if (table === 'smr') {
         const newRow = isSection
           ? { name: '', isSection: true }
@@ -263,9 +289,7 @@ function _initInsertZones(tbody, table) {
           const tbody2 = document.getElementById('smrTbody');
           for (const tr of tbody2.querySelectorAll('tr')) {
             if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) {
-              tr.querySelector('input')?.focus(); break;
-            }
+            if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
           }
         }, 30);
       } else {
@@ -279,14 +303,15 @@ function _initInsertZones(tbody, table) {
           const tbody2 = document.getElementById('matTbody');
           for (const tr of tbody2.querySelectorAll('tr')) {
             if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) {
-              tr.querySelector('input')?.focus(); break;
-            }
+            if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
           }
         }, 30);
       }
     });
   });
+
+  // Close on outside click
+  document.addEventListener('click', _closeAll, { capture: true, once: false });
 }
 
 export function handleSmr(e) {
@@ -324,10 +349,16 @@ function _renderSmrTable() {
     const insColspan = 9;
     insZone.innerHTML = `<td colspan="${insColspan}">
       <div class="tr-insert-btn">
-        <div class="tr-insert-line"></div>
-        <div class="tr-insert-actions">
-          <button class="tr-insert-act" data-i="${i}" data-table="smr" data-section="0" title="Строка"></button>
-          <button class="tr-insert-act section" data-i="${i}" data-table="smr" data-section="1" title="Раздел"></button>
+        <div class="tr-insert-plus-wrap" data-i="${i}" data-table="smr">
+          <button class="tr-insert-plus" title="Вставить">+</button>
+          <div class="tr-insert-dropdown">
+            <div class="tr-insert-dd-item dd-row" data-i="${i}" data-table="smr" data-section="0">
+              <span class="dd-dot"></span>Строка
+            </div>
+            <div class="tr-insert-dd-item dd-sec" data-i="${i}" data-table="smr" data-section="1">
+              <span class="dd-dot"></span>Раздел
+            </div>
+          </div>
         </div>
         <div class="tr-insert-line"></div>
       </div>
@@ -365,10 +396,16 @@ function _renderSmrTable() {
   insLast.className = 'tr-insert-zone';
   insLast.innerHTML = `<td colspan="9">
     <div class="tr-insert-btn">
-      <div class="tr-insert-line"></div>
-      <div class="tr-insert-actions">
-        <button class="tr-insert-act" data-i="${_smrRows.length - 1}" data-table="smr" data-section="0" title="Строка"></button>
-        <button class="tr-insert-act section" data-i="${_smrRows.length - 1}" data-table="smr" data-section="1" title="Раздел"></button>
+      <div class="tr-insert-plus-wrap" data-i="${_smrRows.length}" data-table="smr">
+        <button class="tr-insert-plus" title="Вставить">+</button>
+        <div class="tr-insert-dropdown">
+          <div class="tr-insert-dd-item dd-row" data-i="${_smrRows.length}" data-table="smr" data-section="0">
+            <span class="dd-dot"></span>Строка
+          </div>
+          <div class="tr-insert-dd-item dd-sec" data-i="${_smrRows.length}" data-table="smr" data-section="1">
+            <span class="dd-dot"></span>Раздел
+          </div>
+        </div>
       </div>
       <div class="tr-insert-line"></div>
     </div>
@@ -505,10 +542,16 @@ function _renderMatTable() {
     insZone.className = 'tr-insert-zone';
     insZone.innerHTML = `<td colspan="9">
       <div class="tr-insert-btn">
-        <div class="tr-insert-line"></div>
-        <div class="tr-insert-actions">
-          <button class="tr-insert-act" data-i="${i}" data-table="mat" data-section="0" title="Строка"></button>
-          <button class="tr-insert-act section" data-i="${i}" data-table="mat" data-section="1" title="Раздел"></button>
+        <div class="tr-insert-plus-wrap" data-i="${i}" data-table="mat">
+          <button class="tr-insert-plus" title="Вставить">+</button>
+          <div class="tr-insert-dropdown">
+            <div class="tr-insert-dd-item dd-row" data-i="${i}" data-table="mat" data-section="0">
+              <span class="dd-dot"></span>Строка
+            </div>
+            <div class="tr-insert-dd-item dd-sec" data-i="${i}" data-table="mat" data-section="1">
+              <span class="dd-dot"></span>Раздел
+            </div>
+          </div>
         </div>
         <div class="tr-insert-line"></div>
       </div>
@@ -544,10 +587,16 @@ function _renderMatTable() {
   insLast.className = 'tr-insert-zone';
   insLast.innerHTML = `<td colspan="9">
     <div class="tr-insert-btn">
-      <div class="tr-insert-line"></div>
-      <div class="tr-insert-actions">
-        <button class="tr-insert-act" data-i="${_matRows.length - 1}" data-table="mat" data-section="0" title="Строка"></button>
-        <button class="tr-insert-act section" data-i="${_matRows.length - 1}" data-table="mat" data-section="1" title="Раздел"></button>
+      <div class="tr-insert-plus-wrap" data-i="${_matRows.length}" data-table="mat">
+        <button class="tr-insert-plus" title="Вставить">+</button>
+        <div class="tr-insert-dropdown">
+          <div class="tr-insert-dd-item dd-row" data-i="${_matRows.length}" data-table="mat" data-section="0">
+            <span class="dd-dot"></span>Строка
+          </div>
+          <div class="tr-insert-dd-item dd-sec" data-i="${_matRows.length}" data-table="mat" data-section="1">
+            <span class="dd-dot"></span>Раздел
+          </div>
+        </div>
       </div>
       <div class="tr-insert-line"></div>
     </div>
