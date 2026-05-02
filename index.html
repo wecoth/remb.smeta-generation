@@ -289,6 +289,7 @@
 
   <!-- Planner top bar -->
   <div class="planner-topbar">
+    <!-- Постоянные кнопки: Новый / Отмена / Повтор -->
     <button class="tb-btn" id="btnNew">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       Новый
@@ -300,26 +301,59 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 14 5-5-5-5"/><path d="M4 20a8 8 0 0 1 8-8h8"/></svg>
     </button>
     <div style="width:1px;height:22px;background:var(--line2);margin:0 4px;flex-shrink:0"></div>
-    <button class="tb-btn" id="btnRecalc">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      Пересчитать помещения
-    </button>
+
+    <!-- Инструменты ЧЕРЧЕНИЯ -->
+    <div id="toolsGroupDraw" style="display:flex;align-items:center;gap:4px">
+      <button class="tb-btn" id="btnRecalc">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Пересчитать
+      </button>
+    </div>
+
+    <!-- Инструменты ОТДЕЛКИ -->
+    <div id="toolsGroupFinish" style="display:none;align-items:center;gap:4px">
+      <button class="tb-btn" title="Выбор поверхности" onclick="" style="opacity:0.5;font-size:11px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+        Выбор
+      </button>
+      <button class="tb-btn" title="Инструмент линия" onclick="" style="opacity:0.5;font-size:11px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Линия
+      </button>
+    </div>
+
+    <!-- Инструменты РАЗВЁРТКИ -->
+    <div id="toolsGroupUnroll" style="display:none;align-items:center;gap:4px">
+      <button class="tb-btn" title="Линия" style="font-size:11px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Линия
+      </button>
+      <div style="width:1px;height:20px;background:var(--line2);margin:0 2px"></div>
+      <button class="tb-btn" title="Розетка" style="font-size:10px">⊕ Розетка</button>
+      <button class="tb-btn" title="Выключатель" style="font-size:10px">⊗ Выключатель</button>
+      <button class="tb-btn" title="Электровывод" style="font-size:10px">⚡ Эл.вывод</button>
+      <button class="tb-btn" title="Вывод воды" style="font-size:10px">💧 Вода</button>
+      <button class="tb-btn" title="Вытяжка" style="font-size:10px">⊘ Вытяжка</button>
+      <button class="tb-btn" title="Плинтус" style="font-size:10px">▭ Плинтус</button>
+    </div>
 
     <div style="width:1px;height:22px;background:var(--line2);margin:0 6px;flex-shrink:0"></div>
 
     <!-- ── ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМОВ ── -->
-    <div class="mode-switcher" id="modeSwitcher">
-      <button class="mode-btn active" id="modeDrawBtn" onclick="window._plannerMode.setMode('draw')">
+    <div class="mode-switcher">
+      <button class="mode-btn active" id="modeBtn_draw" onclick="window._switchPlannerMode('draw')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
         Черчение
       </button>
-      <button class="mode-btn mode-finish" id="modeFinishBtn" onclick="window._plannerMode.setMode('finish')">
+      <button class="mode-btn mode-finish" id="modeBtn_finish" onclick="window._switchPlannerMode('finish')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Отделка
       </button>
+      <button class="mode-btn" id="modeBtn_unroll" onclick="window._switchPlannerMode('unroll')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+        Развёртка
+      </button>
     </div>
-
-    <div class="finish-mode-badge" id="finishModeBadge">Режим отделки</div>
 
     <div class="snap-badge" id="snapBadge">Привязка: 1 мм</div>
   </div>
@@ -563,6 +597,15 @@
         <button class="import-rooms-btn" id="btnImportRooms" style="margin-top:8px">
           → Перенести в смету
         </button>
+      </div>
+
+      <!-- ── МИНИКАРТА (режим Развёртка) ── -->
+      <div class="fp-card" id="minimapCard" style="display:none;padding:8px">
+        <div class="rp-section-title" style="margin-bottom:6px">Навигация по комнатам</div>
+        <canvas id="minimapCanvas" width="220" height="160"
+          style="width:100%;height:auto;border-radius:6px;cursor:pointer;border:1px solid var(--line2)"
+          onclick="window._onMinimapClick(event)"></canvas>
+        <div style="font:400 9.5px/1.3 Onest,sans-serif;color:var(--muted2);margin-top:5px;text-align:center">Кликните на комнату</div>
       </div>
 
     </div><!-- /right-panel -->
@@ -1485,6 +1528,11 @@
         get: () => up.getViewport(),
       });
     }
+    // Мост для переключения режимов из HTML
+    window._plannerRef = {
+      switchPlannerMode: up.switchPlannerMode,
+      onMinimapClick: up.onMinimapClick,
+    };
   } catch(e) {
     window._plannerViewport = { scale: 0.12, panX: 200, panY: 150 };
   }
@@ -1866,100 +1914,25 @@
 </style>
 
 <script>
-/* ── PLANNER MODE CONTROLLER (визуальная заглушка) ── */
-window._plannerMode = (() => {
-  let currentMode = 'draw';
+/* ── МОСТ: переключение режимов → ui-planner.js ── */
+// Ссылки на функции заполняются после загрузки ES-модуля main.js
+window._switchPlannerMode = (mode) => {
+  window._plannerRef?.switchPlannerMode(mode);
+};
+window._onMinimapClick = (e) => {
+  window._plannerRef?.onMinimapClick(e);
+};
 
-  function setMode(mode) {
-    currentMode = mode;
-    const wrap = document.getElementById('canvasWrap');
-    const drawBtn = document.getElementById('modeDrawBtn');
-    const finishBtn = document.getElementById('modeFinishBtn');
-    const plannerTopbar = document.querySelector('.planner-topbar');
-
-    if (mode === 'finish') {
-      wrap && wrap.closest('.planner-body') && wrap.closest('.planner-body').classList.add('planner-mode-finish');
-      plannerTopbar && plannerTopbar.classList.add('planner-mode-finish');
-      drawBtn && drawBtn.classList.remove('active');
-      finishBtn && finishBtn.classList.add('active');
-      // Показываем язычок развёртки
-      const tab = document.getElementById('roomUnrollTab');
-      if (tab) tab.style.display = 'flex';
-    } else {
-      wrap && wrap.closest('.planner-body') && wrap.closest('.planner-body').classList.remove('planner-mode-finish');
-      plannerTopbar && plannerTopbar.classList.remove('planner-mode-finish');
-      drawBtn && drawBtn.classList.add('active');
-      finishBtn && finishBtn.classList.remove('active');
-      closeFinishPanel();
-      closeUnroll();
-      const tab = document.getElementById('roomUnrollTab');
-      if (tab) tab.style.display = 'none';
-    }
-  }
-
-  function openFinishPanel(surfaceName, meta) {
-    const panel = document.getElementById('finishPanel');
-    if (!panel) return;
-    document.getElementById('fpSurfaceName').textContent = surfaceName || 'Поверхность';
-    document.getElementById('fpSurfaceMeta').textContent = meta || '';
-    panel.classList.add('open');
-  }
-
-  function closeFinishPanel() {
-    const panel = document.getElementById('finishPanel');
-    if (panel) panel.classList.remove('open');
-  }
-
-  function openUnroll(roomName) {
-    const sheet = document.getElementById('roomUnrollSheet');
-    const title = document.getElementById('rusTitle');
-    if (title && roomName) title.textContent = 'Развёртка — ' + roomName;
-    if (sheet) sheet.classList.add('open');
-    // Скрываем язычок пока открыт шит
-    const tab = document.getElementById('roomUnrollTab');
-    if (tab) tab.style.display = 'none';
-  }
-
-  function closeUnroll() {
-    const sheet = document.getElementById('roomUnrollSheet');
-    if (sheet) sheet.classList.remove('open');
-    if (currentMode === 'finish') {
-      const tab = document.getElementById('roomUnrollTab');
-      if (tab) tab.style.display = 'flex';
-    }
-  }
-
-  function selectSurface(id) {
-    const nameMap = {
-      floor: 'Пол', ceiling: 'Потолок',
-      wall_C1: 'Стена С1', wall_C2: 'Стена С2',
-      wall_C3: 'Стена С3', wall_C4: 'Стена С4',
-    };
-    openFinishPanel(nameMap[id] || id, 'Кухня · 7.2 м²');
-  }
-
-  function applyWorks() {
-    const count = document.querySelectorAll('#finishPanel .fp-work-item.checked').length;
-    document.getElementById('fpWorkCount').textContent = count + ' ' + (count === 1 ? 'вид работ' : 'вида работ') + ' выбрано';
-    closeFinishPanel();
-  }
-
-  // Язычок — клик открывает шит
-  document.addEventListener('DOMContentLoaded', () => {
-    const trigger = document.getElementById('roomUnrollTrigger');
-    if (trigger) trigger.addEventListener('click', () => openUnroll('Кухня'));
-    // Обновляем счётчик при изменении чекбоксов
-    document.querySelectorAll('#finishPanel .fp-work-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const count = document.querySelectorAll('#finishPanel .fp-work-item.checked').length;
-        const el = document.getElementById('fpWorkCount');
-        if (el) el.textContent = count + ' ' + (count === 1 ? 'вид работ' : count < 5 ? 'вида работ' : 'видов работ') + ' выбрано';
-      });
+// Счётчик чекбоксов в панели пирога
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#finishPanel .fp-work-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const count = document.querySelectorAll('#finishPanel .fp-work-item.checked').length;
+      const el = document.getElementById('fpWorkCount');
+      if (el) el.textContent = count + ' ' + (count === 1 ? 'вид работ' : count < 5 ? 'вида работ' : 'видов работ') + ' выбрано';
     });
   });
-
-  return { setMode, openFinishPanel, closeFinishPanel, openUnroll, closeUnroll, selectSurface, applyWorks };
-})();
+});
 </script>
 
 <script src="js/auth.js"></script>
