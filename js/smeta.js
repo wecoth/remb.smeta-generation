@@ -328,7 +328,7 @@ export function handleSmr(e) {
 
 export function initSmrManual() {
   _smrRows = [];
-  _smrRows.push({ name: 'Новый раздел', isSection: true });
+  _smrRows.push({ name: '', isSection: true });
   _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', stage: '', isSection: false });
   _renderSmrTable();
   _updateTotals();
@@ -372,7 +372,7 @@ function _renderSmrTable() {
       tr.className = 'row-section';
       tr.innerHTML = `
         <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
+        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Раздел, напр. «Демонтаж»" data-i="${i}" data-f="name"></td>
         <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     } else {
       idx++;
@@ -380,7 +380,7 @@ function _renderSmrTable() {
       tr.innerHTML = `
         <td class="td-drag" title="Перетащить">⠿</td>
         <td class="td-num">${idx}</td>
-        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
+        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование работы, напр. «Штукатурка стен»" data-i="${i}" data-f="name"></td>
         <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="м²" data-i="${i}" data-f="unit"></td>
         <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
@@ -523,7 +523,7 @@ export function handleMat(e) {
 
 export function initMatManual() {
   _matRows = [];
-  _matRows.push({ name: 'Новый раздел', isSection: true });
+  _matRows.push({ name: '', isSection: true });
   _matRows.push({ name: '', unit: 'шт', qty: '', price: '', total: 0, note: '', isSection: false });
   _renderMatTable();
   _updateTotals();
@@ -565,14 +565,14 @@ function _renderMatTable() {
       tr.className = 'row-section';
       tr.innerHTML = `
         <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
+        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Раздел, напр. «Отделка»" data-i="${i}" data-f="name"></td>
         <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button></td>`;
     } else {
       idx++;
       tr.innerHTML = `
         <td class="td-drag" title="Перетащить">⠿</td>
         <td class="td-num">${idx}</td>
-        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование материала" data-i="${i}" data-f="name"></td>
+        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Материал, напр. «Гипсокартон 12мм»" data-i="${i}" data-f="name"></td>
         <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="шт" data-i="${i}" data-f="unit"></td>
         <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
