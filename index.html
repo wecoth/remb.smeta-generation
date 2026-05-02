@@ -321,6 +321,12 @@
     padding:0 !important;border:none !important;background:transparent !important;
     height:0;overflow:visible;
   }
+  .tr-insert-plus-wrap {
+    position:absolute;
+    left:20px; /* drag col width = 20px, plus sits right at its right edge */
+    top:50%;transform:translateY(-50%);
+    flex-shrink:0;
+  }
   .tr-insert-btn {
     position:absolute;left:0;right:0;
     display:flex;align-items:center;
@@ -338,12 +344,6 @@
   table.smeta-tbl tr.tr-insert-zone:hover .tr-insert-btn { opacity:1;pointer-events:auto; }
   .tr-insert-line {
     flex:1;height:1px;background:#e0e4ef;
-  }
-  .tr-insert-plus-wrap {
-    position:relative;
-    flex-shrink:0;
-    /* sits between drag col (20px) and num col (32px) — total offset ~20px from left */
-    margin-left:2px;margin-right:2px;
   }
   .tr-insert-plus {
     width:16px;height:16px;border-radius:50%;
