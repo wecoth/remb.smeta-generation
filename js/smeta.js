@@ -243,7 +243,51 @@ function _initRowDnd(tbody, rows, onReorder) {
 }
 
 
-// ── SMR TABLE ─────────────────────────────────────────────────────
+// ── INSERT ZONES ──────────────────────────────────────────────────
+function _initInsertZones(tbody, table) {
+  tbody.querySelectorAll('.tr-insert-act').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      // data-i is the index of the row BEFORE which we insert
+      const beforeIdx = +btn.dataset.i;
+      const isSection = btn.dataset.section === '1';
+      if (table === 'smr') {
+        const newRow = isSection
+          ? { name: '', isSection: true }
+          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+        _smrRows.splice(beforeIdx, 0, newRow);
+        _renderSmrTable();
+        _updateTotals();
+        if (isSection) _syncSectionsToGantt();
+        setTimeout(() => {
+          const tbody2 = document.getElementById('smrTbody');
+          for (const tr of tbody2.querySelectorAll('tr')) {
+            if (tr.classList.contains('tr-insert-zone')) continue;
+            if (+tr.dataset.rowIdx === beforeIdx) {
+              tr.querySelector('input')?.focus(); break;
+            }
+          }
+        }, 30);
+      } else {
+        const newRow = isSection
+          ? { name: '', isSection: true }
+          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+        _matRows.splice(beforeIdx, 0, newRow);
+        _renderMatTable();
+        _updateTotals();
+        setTimeout(() => {
+          const tbody2 = document.getElementById('matTbody');
+          for (const tr of tbody2.querySelectorAll('tr')) {
+            if (tr.classList.contains('tr-insert-zone')) continue;
+            if (+tr.dataset.rowIdx === beforeIdx) {
+              tr.querySelector('input')?.focus(); break;
+            }
+          }
+        }, 30);
+      }
+    });
+  });
+}
 
 export function handleSmr(e) {
   const f = e.target.files[0]; if (!f) return;
@@ -274,6 +318,22 @@ function _renderSmrTable() {
   tbody.innerHTML = '';
   let idx = 0;
   _smrRows.forEach((r, i) => {
+    // Insert zone BEFORE each row (for inserting above)
+    const insZone = document.createElement('tr');
+    insZone.className = 'tr-insert-zone';
+    const insColspan = 9;
+    insZone.innerHTML = `<td colspan="${insColspan}">
+      <div class="tr-insert-btn">
+        <div class="tr-insert-line"></div>
+        <div class="tr-insert-actions">
+          <button class="tr-insert-act" data-i="${i}" data-table="smr" data-section="0">+ строка</button>
+          <button class="tr-insert-act section" data-i="${i}" data-table="smr" data-section="1">+ раздел</button>
+        </div>
+        <div class="tr-insert-line"></div>
+      </div>
+    </td>`;
+    tbody.appendChild(insZone);
+
     const tr = document.createElement('tr');
     tr.draggable = true;
     tr.dataset.rowIdx = i;
@@ -300,7 +360,23 @@ function _renderSmrTable() {
     }
     tbody.appendChild(tr);
   });
+  // Insert zone after last row
+  const insLast = document.createElement('tr');
+  insLast.className = 'tr-insert-zone';
+  insLast.innerHTML = `<td colspan="9">
+    <div class="tr-insert-btn">
+      <div class="tr-insert-line"></div>
+      <div class="tr-insert-actions">
+        <button class="tr-insert-act" data-i="${_smrRows.length - 1}" data-table="smr" data-section="0">+ строка</button>
+        <button class="tr-insert-act section" data-i="${_smrRows.length - 1}" data-table="smr" data-section="1">+ раздел</button>
+      </div>
+      <div class="tr-insert-line"></div>
+    </div>
+  </td>`;
+  tbody.appendChild(insLast);
+
   _bindSmrEvents(tbody);
+  _initInsertZones(tbody, 'smr');
   _initRowDnd(tbody, _smrRows, () => { _renderSmrTable(); _updateTotals(); });
 }
 
@@ -320,6 +396,10 @@ function _bindSmrEvents(tbody) {
         _updateTotals();
       }
       if (f === 'stage') _updateTotals();
+      // If editing a section name, sync to gantt
+      if (f === 'name' && _smrRows[i].isSection) {
+        _syncSectionsToGantt();
+      }
     });
   });
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
@@ -337,14 +417,42 @@ export function addSmrRow(isSection = false) {
   if (!_smrRows.length) _showSmrTable();
   _smrRows.push(isSection
     ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', stage: '', isSection: false }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
   );
   _renderSmrTable();
   _updateTotals();
+  if (isSection) _syncSectionsToGantt();
   // Focus last name input
   setTimeout(() => {
     const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
     inputs[inputs.length - 1]?.focus();
+  }, 30);
+}
+
+// Insert a row/section at a specific index
+export function insertSmrRow(afterIdx, isSection = false) {
+  const newRow = isSection
+    ? { name: '', isSection: true }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+  _smrRows.splice(afterIdx + 1, 0, newRow);
+  _renderSmrTable();
+  _updateTotals();
+  if (isSection) _syncSectionsToGantt();
+  setTimeout(() => {
+    // Focus the newly inserted row's input
+    const tbody = document.getElementById('smrTbody');
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr:not(.tr-insert-zone)');
+    // find the row at afterIdx+1 position (skipping insert zones)
+    let dataIdx = 0;
+    for (const tr of tbody.querySelectorAll('tr')) {
+      if (tr.classList.contains('tr-insert-zone')) continue;
+      if (+tr.dataset.rowIdx === afterIdx + 1) {
+        const inp = tr.querySelector('input.inp-name, input.inp-section');
+        if (inp) inp.focus();
+        break;
+      }
+    }
   }, 30);
 }
 
@@ -391,6 +499,20 @@ function _renderMatTable() {
   tbody.innerHTML = '';
   let idx = 0;
   _matRows.forEach((r, i) => {
+    const insZone = document.createElement('tr');
+    insZone.className = 'tr-insert-zone';
+    insZone.innerHTML = `<td colspan="9">
+      <div class="tr-insert-btn">
+        <div class="tr-insert-line"></div>
+        <div class="tr-insert-actions">
+          <button class="tr-insert-act" data-i="${i}" data-table="mat" data-section="0">+ строка</button>
+          <button class="tr-insert-act section" data-i="${i}" data-table="mat" data-section="1">+ раздел</button>
+        </div>
+        <div class="tr-insert-line"></div>
+      </div>
+    </td>`;
+    tbody.appendChild(insZone);
+
     const tr = document.createElement('tr');
     tr.draggable = true;
     tr.dataset.rowIdx = i;
@@ -415,7 +537,23 @@ function _renderMatTable() {
     }
     tbody.appendChild(tr);
   });
+  // Insert zone after last row
+  const insLast = document.createElement('tr');
+  insLast.className = 'tr-insert-zone';
+  insLast.innerHTML = `<td colspan="9">
+    <div class="tr-insert-btn">
+      <div class="tr-insert-line"></div>
+      <div class="tr-insert-actions">
+        <button class="tr-insert-act" data-i="${_matRows.length - 1}" data-table="mat" data-section="0">+ строка</button>
+        <button class="tr-insert-act section" data-i="${_matRows.length - 1}" data-table="mat" data-section="1">+ раздел</button>
+      </div>
+      <div class="tr-insert-line"></div>
+    </div>
+  </td>`;
+  tbody.appendChild(insLast);
+
   _bindMatEvents(tbody);
+  _initInsertZones(tbody, 'mat');
   _initRowDnd(tbody, _matRows, () => { _renderMatTable(); _updateTotals(); });
 }
 
@@ -467,9 +605,49 @@ export function clearMat() {
   _updateTotals();
 }
 
+export function insertMatRow(afterIdx, isSection = false) {
+  const newRow = isSection
+    ? { name: '', isSection: true }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+  _matRows.splice(afterIdx + 1, 0, newRow);
+  _renderMatTable();
+  _updateTotals();
+  setTimeout(() => {
+    const tbody = document.getElementById('matTbody');
+    if (!tbody) return;
+    for (const tr of tbody.querySelectorAll('tr')) {
+      if (tr.classList.contains('tr-insert-zone')) continue;
+      if (+tr.dataset.rowIdx === afterIdx + 1) {
+        const inp = tr.querySelector('input.inp-name, input.inp-section');
+        if (inp) inp.focus();
+        break;
+      }
+    }
+  }, 30);
+}
+
 export function collectMatRows() { return _matRows; }
 export function getMatTotal() {
   return _matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+}
+
+// ── SECTION → GANTT SYNC ──────────────────────────────────────────
+// When sections in SMR change, sync them as Gantt stages
+function _syncSectionsToGantt() {
+  const sections = _smrRows.filter(r => r.isSection && r.name && r.name.trim());
+  sections.forEach(sec => {
+    const name = sec.name.trim();
+    if (!name) return;
+    const existing = _stages.find(s => s.name === name);
+    if (!existing) {
+      const id    = _newStageId();
+      const color = _nextColor();
+      const lastEnd = _stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
+      _stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
+    }
+  });
+  _renderGantt();
+  _renderPayments();
 }
 
 // ── GANTT ─────────────────────────────────────────────────────────
