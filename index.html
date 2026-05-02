@@ -59,72 +59,56 @@
   }
 
   /* ── SMETA SCREEN ─────────────────────────────────────── */
+
+  /* Drawer (Экспликация) */
   .smeta-screen { display:flex;height:100%;overflow:hidden;position:relative; }
+  .expl-drawer {
+    position:absolute;left:0;top:0;bottom:0;width:280px;
+    background:#fff;border-right:0.5px solid #e4e4e4;
+    transform:translateX(-280px);transition:transform .22s ease;
+    z-index:50;display:flex;flex-direction:column;
+  }
+  .expl-drawer.open { transform:translateX(0); }
+  .expl-tab {
+    position:absolute;right:-26px;top:50%;transform:translateY(-50%);
+    width:26px;height:72px;
+    background:#fff;border:0.5px solid #e4e4e4;border-left:none;
+    border-radius:0 8px 8px 0;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-size:11px;color:#888;writing-mode:vertical-rl;
+    letter-spacing:.5px;user-select:none;gap:0;
+  }
+  .expl-drawer.open .expl-tab { writing-mode:horizontal-tb;font-size:13px; }
+  .expl-head {
+    padding:12px 14px;border-bottom:0.5px solid #ececec;
+    font-size:12px;font-weight:600;color:#333;flex-shrink:0;
+  }
+  .expl-col-head {
+    display:grid;grid-template-columns:1fr 44px 44px 44px;
+    padding:5px 14px;font-size:10px;color:#aaa;font-weight:500;
+    border-bottom:0.5px solid #ececec;flex-shrink:0;
+  }
+  .expl-col-head span { text-align:right; }
+  .expl-col-head span:first-child { text-align:left; }
+  .expl-body { flex:1;overflow-y:auto;padding:4px 0 12px; }
+  .expl-row {
+    display:grid;grid-template-columns:1fr 44px 44px 44px;
+    padding:5px 14px;font-size:11px;
+    border-bottom:0.5px solid #f4f4f4;
+  }
+  .expl-row:last-child { border-bottom:none; }
+  .expl-name { color:#333; }
+  .expl-num { text-align:right;color:#888; }
+  .expl-total { font-weight:600; border-top:0.5px solid #ddd !important;margin-top:4px; }
+  .expl-total .expl-name,.expl-total .expl-num { color:#333; }
+  .expl-empty { padding:24px 14px;font-size:11px;color:#bbb;text-align:center;line-height:1.6; }
 
-
-  /* ── CORNER EXPL DRAWER (smeta view) ────────────────────────── */
-  .corner-expl-wrap {
-    position:absolute;top:0;left:0;z-index:60;
-    pointer-events:none;
-  }
-  .corner-expl-toggle {
-    pointer-events:auto;
-    position:absolute;top:0;left:0;
-    display:flex;align-items:center;gap:6px;
-    padding:5px 10px 5px 12px;
-    background:#fff;
-    border:0.5px solid #e4e4e4;
-    border-top:none;border-left:none;
-    border-radius:0 0 10px 0;
-    cursor:pointer;
-    font-size:11px;font-weight:600;color:#555;
-    font-family:Onest,Inter,sans-serif;
-    box-shadow:1px 2px 8px rgba(0,0,0,.06);
-    transition:background .15s;
-    white-space:nowrap;
-    user-select:none;
-  }
-  .corner-expl-toggle:hover { background:#f5f5f7; }
-  .corner-expl-badge {
-    background:#1a1a2e;color:#fff;
-    border-radius:10px;padding:2px 6px;
-    font-size:9px;font-weight:600;
-  }
-  .corner-expl-arrow {
-    font-size:10px;color:#aaa;
-    transition:transform .22s ease;
-    display:inline-block;
-  }
-  .corner-expl-panel {
-    pointer-events:auto;
-    position:absolute;top:32px;left:0;
-    width:320px;
-    background:#fff;
-    border:0.5px solid #e4e4e4;
-    border-top:none;border-left:none;
-    border-radius:0 0 10px 0;
-    box-shadow:2px 4px 16px rgba(0,0,0,.1);
-    overflow:hidden;
-    max-height:0;
-    transition:max-height .25s cubic-bezier(.4,0,.2,1), opacity .2s ease;
-    opacity:0;
-  }
-  .corner-expl-panel.open {
-    max-height:360px;
-    opacity:1;
-  }
-  .corner-expl-col-head {
-    display:grid;grid-template-columns:1fr 56px 56px 56px;
-    padding:6px 14px;font-size:10px;color:#aaa;font-weight:500;
-    border-bottom:0.5px solid #ececec;background:#fafafa;
-  }
-  .corner-expl-col-head span { text-align:right; }
-  .corner-expl-col-head span:first-child { text-align:left; }
-  .corner-expl-body { overflow-y:auto;max-height:280px; }
-
+  /* Main area */
+  .smeta-main {
     flex:1;display:flex;flex-direction:column;overflow:hidden;
     transition:margin-left .22s ease;
   }
+  .smeta-main.drawer-open { margin-left:280px; }
 
   /* Top bar */
   .smeta-topbar {
@@ -497,7 +481,10 @@
   .pay-stage-pill-name { font-size:12px;color:#333;flex:1; }
   .pay-stage-pill-info { font-size:10px;color:#aaa;white-space:nowrap; }
 
-  /* Hide old modal preview button — kept for legacy compat */
+  /* Hide old modal preview button */
+  .btn-preview { display:none !important; }
+
+
 
 </style>
 </head>
@@ -766,24 +753,6 @@
 <div id="smetaView" style="height:100%;overflow:hidden">
 <div class="smeta-screen">
 
-  <!-- CORNER EXPL DRAWER -->
-  <div class="corner-expl-wrap" id="cornerExplWrap">
-    <button class="corner-expl-toggle" id="cornerExplToggle" onclick="window._smetaModule.toggleCornerExpl()">
-      <span>Э</span>
-      <span>Экспликация</span>
-      <span class="corner-expl-badge" id="cornerExplBadge">0</span>
-      <span class="corner-expl-arrow" id="cornerExplArrow">▾</span>
-    </button>
-    <div class="corner-expl-panel" id="cornerExplPanel">
-      <div class="corner-expl-col-head">
-        <span>Помещение</span><span>Пол м²</span><span>Стены м²</span><span>Пер. м</span>
-      </div>
-      <div class="corner-expl-body" id="explBody">
-        <div style="padding:16px;font-size:12px;color:#bbb;text-align:center">Нет данных — создайте план на вкладке Чертёж</div>
-      </div>
-    </div>
-  </div>
-
   <!-- MAIN -->
   <div class="smeta-main" id="smetaMain" style="margin-left:0">
 
@@ -797,11 +766,27 @@
       <button class="smeta-btn primary" onclick="window._smetaModule.generatePDF()">Сформировать КП →</button>
     </div>
 
-    <!-- Scroll area with blocks -->
-    <div class="smeta-scroll">
+    <!-- Scroll area with blocks -->\n    <div class="smeta-scroll">
 
-      <!-- CORNER DRAWER: Экспликация помещений -->
-      <!-- Убрана из потока карточек, теперь — угловой drawer -->
+      <!-- BLOCK: Экспликация (помещения из чертежа) -->
+      <div class="scard" id="explScard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num" style="background:#888">Э</div>
+          <div class="scard-label">Экспликация помещений</div>
+          <div class="scard-meta" id="explCountMeta"></div>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div style="padding:8px 0">
+            <div style="display:grid;grid-template-columns:1fr 56px 56px 56px;padding:4px 16px;font-size:10px;color:#aaa;font-weight:500;border-bottom:0.5px solid #ececec">
+              <span>Помещение</span><span style="text-align:right">Пол м²</span><span style="text-align:right">Стены м²</span><span style="text-align:right">Пер. м</span>
+            </div>
+            <div id="explBody">
+              <div class="expl-empty" style="padding:16px;font-size:12px;color:#bbb;text-align:center">Нет данных — создайте план на вкладке Чертёж</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- BLOCK 1: Объект -->
       <div class="scard obj-scard">
@@ -1186,6 +1171,62 @@
 
 
 
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     PRINT DOC
+════════════════════════════════════════════════════════════ -->
+<div class="print-doc" id="printDoc">
+  <div class="a4 cov" id="covPage">
+    <img id="covLogoImg" alt="logo">
+    <div id="covCircle" class="cov-circle">К</div>
+    <div class="cov-name" id="covName">КОМПАНИЯ</div>
+    <div class="cov-slogan" id="covSlogan">КАЧЕСТВО ПОД КЛЮЧ</div>
+    <div class="cov-dtype" id="covDtype">Проектно-сметная документация</div>
+    <div class="cov-foot"><div class="cfc" id="covFtC">К</div><div class="cfn" id="covFtN">КОМПАНИЯ</div></div>
+  </div>
+  <div class="a4">
+    <div class="pg">
+      <div class="pg-title">Планирование работ:</div>
+      <div class="plan-grid">
+        <div>
+          <div class="plan-img-box" id="docPlanBox">
+            <img id="docPlanImg" alt="" style="display:none">
+            <div class="plan-img-ph" id="docPlanPh">⬚</div>
+          </div>
+        </div>
+        <div>
+          <div class="obj-info" id="docObjInfo"></div>
+          <div class="obj-note">На основании осмотра объекта подготовлены следующие документы:<br>– Обмерный план.<br>– Смета строительно-монтажных работ (СМР).<br>– Смета на строительные и отделочные материалы.<br>– Календарный график производства работ.</div>
+          <div class="exp-ttl">Экспликация помещений</div>
+          <table class="exp-t">
+            <thead><tr><th>Помещение</th><th>Пол м²</th><th>Стены м²</th><th>Периметр</th></tr></thead>
+            <tbody id="docRoomsBody"></tbody>
+            <tfoot><tr><td style="text-align:right;font-weight:600">ИТОГО:</td><td id="dTotF">—</td><td id="dTotW">—</td><td id="dTotP">—</td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+      <div class="pg-foot"><div class="pfc" id="pfC1">К</div><div class="pfn" id="pfN1">КОМПАНИЯ</div></div>
+    </div>
+  </div>
+  <div id="smrDocPages"></div>
+  <div id="matDocPages"></div>
+  <div class="a4">
+    <div class="pg">
+      <table class="fin-t" id="finTable">
+        <thead><tr><th>№</th><th>Разделы</th><th>Ед.изм.</th><th>Кол-во</th><th>За ед. ₽</th><th>Всего ₽</th><th>Примечание</th></tr></thead>
+        <tbody id="finBody"></tbody>
+      </table>
+      <div class="fin-total"><span>Итого по разделам:</span><strong id="finTotal">0 ₽</strong></div>
+      <div class="pg-foot"><div class="pfc" id="pfC2">К</div><div class="pfn" id="pfN2">КОМПАНИЯ</div></div>
+    </div>
+  </div>
+  <!-- Страница обмерного плана — полный чертёж со всеми размерами -->
+  <div class="preview-page" id="fullPlanPage" style="display:none;padding:0;overflow:hidden">
+    <div style="position:absolute;top:14px;left:20px;font:700 13px/1.4 Georgia,serif;letter-spacing:0.05em;z-index:2;background:rgba(255,255,255,0.85);padding:2px 6px;border-radius:3px">Обмерный план:</div>
+    <img id="fullPlanImg" alt="" style="display:block;width:100%;height:auto;border:0;vertical-align:top">
+  </div>
+</div><!-- /print-doc -->
 
 
 <script>
