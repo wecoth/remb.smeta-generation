@@ -175,19 +175,19 @@
   }
   .scard-upload-btn:hover { background:#f0f0f0; }
 
-  /* Block 1 — Object header */
-  /* Block 1 — Object header */
+  /* Block 1 — Object header (compact horizontal) */
   .obj-scard { overflow:visible; }
   .obj-new-layout {
-    display:grid;
-    grid-template-columns:1fr 200px;
-    min-height:120px;
+    display:flex;
+    align-items:stretch;
+    min-height:0;
   }
   .obj-new-center {
-    padding:20px 24px;
+    padding:12px 20px;
     display:flex;flex-direction:column;
-    justify-content:center;gap:6px;
+    justify-content:center;gap:2px;
     border-right:0.5px solid var(--color-border-tertiary);
+    flex:1;min-width:0;
   }
   .obj-new-lbl {
     font-size:10px;color:var(--color-text-secondary);
@@ -195,7 +195,7 @@
   }
   .obj-new-address {
     background:none;border:none;outline:none;
-    font-size:20px;font-weight:500;
+    font-size:15px;font-weight:500;
     color:var(--color-text-primary);
     font-family:Onest,Inter,sans-serif;
     width:100%;
@@ -203,36 +203,32 @@
   .obj-new-address::placeholder { color:var(--color-border-primary); }
 
   .obj-new-right {
-    padding:14px 16px;
-    display:flex;flex-direction:column;gap:6px;
+    padding:10px 16px;
+    display:flex;flex-direction:row;align-items:center;gap:0;
+    flex-shrink:0;
   }
-  .obj-new-date-row {
-    display:flex;justify-content:space-between;align-items:center;
-    padding-bottom:8px;
+  .obj-meta-cell {
+    display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+    padding:0 16px;border-right:0.5px solid var(--color-border-tertiary);
   }
-  .obj-new-divider {
-    height:0.5px;background:var(--color-border-tertiary);margin:2px 0;
-  }
+  .obj-meta-cell:last-child { border-right:none; }
   .obj-new-meta-lbl {
-    font-size:11px;color:var(--color-text-secondary);
+    font-size:10px;color:var(--color-text-secondary);letter-spacing:.2px;white-space:nowrap;
   }
   .obj-new-meta-inp {
     background:none;border:none;outline:none;
-    font-size:11px;color:var(--color-text-primary);
+    font-size:12px;font-weight:500;color:var(--color-text-primary);
     font-family:Onest,Inter,sans-serif;
-    text-align:right;width:110px;
-  }
-  .obj-new-total-row {
-    display:flex;justify-content:space-between;align-items:baseline;
+    width:110px;padding:0;
   }
   .obj-new-meta-val {
-    font-size:12px;font-weight:500;color:var(--color-text-primary);
+    font-size:12px;font-weight:500;color:var(--color-text-primary);white-space:nowrap;
   }
-  .obj-new-total-row.grand .obj-new-meta-lbl {
-    font-size:11px;font-weight:500;color:var(--color-text-primary);
+  .obj-meta-cell.grand .obj-new-meta-lbl {
+    font-size:10px;font-weight:600;color:var(--color-text-primary);
   }
-  .obj-new-total-row.grand .obj-new-meta-val {
-    font-size:15px;font-weight:600;color:var(--color-text-primary);
+  .obj-meta-cell.grand .obj-new-meta-val {
+    font-size:15px;font-weight:700;color:var(--color-text-primary);
   }
 
   /* Block 2/3 — Tables */
@@ -315,6 +311,49 @@
   .tbl-add-btn:hover { border-color:#888;color:#555; }
   .tbl-footer-total { font-size:13px;font-weight:600;color:#1a1a2e; }
   .tbl-footer-total-lbl { font-size:11px;color:#aaa;margin-right:6px; }
+
+  /* Insert row/section between rows */
+  .tr-insert-zone {
+    position:relative;
+    height:0;overflow:visible;
+  }
+  .tr-insert-zone td {
+    padding:0 !important;border:none !important;background:transparent !important;
+    height:0;overflow:visible;
+  }
+  .tr-insert-btn {
+    position:absolute;left:0;right:0;
+    display:flex;align-items:center;
+    z-index:10;
+    opacity:0;transition:opacity .15s;
+    pointer-events:none;
+    height:20px;top:-10px;
+  }
+  tr.tr-insert-zone:hover .tr-insert-btn,
+  .tr-insert-btn:hover {
+    opacity:1;pointer-events:auto;
+  }
+  /* show on hover of adjacent rows */
+  table.smeta-tbl tr:hover + tr.tr-insert-zone .tr-insert-btn,
+  table.smeta-tbl tr.tr-insert-zone:hover .tr-insert-btn { opacity:1;pointer-events:auto; }
+  .tr-insert-line {
+    flex:1;height:1px;background:#4a6fe3;
+  }
+  .tr-insert-actions {
+    display:flex;gap:2px;padding:0 8px;
+  }
+  .tr-insert-act {
+    padding:2px 8px;border-radius:4px;
+    background:#4a6fe3;color:#fff;
+    font-size:10px;font-weight:500;
+    border:none;cursor:pointer;
+    font-family:Onest,Inter,sans-serif;
+    white-space:nowrap;line-height:16px;
+    transition:background .12s;
+  }
+  .tr-insert-act:hover { background:#3659c7; }
+  .tr-insert-act.section { background:#6b4ae3; }
+  .tr-insert-act.section:hover { background:#5537c0; }
 
   /* Block 4 — Gantt */
   .gantt-wrap { padding:14px 16px; }
@@ -739,20 +778,19 @@
             <input class="obj-new-address" id="hdrAddress" placeholder="Адрес объекта">
           </div>
           <div class="obj-new-right">
-            <div class="obj-new-date-row">
+            <div class="obj-meta-cell">
               <span class="obj-new-meta-lbl">Дата осмотра</span>
               <input class="obj-new-meta-inp" type="date" id="inspDate">
             </div>
-            <div class="obj-new-divider"></div>
-            <div class="obj-new-total-row">
+            <div class="obj-meta-cell">
               <span class="obj-new-meta-lbl">Работы</span>
               <span class="obj-new-meta-val" id="hdrSmr">0 ₽</span>
             </div>
-            <div class="obj-new-total-row">
+            <div class="obj-meta-cell">
               <span class="obj-new-meta-lbl">Материалы</span>
               <span class="obj-new-meta-val" id="hdrMat">0 ₽</span>
             </div>
-            <div class="obj-new-total-row grand">
+            <div class="obj-meta-cell grand">
               <span class="obj-new-meta-lbl">Итого</span>
               <span class="obj-new-meta-val" id="hdrTotal">0 ₽</span>
             </div>
