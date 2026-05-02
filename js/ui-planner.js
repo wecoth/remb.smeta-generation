@@ -7,7 +7,7 @@ import { DeleteItemsCommand } from './commands/DeleteItemsCommand.js';
 import { RenameRoomCommand } from './commands/RenameRoomCommand.js';
 import { updateExpl, getComputedRooms, renameRoom, setWallHeight } from './room.js';
 import { setViewport, setModifiers, toScreen, toWorld } from './snapping.js';
-import { redraw, initRenderer } from './render.js';
+import { redraw, initRenderer, setPlannerMode, setUnrollRoom, renderMinimap, hitTestFinishPlus } from './render.js';
 import { createTool } from './tools/index.js';
 import { VoiceInput } from './voiceInput.js';
 import { UpdateWallCommand } from './commands/UpdateWallCommand.js';
@@ -15,7 +15,7 @@ import { UpdateWallCommand } from './commands/UpdateWallCommand.js';
 // ── Module state ──────────────────────────────────────────────────
 let canvas, canvasWrap;
 let tool = 'select';
-let activeTool = null;          // экземпляр текущего инструмента
+let activeTool = null;
 let scale = 0.12, panX = 200, panY = 150;
 let shiftDown = false, ctrlDown = false;
 let isPanning = false, panStartX, panStartY, panStartOffX, panStartOffY;
@@ -23,8 +23,15 @@ let mouseScreen = null;
 let selectedItems = [];
 let defaultDoorHinge = 'start', defaultDoorSwing = 1;
 let wallOffset = 'center';
-let clipboard = null;           // { walls, openings }
+let clipboard = null;
 let voiceKeyPressed = false;
+
+// ── Режим планировщика: 'draw' | 'finish' | 'unroll' ─────────────
+let plannerMode = 'draw';
+let finishSelectedWalls = new Set();  // id выделенных стен в режиме отделки
+let finishSelectedRooms = new Set();  // id выделенных комнат (пол)
+let finishHoverWall = null;           // id стены под курсором в режиме отделки
+let unrollRoomId = null;              // id комнаты в режиме развёртки
 
 // ── DOM refs ──────────────────────────────────────────────────────
 let dom = {};
@@ -36,9 +43,10 @@ export function initPlanner(domRefs) {
 
   setWallHeight(parseFloat(dom.inpWallHeight?.value) || 2700);
   EventBus.on('rooms:computed', () => {
-  updateExpl(dom.explBody, dom.roomCount);
-  doRedraw();   // ← ДОБАВИТЬ
-});
+    updateExpl(dom.explBody, dom.roomCount);
+    refreshMinimap();
+    doRedraw();
+  });
   EventBus.on('history:changed', updateHistoryBtns);
   EventBus.on('dividers:changed', () => {
     // просто перерисовка, комнаты пересчитаются по подписке в room.js
@@ -188,6 +196,10 @@ export function doRedraw() {
     lengthLabel: dom.lengthLabel,
     lblLen: dom.lblLen,
     lblLenVal: dom.lblLenVal,
+    // Режим отделки
+    finishSelectedWalls,
+    finishSelectedRooms,
+    finishHoverWall,
     ...toolState,
   };
   redraw(plannerState);
@@ -482,12 +494,17 @@ function onMouseDown(e) {
   const world = toWorld(pos.x, pos.y);
   mouseScreen = { x: pos.x, y: pos.y };
 
+  // Режим отделки: только плюсики, инструменты рисования отключены
+  if (plannerMode === 'finish') {
+    onFinishClick(pos, e.ctrlKey || e.metaKey);
+    return;
+  }
+
   if (activeTool) {
     const handled = activeTool.onMouseDown(pos, world, e);
     if (handled) return;
   }
 
-  // Если инструмент не обработал (например, select при клике мимо)
   if (tool !== 'select' && selectedItems.length && !shiftDown) {
     clearSelection();
   }
@@ -505,6 +522,12 @@ function onMouseMove(e) {
   const world = toWorld(pos.x, pos.y);
   mouseScreen = { x: pos.x, y: pos.y };
   setModifiers(shiftDown, ctrlDown);
+
+  // Режим отделки — ховер на плюсики
+  if (plannerMode === 'finish') {
+    onFinishHover(pos);
+    return;
+  }
 
   if (activeTool) {
     activeTool.onMouseMove(pos, world, e);
@@ -624,3 +647,156 @@ export function getViewport() { return { scale, panX, panY }; }
 
 // Экспорт для совместимости с main.js и другими модулями
 export const forceRedraw = doRedraw;
+
+// ══════════════════════════════════════════════════════════════════
+// УПРАВЛЕНИЕ РЕЖИМАМИ: ЧЕРЧЕНИЕ / ОТДЕЛКА / РАЗВЁРТКА
+// ══════════════════════════════════════════════════════════════════
+
+export function switchPlannerMode(mode) {
+  plannerMode = mode;
+  setPlannerMode(mode); // сообщаем render.js
+
+  // Переключаем кнопки тулбара
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('modeBtn_' + mode);
+  if (btn) btn.classList.add('active');
+
+  // Тулбар инструментов
+  const drawTools  = document.getElementById('toolsGroupDraw');
+  const finishTools = document.getElementById('toolsGroupFinish');
+  const unrollTools = document.getElementById('toolsGroupUnroll');
+  if (drawTools)   drawTools.style.display   = (mode === 'draw')   ? '' : 'none';
+  if (finishTools) finishTools.style.display  = (mode === 'finish') ? '' : 'none';
+  if (unrollTools) unrollTools.style.display  = (mode === 'unroll') ? '' : 'none';
+
+  // Миникарта для развёртки
+  const minimap = document.getElementById('minimapCard');
+  if (minimap) minimap.style.display = (mode === 'unroll') ? 'block' : 'none';
+
+  // Сбрасываем финиш-состояние при выходе из режима
+  if (mode !== 'finish') {
+    finishSelectedWalls.clear();
+    finishSelectedRooms.clear();
+    finishHoverWall = null;
+    // Закрываем панель пирога
+    document.getElementById('finishPanel')?.classList.remove('open');
+  }
+  if (mode !== 'unroll') {
+    unrollRoomId = null;
+    setUnrollRoom(null);
+  }
+
+  // В режиме черчения восстанавливаем инструмент
+  if (mode === 'draw') {
+    setTool(tool);
+  } else {
+    // В других режимах деактивируем активный инструмент рисования
+    if (activeTool) { activeTool.deactivate(); activeTool = null; }
+  }
+
+  doRedraw();
+}
+
+// Клик в режиме отделки — обрабатываем плюсики
+function onFinishClick(pos, ctrlOrMeta) {
+  const hit = hitTestFinishPlus(pos.x, pos.y);
+  if (!hit) {
+    // Клик мимо — сбрасываем выбор
+    finishSelectedWalls.clear();
+    finishSelectedRooms.clear();
+    document.getElementById('finishPanel')?.classList.remove('open');
+    doRedraw();
+    return;
+  }
+
+  if (hit.type === 'wall') {
+    if (ctrlOrMeta) {
+      // Мультивыбор
+      if (finishSelectedWalls.has(hit.wallId)) finishSelectedWalls.delete(hit.wallId);
+      else finishSelectedWalls.add(hit.wallId);
+    } else {
+      finishSelectedWalls.clear();
+      finishSelectedRooms.clear();
+      if (hit.wallId != null) finishSelectedWalls.add(hit.wallId);
+    }
+    // Открываем панель пирога
+    openFinishPanel('wall', hit);
+  } else if (hit.type === 'floor') {
+    if (!ctrlOrMeta) {
+      finishSelectedWalls.clear();
+      finishSelectedRooms.clear();
+    }
+    if (finishSelectedRooms.has(hit.roomId)) finishSelectedRooms.delete(hit.roomId);
+    else finishSelectedRooms.add(hit.roomId);
+    openFinishPanel('floor', hit);
+  }
+  doRedraw();
+}
+
+function openFinishPanel(type, hit) {
+  const panel = document.getElementById('finishPanel');
+  if (!panel) return;
+  const nameEl  = document.getElementById('fpSurfaceName');
+  const metaEl  = document.getElementById('fpSurfaceMeta');
+  if (type === 'wall') {
+    if (nameEl) nameEl.textContent = finishSelectedWalls.size > 1
+      ? `${finishSelectedWalls.size} стены выбрано`
+      : `Стена — ${hit.roomName}`;
+    if (metaEl) metaEl.textContent = hit.edgeLen ? `${hit.edgeLen} мм · ${hit.area} м²` : '';
+  } else {
+    if (nameEl) nameEl.textContent = `Пол — ${hit.roomName}`;
+    if (metaEl) metaEl.textContent = hit.area ? `${hit.area.toFixed(2)} м²` : '';
+  }
+  panel.classList.add('open');
+}
+
+// Наведение мыши в режиме отделки — подсвечиваем стены
+function onFinishHover(pos) {
+  const hit = hitTestFinishPlus(pos.x, pos.y);
+  const prevHover = finishHoverWall;
+  finishHoverWall = (hit?.type === 'wall' && hit.wallId != null) ? hit.wallId : null;
+  if (finishHoverWall !== prevHover) {
+    canvas.style.cursor = finishHoverWall != null || hit ? 'pointer' : 'default';
+    doRedraw();
+  }
+}
+
+// Клик в режиме развёртки на миникарту — выбор комнаты
+export function onMinimapClick(e) {
+  const mc = document.getElementById('minimapCanvas');
+  if (!mc) return;
+  const r = mc.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  // Вычисляем bbox стен
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for (const w of appState.walls) {
+    const h=w.thickness/2;
+    minX=Math.min(minX,w.x1-h,w.x2-h);minY=Math.min(minY,w.y1-h,w.y2-h);
+    maxX=Math.max(maxX,w.x1+h,w.x2+h);maxY=Math.max(maxY,w.y1+h,w.y2+h);
+  }
+  if (!appState.walls.length) return;
+  const pad=8,sc=Math.min((mc.width-pad*2)/(maxX-minX),(mc.height-pad*2)/(maxY-minY));
+  const ox=pad-minX*sc,oy=pad-minY*sc;
+  // Обратное преобразование экран→мир
+  const worldX=(mx-ox)/sc,worldY=(my-oy)/sc;
+  // Ищем комнату под курсором
+  import('./geometry.js').then(({ isPointInPolygon }) => {
+    for (const r of appState.rooms) {
+      if (!r.polygon) continue;
+      if (isPointInPolygon({x:worldX,y:worldY}, r.polygon)) {
+        unrollRoomId = r.id;
+        setUnrollRoom(r.id);
+        // Обновляем миникарту
+        renderMinimap(mc, r.id);
+        doRedraw();
+        return;
+      }
+    }
+  });
+}
+
+// Обновление миникарты (вызывается при смене комнат)
+export function refreshMinimap() {
+  const mc = document.getElementById('minimapCanvas');
+  if (mc && plannerMode === 'unroll') renderMinimap(mc, unrollRoomId);
+}
