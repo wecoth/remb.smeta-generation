@@ -1825,3 +1825,37 @@ html, body {
 }
 .smeta-row:hover .smeta-row-insert { display: flex; }
 .smeta-row-insert:hover { background: #eef1ff; }
+
+/* ══════════════════════════════════════════════════════════════════
+   ОБНОВЛЕНИЯ v2: три режима + миникарта
+══════════════════════════════════════════════════════════════════ */
+
+/* Кнопка Развёртка в switcher */
+.mode-btn.active { color: var(--ink); background: var(--white); box-shadow: 0 1px 3px rgba(0,0,0,.10); }
+.mode-btn.mode-finish.active { background: #fff8ed; color: #c47a00; }
+
+/* Инструменты режима — flex row, скрываются при смене */
+#toolsGroupDraw, #toolsGroupFinish, #toolsGroupUnroll {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* В режиме развёртки — убираем bottom sheet и язычок */
+.planner-mode-unroll .room-unroll-tab,
+.planner-mode-unroll .room-unroll-sheet { display: none !important; }
+
+/* Миникарта */
+#minimapCard {
+  padding: 8px !important;
+}
+#minimapCanvas {
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+#minimapCanvas:hover { border-color: #4a6fe3; }
