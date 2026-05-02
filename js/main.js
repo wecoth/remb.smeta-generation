@@ -5,22 +5,21 @@ import { initPlanner, setTool, forceRedraw, getViewport } from './ui-planner.js'
 import { renderToImage } from './render.js';
 import { setViewport } from './snapping.js';
 import {
-  initSmeta, addRoom, recalcRooms, getRooms, handleLogo, handlePlan,
-  handleSmr, initSmrManual, addSmrRow, recalcSmr,
-  handleMat, initMatManual, addMatRow, recalcMat, renumRows,
-  generatePDF, liveUpdate, updateSummary, importRoomsFromPlanner,
-  captureCanvas,
+  initSmeta,
+  handleSmr, initSmrManual, addSmrRow, clearSmr,
+  handleMat, initMatManual, addMatRow, clearMat,
+  generatePDF, importRoomsFromPlanner, captureCanvas,
+  collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
 } from './smeta.js';
 import { autosaveToLocalStorage, loadFromLocalStorage, downloadProject, uploadProject } from './storage.js';
 import { clearHistory } from './commands/CommandHistory.js';
 
 // ── Expose smeta module globally (for inline oninput/onclick) ──────
 window._smetaModule = {
-  addRoom, recalcRooms, handleLogo, handlePlan,
-  handleSmr, initSmrManual, addSmrRow, recalcSmr,
-  handleMat, initMatManual, addMatRow, recalcMat, renumRows,
-  liveUpdate, updateSummary, importRoomsFromPlanner,
-  generatePDF, captureCanvas,
+  handleSmr, initSmrManual, addSmrRow, clearSmr,
+  handleMat, initMatManual, addMatRow, clearMat,
+  generatePDF, importRoomsFromPlanner, captureCanvas,
+  collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
 };
 
 // Expose appState and viewport for captureCanvas
