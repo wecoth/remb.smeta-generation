@@ -869,6 +869,26 @@ export function ensureStage(name) {
   return id;
 }
 
+// ── STAGE REAL AMOUNTS ────────────────────────────────────────────
+// Sum SMR rows belonging to a section whose name matches the stage name
+function _getStageAmount(stageName) {
+  let total = 0;
+  let inSection = false;
+  for (const r of _smrRows) {
+    if (r.isSection) {
+      inSection = (r.name && r.name.trim() === stageName);
+      continue;
+    }
+    if (inSection) total += r.total || 0;
+  }
+  return total;
+}
+
+// Sum of all stages that have a matching section
+function _getStagesTotalReal() {
+  return _stages.reduce((s, st) => s + _getStageAmount(st.name), 0);
+}
+
 // ── PAYMENTS ─────────────────────────────────────────────────────
 
 // Payment groups: array of { id, name, stageIds[] }
@@ -891,14 +911,13 @@ function _renderPayments() {
   leftCol.className = 'pay-left';
 
   _payments.forEach((p, pi) => {
-    // Sum stages by their day share
-    const shareDays = p.stageIds.reduce((s, id) => {
+    // Sum real amounts of assigned stages
+    const amount = p.stageIds.reduce((s, id) => {
       const st = _stages.find(x => x.id === id);
-      return s + (st ? st.w : 0);
+      return s + (st ? _getStageAmount(st.name) : 0);
     }, 0);
-    const totalW = _stages.reduce((s, x) => s + x.w, 0) || 100;
-    const amount = grandTotal > 0 ? Math.round(grandTotal * shareDays / totalW) : 0;
-    const pct    = Math.round(shareDays / totalW * 100);
+    const totalReal = _getStagesTotalReal() || grandTotal || 1;
+    const pct = grandTotal > 0 ? Math.round(amount / grandTotal * 100) : 0;
 
     const card = document.createElement('div');
     card.className = 'pay-slot';
@@ -961,9 +980,8 @@ function _renderPayments() {
     rightCol.appendChild(empty);
   } else {
     _stages.forEach(s => {
-      const stageDays = Math.max(1, Math.round(_totalDays * s.w / 100));
-      const totalW    = _stages.reduce((x, y) => x + y.w, 0) || 100;
-      const stageAmt  = grandTotal > 0 ? Math.round(grandTotal * s.w / totalW) : 0;
+      const stageDays  = Math.max(1, Math.round(_totalDays * s.w / 100));
+      const stageAmt   = _getStageAmount(s.name);
 
       const pill = document.createElement('div');
       pill.className = 'pay-stage-pill';
