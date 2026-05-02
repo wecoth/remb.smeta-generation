@@ -189,6 +189,60 @@ function _updateTotals() {
   if (el('matCount')) el('matCount').textContent = _matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
 }
 
+// ── ROW DRAG-AND-DROP ─────────────────────────────────────────────
+// Generic: works for both SMR and MAT tables
+function _initRowDnd(tbody, rows, onReorder) {
+  let dragSrc = null;
+
+  function getDragRow(el) {
+    return el.closest('tr[draggable]');
+  }
+
+  tbody.addEventListener('dragstart', e => {
+    const tr = getDragRow(e.target);
+    if (!tr) return;
+    dragSrc = tr;
+    tr.classList.add('row-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tr.dataset.rowIdx);
+  });
+
+  tbody.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const tr = getDragRow(e.target);
+    if (!tr || tr === dragSrc) return;
+    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over'));
+    tr.classList.add('row-drag-over');
+  });
+
+  tbody.addEventListener('dragleave', e => {
+    if (!tbody.contains(e.relatedTarget)) {
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over'));
+    }
+  });
+
+  tbody.addEventListener('drop', e => {
+    e.preventDefault();
+    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over', 'row-dragging'));
+    const tr = getDragRow(e.target);
+    if (!tr || tr === dragSrc) return;
+    const fromIdx = +dragSrc.dataset.rowIdx;
+    const toIdx   = +tr.dataset.rowIdx;
+    if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx) return;
+    // Reorder array
+    const [moved] = rows.splice(fromIdx, 1);
+    rows.splice(toIdx, 0, moved);
+    onReorder();
+  });
+
+  tbody.addEventListener('dragend', () => {
+    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over', 'row-dragging'));
+    dragSrc = null;
+  });
+}
+
+
 // ── SMR TABLE ─────────────────────────────────────────────────────
 
 export function handleSmr(e) {
@@ -221,6 +275,8 @@ function _renderSmrTable() {
   let idx = 0;
   _smrRows.forEach((r, i) => {
     const tr = document.createElement('tr');
+    tr.draggable = true;
+    tr.dataset.rowIdx = i;
     if (r.isSection) {
       tr.className = 'row-section';
       tr.innerHTML = `
@@ -229,9 +285,7 @@ function _renderSmrTable() {
         <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     } else {
       idx++;
-      const stageOpts = _stages.map(s =>
-        `<option value="${s.id}" ${r.stage === s.id ? 'selected' : ''}>${s.name}</option>`
-      ).join('');
+
       tr.innerHTML = `
         <td class="td-drag" title="Перетащить">⠿</td>
         <td class="td-num">${idx}</td>
@@ -240,17 +294,14 @@ function _renderSmrTable() {
         <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
         <td class="td-total">${r.total ? fmtInt(r.total) : ''}</td>
-        <td>
-          <select class="inp-stage" data-i="${i}" data-f="stage">
-            <option value="">—</option>${stageOpts}
-          </select>
-        </td>
+
         <td><input class="inp-note" value="${esc(r.note || '')}" placeholder="Примечание" data-i="${i}" data-f="note"></td>
         <td><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     }
     tbody.appendChild(tr);
   });
   _bindSmrEvents(tbody);
+  _initRowDnd(tbody, _smrRows, () => { _renderSmrTable(); _updateTotals(); });
 }
 
 function _bindSmrEvents(tbody) {
@@ -341,6 +392,8 @@ function _renderMatTable() {
   let idx = 0;
   _matRows.forEach((r, i) => {
     const tr = document.createElement('tr');
+    tr.draggable = true;
+    tr.dataset.rowIdx = i;
     if (r.isSection) {
       tr.className = 'row-section';
       tr.innerHTML = `
@@ -363,6 +416,7 @@ function _renderMatTable() {
     tbody.appendChild(tr);
   });
   _bindMatEvents(tbody);
+  _initRowDnd(tbody, _matRows, () => { _renderMatTable(); _updateTotals(); });
 }
 
 function _bindMatEvents(tbody) {
