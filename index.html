@@ -199,12 +199,8 @@
     color:var(--color-text-primary);
     font-family:Onest,Inter,sans-serif;
     width:100%;
-    border-bottom:1.5px solid transparent;
-    transition:border-color .15s;
-    padding-bottom:2px;
   }
-  .obj-new-address:focus { border-bottom-color:#4a6fe3; }
-  .obj-new-address::placeholder { color:#bbb;font-weight:400;font-style:italic; }
+  .obj-new-address::placeholder { color:var(--color-border-primary); }
 
   .obj-new-right {
     padding:10px 16px;
@@ -316,58 +312,48 @@
   .tbl-footer-total { font-size:13px;font-weight:600;color:#1a1a2e; }
   .tbl-footer-total-lbl { font-size:11px;color:#aaa;margin-right:6px; }
 
-  /* Insert row/section between rows — compact plus circle */
+  /* Insert row/section between rows */
   .tr-insert-zone {
     position:relative;
     height:0;overflow:visible;
   }
   .tr-insert-zone td {
     padding:0 !important;border:none !important;background:transparent !important;
-    height:0;overflow:visible;position:relative;
+    height:0;overflow:visible;
   }
   .tr-insert-btn {
-    position:absolute;left:24px;
+    position:absolute;left:0;right:0;
     display:flex;align-items:center;
-    z-index:20;
-    opacity:0;transition:opacity .12s;
+    z-index:10;
+    opacity:0;transition:opacity .15s;
     pointer-events:none;
-    top:-9px;
+    height:20px;top:-10px;
   }
+  tr.tr-insert-zone:hover .tr-insert-btn,
+  .tr-insert-btn:hover {
+    opacity:1;pointer-events:auto;
+  }
+  /* show on hover of adjacent rows */
   table.smeta-tbl tr:hover + tr.tr-insert-zone .tr-insert-btn,
   table.smeta-tbl tr.tr-insert-zone:hover .tr-insert-btn { opacity:1;pointer-events:auto; }
-  .tr-insert-circle {
-    width:18px;height:18px;border-radius:50%;
-    background:#fff;border:1.5px solid #ccc;
-    color:#aaa;font-size:13px;line-height:1;
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;transition:border-color .12s,color .12s,background .12s;
-    flex-shrink:0;
-    position:relative;
+  .tr-insert-line {
+    flex:1;height:1px;background:#4a6fe3;
   }
-  .tr-insert-circle:hover { border-color:#4a6fe3;color:#4a6fe3;background:#f0f4ff; }
-  /* Popup menu */
-  .tr-insert-popup {
-    position:absolute;left:22px;top:50%;transform:translateY(-50%);
-    display:none;flex-direction:column;gap:2px;
-    background:#fff;border:0.5px solid #e0e0e0;
-    border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,.1);
-    padding:4px;z-index:100;min-width:100px;
+  .tr-insert-actions {
+    display:flex;gap:2px;padding:0 8px;
   }
-  .tr-insert-popup.open { display:flex; }
-  .tr-insert-pop-btn {
-    padding:5px 10px;border:none;background:none;
-    font:500 11px/1 Onest,Inter,sans-serif;
-    color:#333;text-align:left;cursor:pointer;
-    border-radius:5px;white-space:nowrap;
+  .tr-insert-act {
+    padding:2px 8px;border-radius:4px;
+    background:#4a6fe3;color:#fff;
+    font-size:10px;font-weight:500;
+    border:none;cursor:pointer;
+    font-family:Onest,Inter,sans-serif;
+    white-space:nowrap;line-height:16px;
+    transition:background .12s;
   }
-  .tr-insert-pop-btn:hover { background:#f0f4ff;color:#4a6fe3; }
-  .tr-insert-pop-btn.section { }
-  .tr-insert-pop-btn.section:hover { background:#f5f0ff;color:#6b4ae3; }
-
-  .tbl-empty-hint {
-    padding:24px 16px;text-align:center;
-    font-size:12px;color:#bbb;
-  }
+  .tr-insert-act:hover { background:#3659c7; }
+  .tr-insert-act.section { background:#6b4ae3; }
+  .tr-insert-act.section:hover { background:#5537c0; }
 
   /* Block 4 — Gantt */
   .gantt-wrap { padding:14px 16px; }
@@ -753,8 +739,23 @@
 <div id="smetaView" style="height:100%;overflow:hidden">
 <div class="smeta-screen">
 
+  <!-- DRAWER: Экспликация -->
+  <div class="expl-drawer" id="explDrawer">
+    <div class="expl-tab" id="explTab">
+      <span class="tab-arrow">▶</span>
+      <span class="tab-text">Экспликация</span>
+    </div>
+    <div class="expl-head">Помещения из чертежа</div>
+    <div class="expl-col-head">
+      <span>Помещение</span><span>Пол м²</span><span>Стены м²</span><span>Пер. м</span>
+    </div>
+    <div class="expl-body" id="explBody">
+      <div class="expl-empty">Нет данных.<br>Создайте план на вкладке Чертёж.</div>
+    </div>
+  </div>
+
   <!-- MAIN -->
-  <div class="smeta-main" id="smetaMain" style="margin-left:0">
+  <div class="smeta-main" id="smetaMain">
 
     <!-- Top bar -->
     <div class="smeta-topbar">
@@ -766,34 +767,15 @@
       <button class="smeta-btn primary" onclick="window._smetaModule.generatePDF()">Сформировать КП →</button>
     </div>
 
-    <!-- Scroll area with blocks -->\n    <div class="smeta-scroll">
-
-      <!-- BLOCK: Экспликация (помещения из чертежа) -->
-      <div class="scard" id="explScard">
-        <div class="scard-head" data-collapse="1">
-          <div class="scard-num" style="background:#888">Э</div>
-          <div class="scard-label">Экспликация помещений</div>
-          <div class="scard-meta" id="explCountMeta"></div>
-          <div class="scard-arrow">▾</div>
-        </div>
-        <div class="scard-body">
-          <div style="padding:8px 0">
-            <div style="display:grid;grid-template-columns:1fr 56px 56px 56px;padding:4px 16px;font-size:10px;color:#aaa;font-weight:500;border-bottom:0.5px solid #ececec">
-              <span>Помещение</span><span style="text-align:right">Пол м²</span><span style="text-align:right">Стены м²</span><span style="text-align:right">Пер. м</span>
-            </div>
-            <div id="explBody">
-              <div class="expl-empty" style="padding:16px;font-size:12px;color:#bbb;text-align:center">Нет данных — создайте план на вкладке Чертёж</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <!-- Scroll area with 5 blocks -->
+    <div class="smeta-scroll">
 
       <!-- BLOCK 1: Объект -->
       <div class="scard obj-scard">
         <div class="obj-new-layout">
           <div class="obj-new-center">
             <div class="obj-new-lbl">Объект</div>
-            <input class="obj-new-address" id="hdrAddress" placeholder="Введите адрес объекта…">
+            <input class="obj-new-address" id="hdrAddress" placeholder="Адрес объекта">
           </div>
           <div class="obj-new-right">
             <div class="obj-meta-cell">
