@@ -143,10 +143,10 @@ export function importRoomsFromPlanner(rooms) {
 function _renderExpl() {
   const body = document.getElementById('explBody');
   if (!body) return;
-  const meta = document.getElementById('explCountMeta');
+  const badge = document.getElementById('cornerExplBadge');
   if (!_rooms.length) {
-    body.innerHTML = '<div class="expl-empty" style="padding:16px;font-size:12px;color:#bbb;text-align:center">Нет данных — создайте план на вкладке Чертёж</div>';
-    if (meta) meta.textContent = '';
+    body.innerHTML = '<div style="padding:16px;font-size:12px;color:#bbb;text-align:center">Нет данных — создайте план на вкладке Чертёж</div>';
+    if (badge) badge.textContent = '0';
     return;
   }
   let tf = 0, tw = 0, tp = 0;
@@ -166,7 +166,7 @@ function _renderExpl() {
     <span style="text-align:right">${tp.toFixed(1)}</span>
   </div>`;
   body.innerHTML = html;
-  if (meta) meta.textContent = _rooms.length + ' помещений';
+  if (badge) badge.textContent = _rooms.length;
   _updateHeader();
 }
 
@@ -388,8 +388,6 @@ function _renderSmrTable() {
     _initInsertZones(tbody, 'smr');
     return;
   }
-
-  _smrRows.forEach((r, i) => {
     tbody.appendChild(makeInsertZone(i));
 
     const tr = document.createElement('tr');
@@ -582,8 +580,6 @@ function _renderMatTable() {
     _initInsertZones(tbody, 'mat');
     return;
   }
-
-  _matRows.forEach((r, i) => {
     tbody.appendChild(makeInsertZone(i));
 
     const tr = document.createElement('tr');
@@ -1056,28 +1052,6 @@ function _initDaysSlider() {
   });
 }
 
-// ── FILE DROP ZONES ───────────────────────────────────────────────
-
-function _initDropZones() {
-  [['smrDropZone', 'smrFileInput'], ['matDropZone', 'matFileInput']].forEach(([zoneId, inputId]) => {
-    const zone  = document.getElementById(zoneId);
-    const input = document.getElementById(inputId);
-    if (!zone || !input) return;
-    zone.addEventListener('click', () => input.click());
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', e => {
-      e.preventDefault();
-      zone.classList.remove('drag-over');
-      const f = e.dataTransfer.files[0];
-      if (!f) return;
-      const fakeEvent = { target: { files: [f] } };
-      if (zoneId === 'smrDropZone') handleSmr(fakeEvent);
-      else handleMat(fakeEvent);
-    });
-  });
-}
-
 // ── PDF (preserved, reads from new state) ────────────────────────
 
 export function fmtForKp(v) { return fmt(v); }
@@ -1127,6 +1101,24 @@ export async function generatePDF() {
     a.download = `Смета_${on}.pdf`; a.click();
   } catch (e2) { alert('Ошибка генерации PDF: ' + e2.message); }
   finally { btns.forEach(b => { b.textContent = 'Сформировать PDF →'; b.disabled = false; }); }
+}
+
+// ── CORNER EXPL TOGGLE ───────────────────────────────────────────
+
+let _cornerExplOpen = false;
+
+export function toggleCornerExpl() {
+  _cornerExplOpen = !_cornerExplOpen;
+  const panel = document.getElementById('cornerExplPanel');
+  const arrow = document.getElementById('cornerExplArrow');
+  if (!panel) return;
+  if (_cornerExplOpen) {
+    panel.classList.add('open');
+    if (arrow) { arrow.style.transform = 'rotate(180deg)'; }
+  } else {
+    panel.classList.remove('open');
+    if (arrow) { arrow.style.transform = 'rotate(0deg)'; }
+  }
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
