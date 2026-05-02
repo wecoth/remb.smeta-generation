@@ -115,13 +115,11 @@ function smartParse(json) {
 // ── STATE ─────────────────────────────────────────────────────────
 
 // Stages (production)
-let _stages = [
-  { id: 's1', name: 'Демонтаж',   color: '#e07b39', pct: 0,  w: 10 },
-  { id: 's2', name: 'Черновые',   color: '#9b6dda', pct: 10, w: 25 },
-  { id: 's3', name: 'Инженерка',  color: '#5b8dd9', pct: 35, w: 25 },
-  { id: 's4', name: 'Чистовые',   color: '#4aaa6f', pct: 60, w: 30 },
-  { id: 's5', name: 'Финиш',      color: '#da6d8a', pct: 90, w: 10 },
-];
+let _stages = []; // заполняется из колонки «Этап» в СМР или вручную в Ганtt
+const STAGE_COLORS = ['#e07b39','#9b6dda','#5b8dd9','#4aaa6f','#da6d8a','#6da8b8','#a8b85b','#b85b6d'];
+let _stageCounter = 0;
+function _newStageId() { return 's' + (++_stageCounter); }
+function _nextColor() { return STAGE_COLORS[(_stageCounter - 1) % STAGE_COLORS.length]; }
 
 // Smeta rows
 let _smrRows = [];
@@ -207,24 +205,14 @@ export function handleSmr(e) {
 
 export function initSmrManual() {
   _smrRows = [];
-  _smrRows.push({ name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false });
+  _smrRows.push({ name: 'Новый раздел', isSection: true });
+  _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', stage: '', isSection: false });
   _renderSmrTable();
-  _showSmrTable();
+  _updateTotals();
 }
 
-function _showSmrTable() {
-  const zone = document.getElementById('smrDropZone');
-  const wrap = document.getElementById('smrTableWrap');
-  if (zone) zone.style.display = 'none';
-  if (wrap) wrap.style.display = '';
-}
-
-function _showSmrDrop() {
-  const zone = document.getElementById('smrDropZone');
-  const wrap = document.getElementById('smrTableWrap');
-  if (zone) zone.style.display = '';
-  if (wrap) wrap.style.display = 'none';
-}
+function _showSmrTable() { /* table always visible */ }
+function _showSmrDrop()  { /* no drop zone */ }
 
 function _renderSmrTable() {
   const tbody = document.getElementById('smrTbody');
@@ -337,24 +325,14 @@ export function handleMat(e) {
 
 export function initMatManual() {
   _matRows = [];
-  _matRows.push({ name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false });
+  _matRows.push({ name: 'Новый раздел', isSection: true });
+  _matRows.push({ name: '', unit: 'шт', qty: '', price: '', total: 0, note: '', isSection: false });
   _renderMatTable();
-  _showMatTable();
+  _updateTotals();
 }
 
-function _showMatTable() {
-  const zone = document.getElementById('matDropZone');
-  const wrap = document.getElementById('matTableWrap');
-  if (zone) zone.style.display = 'none';
-  if (wrap) wrap.style.display = '';
-}
-
-function _showMatDrop() {
-  const zone = document.getElementById('matDropZone');
-  const wrap = document.getElementById('matTableWrap');
-  if (zone) zone.style.display = '';
-  if (wrap) wrap.style.display = 'none';
-}
+function _showMatTable() { /* table always visible */ }
+function _showMatDrop()  { /* no drop zone */ }
 
 function _renderMatTable() {
   const tbody = document.getElementById('matTbody');
@@ -443,62 +421,111 @@ export function getMatTotal() {
 // ── GANTT ─────────────────────────────────────────────────────────
 
 let _totalDays = 60;
-let _dragging  = null; // { idx, edge:'left'|'right', startX, startPct, startW }
+let _dragging  = null; // { idx, type:'bar'|'left'|'right', startX, origPct, origW, trackW }
 
 function _renderGantt() {
   const wrap = document.getElementById('ganttBars');
   if (!wrap) return;
-  wrap.innerHTML = '';
 
+  if (!_stages.length) {
+    wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Этапы появятся когда вы добавите строки в смету и укажете им этапы</div>';
+    _renderGanttRuler();
+    return;
+  }
+
+  wrap.innerHTML = '';
   _stages.forEach((s, idx) => {
-    const row = document.createElement('div');
+    const days = Math.max(1, Math.round(_totalDays * s.w / 100));
+    const row  = document.createElement('div');
     row.className = 'gantt-row';
 
-    const labelDays = Math.round(_totalDays * s.w / 100);
+    // Tick marks inside bar
+    const ticksHtml = Array.from({length: days + 1}, (_, ti) => {
+      const leftPct = (ti / days * 100).toFixed(2);
+      return `<div class="gantt-tick-mark" style="left:${leftPct}%"></div>`;
+    }).join('');
 
     row.innerHTML = `
       <div class="gantt-row-label">
         <span class="gantt-stage-dot" style="background:${s.color}"></span>
         <span class="gantt-stage-name" contenteditable="true" data-idx="${idx}">${esc(s.name)}</span>
-        <span class="gantt-stage-days">${labelDays} дн.</span>
+        <span class="gantt-stage-days">${days} дн.</span>
       </div>
       <div class="gantt-track-wrap">
         <div class="gantt-track">
           <div class="gantt-bar" data-idx="${idx}" style="left:${s.pct}%;width:${s.w}%;background:${s.color}">
             <div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>
-            <span class="gantt-bar-label">${labelDays} дн.</span>
+            <div class="gantt-ticks">${ticksHtml}</div>
+            <span class="gantt-bar-label">${days} дн.</span>
             <div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>
           </div>
         </div>
       </div>`;
     wrap.appendChild(row);
 
-    // Editable stage name
+    // Editable name
     const nameEl = row.querySelector('.gantt-stage-name');
-    nameEl.addEventListener('blur', () => { _stages[idx].name = nameEl.textContent.trim(); _renderPayments(); });
+    nameEl.addEventListener('blur', () => {
+      _stages[idx].name = nameEl.textContent.trim();
+      _renderPayments();
+    });
 
-    // Handle drag
+    // Left/right handles
     row.querySelectorAll('.gantt-handle').forEach(h => {
       h.addEventListener('mousedown', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        const track = h.closest('.gantt-track');
+        e.preventDefault(); e.stopPropagation();
+        const track  = h.closest('.gantt-track');
         const trackW = track.getBoundingClientRect().width;
-        _dragging = { idx, edge: h.dataset.edge, startX: e.clientX, startPct: s.pct, startW: s.w, trackW };
+        _dragging = { idx, type: h.dataset.edge, startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
         document.body.style.cursor = 'ew-resize';
         document.body.style.userSelect = 'none';
       });
+    });
+
+    // Drag whole bar (mousedown on bar itself, not handles)
+    const bar = row.querySelector('.gantt-bar');
+    bar.addEventListener('mousedown', e => {
+      if (e.target.classList.contains('gantt-handle')) return;
+      e.preventDefault();
+      const track  = bar.closest('.gantt-track');
+      const trackW = track.getBoundingClientRect().width;
+      _dragging = { idx, type: 'bar', startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
     });
   });
 
   _renderGanttRuler();
 }
 
+function _updateGanttBarDOM(idx) {
+  const s = _stages[idx];
+  const bar = document.querySelector(`.gantt-bar[data-idx="${idx}"]`);
+  if (!bar) return;
+  bar.style.left  = s.pct + '%';
+  bar.style.width = s.w   + '%';
+  const days = Math.max(1, Math.round(_totalDays * s.w / 100));
+  const lbl = bar.querySelector('.gantt-bar-label');
+  if (lbl) lbl.textContent = days + ' дн.';
+  // update tick marks
+  const ticks = bar.querySelector('.gantt-ticks');
+  if (ticks) {
+    ticks.innerHTML = Array.from({length: days + 1}, (_, ti) =>
+      `<div class="gantt-tick-mark" style="left:${(ti / days * 100).toFixed(2)}%"></div>`
+    ).join('');
+  }
+  const rows = document.querySelectorAll('.gantt-row');
+  if (rows[idx]) {
+    const dEl = rows[idx].querySelector('.gantt-stage-days');
+    if (dEl) dEl.textContent = days + ' дн.';
+  }
+}
+
 function _renderGanttRuler() {
   const ruler = document.getElementById('ganttRuler');
   if (!ruler) return;
   ruler.innerHTML = '';
-  const ticks = 6;
+  const ticks = Math.min(_totalDays, 12);
   for (let i = 0; i <= ticks; i++) {
     const t = document.createElement('span');
     t.className = 'gantt-tick';
@@ -511,37 +538,22 @@ function _renderGanttRuler() {
 function _initGanttDrag() {
   document.addEventListener('mousemove', e => {
     if (!_dragging) return;
-    const { idx, edge, startX, startPct, startW, trackW } = _dragging;
+    const { idx, type, startX, origPct, origW, trackW } = _dragging;
     if (!trackW) return;
-    const dx = e.clientX - startX;
+    const dx   = e.clientX - startX;
     const dpct = dx / trackW * 100;
-    const s = _stages[idx];
+    const s    = _stages[idx];
 
-    if (edge === 'left') {
-      const newPct = Math.max(0, Math.min(startPct + dpct, startPct + startW - 2));
-      const newW   = startW - (newPct - startPct);
-      if (newW < 2) return;
+    if (type === 'bar') {
+      s.pct = Math.max(0, Math.min(origPct + dpct, 100 - origW));
+    } else if (type === 'left') {
+      const newPct = Math.max(0, Math.min(origPct + dpct, origPct + origW - 2));
+      s.w   = origW - (newPct - origPct);
       s.pct = newPct;
-      s.w   = newW;
     } else {
-      const newW = Math.max(2, Math.min(startW + dpct, 100 - startPct));
-      s.w = newW;
+      s.w = Math.max(2, Math.min(origW + dpct, 100 - origPct));
     }
-
-    // Update DOM without full re-render for smooth drag
-    const bar = document.querySelector(`.gantt-bar[data-idx="${idx}"]`);
-    if (bar) {
-      bar.style.left  = s.pct + '%';
-      bar.style.width = s.w   + '%';
-      const days = Math.round(_totalDays * s.w / 100);
-      const lbl = bar.querySelector('.gantt-bar-label');
-      if (lbl) lbl.textContent = days + ' дн.';
-    }
-    const rowLabel = document.querySelectorAll('.gantt-row')[idx];
-    if (rowLabel) {
-      const daysEl = rowLabel.querySelector('.gantt-stage-days');
-      if (daysEl) daysEl.textContent = Math.round(_totalDays * s.w / 100) + ' дн.';
-    }
+    _updateGanttBarDOM(idx);
   });
 
   document.addEventListener('mouseup', () => {
@@ -553,89 +565,150 @@ function _initGanttDrag() {
   });
 }
 
+// Public: add a new stage (called from stage select in smr table)
+export function ensureStage(name) {
+  const existing = _stages.find(s => s.name === name);
+  if (existing) return existing.id;
+  const id    = _newStageId();
+  const color = _nextColor();
+  // place after last stage, width 10%
+  const lastEnd = _stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
+  _stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
+  _renderGantt();
+  _renderPayments();
+  return id;
+}
+
 // ── PAYMENTS ─────────────────────────────────────────────────────
 
-// Payment groups: array of { name, stageIds[] }
-let _payments = [
-  { name: 'Аванс', stageIds: ['s1'] },
-  { name: '1-й платёж', stageIds: ['s2', 's3'] },
-  { name: 'Финальный расчёт', stageIds: ['s4', 's5'] },
-];
+// Payment groups: array of { id, name, stageIds[] }
+let _payments = [];
+let _payCounter = 0;
 
 function _renderPayments() {
   const wrap = document.getElementById('paymentsWrap');
   if (!wrap) return;
-  const smrTotal = getSmrTotal();
-  const matTotal = getMatTotal();
-  const grandTotal = smrTotal + matTotal;
-
-  // Compute stage → pct of total work (by days share)
-  const stagePct = {};
-  _stages.forEach(s => { stagePct[s.id] = s.w / 100; });
+  const grandTotal = getSmrTotal() + getMatTotal();
 
   wrap.innerHTML = '';
+
+  // Two-column layout: left = payment slots, right = stage pool
+  const layout = document.createElement('div');
+  layout.className = 'pay-layout';
+
+  // LEFT: payment slots
+  const leftCol = document.createElement('div');
+  leftCol.className = 'pay-left';
+
   _payments.forEach((p, pi) => {
+    // Sum stages by their day share
     const shareDays = p.stageIds.reduce((s, id) => {
       const st = _stages.find(x => x.id === id);
       return s + (st ? st.w : 0);
     }, 0);
-    const sharePct = shareDays; // as % of 100 total days
-    const amount = grandTotal > 0 ? Math.round(grandTotal * sharePct / 100) : 0;
-
-    const tags = p.stageIds.map(id => {
-      const st = _stages.find(x => x.id === id);
-      return st ? `<span class="pay-tag" style="border-color:${st.color};color:${st.color}">${esc(st.name)}</span>` : '';
-    }).join('');
+    const totalW = _stages.reduce((s, x) => s + x.w, 0) || 100;
+    const amount = grandTotal > 0 ? Math.round(grandTotal * shareDays / totalW) : 0;
+    const pct    = Math.round(shareDays / totalW * 100);
 
     const card = document.createElement('div');
-    card.className = 'pay-card';
+    card.className = 'pay-slot';
+    card.dataset.pi = pi;
+
+    const tagsHtml = p.stageIds.map(id => {
+      const st = _stages.find(x => x.id === id);
+      if (!st) return '';
+      return `<span class="pay-tag" style="border-color:${st.color};color:${st.color}" data-sid="${id}" data-pi="${pi}">
+        ${esc(st.name)}
+        <span class="pay-tag-x" data-sid="${id}" data-pi="${pi}">×</span>
+      </span>`;
+    }).join('');
+
     card.innerHTML = `
-      <div class="pay-card-head">
-        <input class="pay-card-name" value="${esc(p.name)}" data-pi="${pi}">
-        <button class="pay-card-del" data-pi="${pi}" title="Удалить платёж">×</button>
+      <div class="pay-slot-head">
+        <input class="pay-slot-name" value="${esc(p.name)}" data-pi="${pi}">
+        <button class="pay-slot-del" data-pi="${pi}">×</button>
       </div>
-      <div class="pay-tags">${tags}</div>
-      <div class="pay-amount">${fmtInt(amount)} ₽</div>
-      <div class="pay-pct">${Math.round(sharePct)}% от суммы</div>
-      <div class="pay-add-stage">
-        <select class="pay-stage-sel" data-pi="${pi}">
-          <option value="">+ Добавить этап</option>
-          ${_stages.filter(s => !p.stageIds.includes(s.id)).map(s =>
-            `<option value="${s.id}">${esc(s.name)}</option>`
-          ).join('')}
-        </select>
-      </div>`;
-    wrap.appendChild(card);
+      <div class="pay-slot-tags" data-pi="${pi}">${tagsHtml || '<span class="pay-slot-empty">Перетащите этапы сюда</span>'}</div>
+      <div class="pay-slot-total">${fmtInt(amount)} ₽ <span class="pay-slot-pct">${pct}%</span></div>`;
+
+    // Drop target
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const sid = e.dataTransfer.getData('stageId');
+      if (sid && !p.stageIds.includes(sid)) {
+        p.stageIds.push(sid);
+        _renderPayments();
+      }
+    });
+    leftCol.appendChild(card);
   });
 
   // Add payment button
   const addBtn = document.createElement('button');
-  addBtn.className = 'pay-add-btn';
-  addBtn.textContent = '+ Платёж';
+  addBtn.className = 'pay-add-slot-btn';
+  addBtn.textContent = '+ Добавить этап оплаты';
   addBtn.addEventListener('click', () => {
-    _payments.push({ name: 'Новый платёж', stageIds: [] });
+    _payments.push({ id: 'p' + (++_payCounter), name: 'Платёж ' + _payments.length, stageIds: [] });
     _renderPayments();
   });
-  wrap.appendChild(addBtn);
+  leftCol.appendChild(addBtn);
+
+  // RIGHT: stage pool
+  const rightCol = document.createElement('div');
+  rightCol.className = 'pay-right';
+  const rightHead = document.createElement('div');
+  rightHead.className = 'pay-right-head';
+  rightHead.textContent = 'Этапы работ';
+  rightCol.appendChild(rightHead);
+
+  if (!_stages.length) {
+    const empty = document.createElement('div');
+    empty.className = 'pay-right-empty';
+    empty.textContent = 'Добавьте этапы в Ганtt';
+    rightCol.appendChild(empty);
+  } else {
+    _stages.forEach(s => {
+      const stageDays = Math.max(1, Math.round(_totalDays * s.w / 100));
+      const totalW    = _stages.reduce((x, y) => x + y.w, 0) || 100;
+      const stageAmt  = grandTotal > 0 ? Math.round(grandTotal * s.w / totalW) : 0;
+
+      const pill = document.createElement('div');
+      pill.className = 'pay-stage-pill';
+      pill.draggable = true;
+      pill.dataset.sid = s.id;
+      pill.innerHTML = `<span class="pay-stage-pill-dot" style="background:${s.color}"></span>
+        <span class="pay-stage-pill-name">${esc(s.name)}</span>
+        <span class="pay-stage-pill-info">${stageDays} дн. · ${fmtInt(stageAmt)} ₽</span>`;
+      pill.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('stageId', s.id);
+        pill.classList.add('dragging');
+      });
+      pill.addEventListener('dragend', () => pill.classList.remove('dragging'));
+      rightCol.appendChild(pill);
+    });
+  }
+
+  layout.appendChild(leftCol);
+  layout.appendChild(rightCol);
+  wrap.appendChild(layout);
 
   // Bind events
-  wrap.querySelectorAll('.pay-card-name').forEach(inp => {
+  wrap.querySelectorAll('.pay-slot-name').forEach(inp => {
     inp.addEventListener('input', e => { _payments[+e.target.dataset.pi].name = e.target.value; });
   });
-  wrap.querySelectorAll('.pay-card-del').forEach(btn => {
-    btn.addEventListener('click', e => {
-      _payments.splice(+e.target.dataset.pi, 1);
-      _renderPayments();
-    });
+  wrap.querySelectorAll('.pay-slot-del').forEach(btn => {
+    btn.addEventListener('click', e => { _payments.splice(+e.target.dataset.pi, 1); _renderPayments(); });
   });
-  wrap.querySelectorAll('.pay-stage-sel').forEach(sel => {
-    sel.addEventListener('change', e => {
-      const pi = +e.target.dataset.pi;
-      const val = e.target.value;
-      if (val && !_payments[pi].stageIds.includes(val)) {
-        _payments[pi].stageIds.push(val);
-        _renderPayments();
-      }
+  wrap.querySelectorAll('.pay-tag-x').forEach(x => {
+    x.addEventListener('click', e => {
+      e.stopPropagation();
+      const pi  = +e.target.dataset.pi;
+      const sid = e.target.dataset.sid;
+      _payments[pi].stageIds = _payments[pi].stageIds.filter(id => id !== sid);
+      _renderPayments();
     });
   });
 }
@@ -763,9 +836,11 @@ export function initSmeta() {
   _initDrawer();
   _initCollapse();
   _initDaysSlider();
-  _initDropZones();
   _initGanttDrag();
   _renderExpl();
+  // Init tables with empty section + row
+  initSmrManual();
+  initMatManual();
   _renderGantt();
   _renderPayments();
   _updateTotals();
