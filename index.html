@@ -140,8 +140,17 @@
   /* Section cards */
   .scard {
     background:#fff;border:0.5px solid #e8e8e8;
-    border-radius:10px;overflow:hidden;
+    border-radius:10px;overflow:visible;
   }
+  /* Убираем стрелки у number inputs в таблицах */
+  table.smeta-tbl input[type=number]::-webkit-inner-spin-button,
+  table.smeta-tbl input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none;margin:0; }
+  table.smeta-tbl input[type=number] { -moz-appearance:textfield; }
+  /* Вертикальные разделители между колонками */
+  table.smeta-tbl td { border-right:0.5px solid #f0f0f0; }
+  table.smeta-tbl td:last-child { border-right:none; }
+  table.smeta-tbl th { border-right:0.5px solid #e8e8e8; }
+  table.smeta-tbl th:last-child { border-right:none; }
   .scard-head {
     padding:10px 16px;display:flex;align-items:center;gap:8px;
     border-bottom:0.5px solid #ececec;cursor:pointer;user-select:none;
