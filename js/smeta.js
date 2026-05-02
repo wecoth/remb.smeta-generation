@@ -143,27 +143,30 @@ export function importRoomsFromPlanner(rooms) {
 function _renderExpl() {
   const body = document.getElementById('explBody');
   if (!body) return;
+  const meta = document.getElementById('explCountMeta');
   if (!_rooms.length) {
-    body.innerHTML = '<div class="expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>';
+    body.innerHTML = '<div class="expl-empty" style="padding:16px;font-size:12px;color:#bbb;text-align:center">Нет данных — создайте план на вкладке Чертёж</div>';
+    if (meta) meta.textContent = '';
     return;
   }
   let tf = 0, tw = 0, tp = 0;
   let html = _rooms.map(r => {
     tf += r.floor; tw += r.walls; tp += r.perim;
-    return `<div class="expl-row">
-      <span class="expl-name">${esc(r.name)}</span>
-      <span class="expl-num">${r.floor.toFixed(1)}</span>
-      <span class="expl-num">${r.walls.toFixed(1)}</span>
-      <span class="expl-num">${r.perim.toFixed(1)}</span>
+    return `<div style="display:grid;grid-template-columns:1fr 56px 56px 56px;padding:5px 16px;font-size:12px;border-bottom:0.5px solid #f4f4f4">
+      <span style="color:#333">${esc(r.name)}</span>
+      <span style="text-align:right;color:#555">${r.floor.toFixed(1)}</span>
+      <span style="text-align:right;color:#555">${r.walls.toFixed(1)}</span>
+      <span style="text-align:right;color:#555">${r.perim.toFixed(1)}</span>
     </div>`;
   }).join('');
-  html += `<div class="expl-row expl-total">
-    <span class="expl-name">Итого</span>
-    <span class="expl-num">${tf.toFixed(1)}</span>
-    <span class="expl-num">${tw.toFixed(1)}</span>
-    <span class="expl-num">${tp.toFixed(1)}</span>
+  html += `<div style="display:grid;grid-template-columns:1fr 56px 56px 56px;padding:5px 16px;font-size:12px;font-weight:600;color:#1a1a2e;border-top:0.5px solid #ddd;background:#fafafa">
+    <span>Итого</span>
+    <span style="text-align:right">${tf.toFixed(1)}</span>
+    <span style="text-align:right">${tw.toFixed(1)}</span>
+    <span style="text-align:right">${tp.toFixed(1)}</span>
   </div>`;
   body.innerHTML = html;
+  if (meta) meta.textContent = _rooms.length + ' помещений';
   _updateHeader();
 }
 
@@ -244,47 +247,78 @@ function _initRowDnd(tbody, rows, onReorder) {
 
 
 // ── INSERT ZONES ──────────────────────────────────────────────────
+let _activeInsertPopup = null;
+
+function _closeAllInsertPopups() {
+  if (_activeInsertPopup) {
+    _activeInsertPopup.classList.remove('open');
+    _activeInsertPopup = null;
+  }
+}
+
+// Close popup on outside click
+if (!window._insertPopupListenerAdded) {
+  window._insertPopupListenerAdded = true;
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.tr-insert-circle')) _closeAllInsertPopups();
+  });
+}
+
+function _doInsert(beforeIdx, isSection, table) {
+  const newRow = isSection
+    ? { name: '', isSection: true }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+
+  if (table === 'smr') {
+    _smrRows.splice(beforeIdx, 0, newRow);
+    _renderSmrTable();
+    _updateTotals();
+    if (isSection) _syncSectionsToGantt();
+    setTimeout(() => {
+      const tbody2 = document.getElementById('smrTbody');
+      for (const tr of (tbody2?.querySelectorAll('tr') || [])) {
+        if (tr.classList.contains('tr-insert-zone')) continue;
+        if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
+      }
+    }, 30);
+  } else {
+    _matRows.splice(beforeIdx, 0, newRow);
+    _renderMatTable();
+    _updateTotals();
+    setTimeout(() => {
+      const tbody2 = document.getElementById('matTbody');
+      for (const tr of (tbody2?.querySelectorAll('tr') || [])) {
+        if (tr.classList.contains('tr-insert-zone')) continue;
+        if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
+      }
+    }, 30);
+  }
+}
+
 function _initInsertZones(tbody, table) {
-  tbody.querySelectorAll('.tr-insert-act').forEach(btn => {
+  // Circle click → toggle popup
+  tbody.querySelectorAll('.tr-insert-circle').forEach(circle => {
+    circle.addEventListener('click', e => {
+      e.stopPropagation();
+      const popup = circle.querySelector('.tr-insert-popup');
+      if (!popup) return;
+      const isOpen = popup.classList.contains('open');
+      _closeAllInsertPopups();
+      if (!isOpen) {
+        popup.classList.add('open');
+        _activeInsertPopup = popup;
+      }
+    });
+  });
+
+  // Popup button click → insert
+  tbody.querySelectorAll('.tr-insert-pop-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      // data-i is the index of the row BEFORE which we insert
+      _closeAllInsertPopups();
       const beforeIdx = +btn.dataset.i;
       const isSection = btn.dataset.section === '1';
-      if (table === 'smr') {
-        const newRow = isSection
-          ? { name: '', isSection: true }
-          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        _smrRows.splice(beforeIdx, 0, newRow);
-        _renderSmrTable();
-        _updateTotals();
-        if (isSection) _syncSectionsToGantt();
-        setTimeout(() => {
-          const tbody2 = document.getElementById('smrTbody');
-          for (const tr of tbody2.querySelectorAll('tr')) {
-            if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) {
-              tr.querySelector('input')?.focus(); break;
-            }
-          }
-        }, 30);
-      } else {
-        const newRow = isSection
-          ? { name: '', isSection: true }
-          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        _matRows.splice(beforeIdx, 0, newRow);
-        _renderMatTable();
-        _updateTotals();
-        setTimeout(() => {
-          const tbody2 = document.getElementById('matTbody');
-          for (const tr of tbody2.querySelectorAll('tr')) {
-            if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) {
-              tr.querySelector('input')?.focus(); break;
-            }
-          }
-        }, 30);
-      }
+      _doInsert(beforeIdx, isSection, table);
     });
   });
 }
@@ -303,8 +337,6 @@ export function handleSmr(e) {
 
 export function initSmrManual() {
   _smrRows = [];
-  _smrRows.push({ name: 'Новый раздел', isSection: true });
-  _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', stage: '', isSection: false });
   _renderSmrTable();
   _updateTotals();
 }
@@ -317,22 +349,46 @@ function _renderSmrTable() {
   if (!tbody) return;
   tbody.innerHTML = '';
   let idx = 0;
-  _smrRows.forEach((r, i) => {
-    // Insert zone BEFORE each row (for inserting above)
+
+  function makeInsertZone(i) {
     const insZone = document.createElement('tr');
     insZone.className = 'tr-insert-zone';
-    const insColspan = 9;
-    insZone.innerHTML = `<td colspan="${insColspan}">
+    insZone.innerHTML = `<td colspan="9">
       <div class="tr-insert-btn">
-        <div class="tr-insert-line"></div>
-        <div class="tr-insert-actions">
-          <button class="tr-insert-act" data-i="${i}" data-table="smr" data-section="0">+ строка</button>
-          <button class="tr-insert-act section" data-i="${i}" data-table="smr" data-section="1">+ раздел</button>
+        <div class="tr-insert-circle" data-i="${i}" data-table="smr">+
+          <div class="tr-insert-popup">
+            <button class="tr-insert-pop-btn" data-i="${i}" data-table="smr" data-section="0">Строка</button>
+            <button class="tr-insert-pop-btn section" data-i="${i}" data-table="smr" data-section="1">Раздел</button>
+          </div>
         </div>
-        <div class="tr-insert-line"></div>
       </div>
     </td>`;
-    tbody.appendChild(insZone);
+    return insZone;
+  }
+
+  // Empty state
+  if (!_smrRows.length) {
+    const emptyZone = document.createElement('tr');
+    emptyZone.className = 'tr-insert-zone';
+    emptyZone.innerHTML = `<td colspan="9">
+      <div style="position:relative">
+        <div class="tbl-empty-hint">Нет позиций — нажмите «+ Строка» или «+ Раздел»</div>
+        <div class="tr-insert-btn" style="opacity:1;pointer-events:auto;top:auto;position:static;justify-content:center;padding:4px 0 12px">
+          <div class="tr-insert-circle" data-i="0" data-table="smr">+
+            <div class="tr-insert-popup">
+              <button class="tr-insert-pop-btn" data-i="0" data-table="smr" data-section="0">Строка</button>
+              <button class="tr-insert-pop-btn section" data-i="0" data-table="smr" data-section="1">Раздел</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </td>`;
+    tbody.appendChild(emptyZone);
+    _bindSmrEvents(tbody);
+    _initInsertZones(tbody, 'smr');
+    return;
+  }
+    tbody.appendChild(makeInsertZone(i));
 
     const tr = document.createElement('tr');
     tr.draggable = true;
@@ -345,7 +401,6 @@ function _renderSmrTable() {
         <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     } else {
       idx++;
-
       tr.innerHTML = `
         <td class="td-drag" title="Перетащить">⠿</td>
         <td class="td-num">${idx}</td>
@@ -354,26 +409,13 @@ function _renderSmrTable() {
         <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
         <td class="td-total">${r.total ? fmtInt(r.total) : ''}</td>
-
         <td><input class="inp-note" value="${esc(r.note || '')}" placeholder="Примечание" data-i="${i}" data-f="note"></td>
         <td><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     }
     tbody.appendChild(tr);
   });
-  // Insert zone after last row
-  const insLast = document.createElement('tr');
-  insLast.className = 'tr-insert-zone';
-  insLast.innerHTML = `<td colspan="9">
-    <div class="tr-insert-btn">
-      <div class="tr-insert-line"></div>
-      <div class="tr-insert-actions">
-        <button class="tr-insert-act" data-i="${_smrRows.length - 1}" data-table="smr" data-section="0">+ строка</button>
-        <button class="tr-insert-act section" data-i="${_smrRows.length - 1}" data-table="smr" data-section="1">+ раздел</button>
-      </div>
-      <div class="tr-insert-line"></div>
-    </div>
-  </td>`;
-  tbody.appendChild(insLast);
+  // Final insert zone after last row
+  tbody.appendChild(makeInsertZone(_smrRows.length));
 
   _bindSmrEvents(tbody);
   _initInsertZones(tbody, 'smr');
@@ -396,8 +438,12 @@ function _bindSmrEvents(tbody) {
         _updateTotals();
       }
       if (f === 'stage') _updateTotals();
-      // If editing a section name, sync to gantt
-      if (f === 'name' && _smrRows[i].isSection) {
+    });
+    // Sync section name to Gantt only on blur (not on every keystroke)
+    inp.addEventListener('blur', e => {
+      const i = +e.target.dataset.i;
+      if (_smrRows[i] && _smrRows[i].isSection) {
+        _smrRows[i].name = e.target.value;
         _syncSectionsToGantt();
       }
     });
@@ -484,8 +530,6 @@ export function handleMat(e) {
 
 export function initMatManual() {
   _matRows = [];
-  _matRows.push({ name: 'Новый раздел', isSection: true });
-  _matRows.push({ name: '', unit: 'шт', qty: '', price: '', total: 0, note: '', isSection: false });
   _renderMatTable();
   _updateTotals();
 }
@@ -498,20 +542,45 @@ function _renderMatTable() {
   if (!tbody) return;
   tbody.innerHTML = '';
   let idx = 0;
-  _matRows.forEach((r, i) => {
+
+  function makeInsertZone(i) {
     const insZone = document.createElement('tr');
     insZone.className = 'tr-insert-zone';
     insZone.innerHTML = `<td colspan="9">
       <div class="tr-insert-btn">
-        <div class="tr-insert-line"></div>
-        <div class="tr-insert-actions">
-          <button class="tr-insert-act" data-i="${i}" data-table="mat" data-section="0">+ строка</button>
-          <button class="tr-insert-act section" data-i="${i}" data-table="mat" data-section="1">+ раздел</button>
+        <div class="tr-insert-circle" data-i="${i}" data-table="mat">+
+          <div class="tr-insert-popup">
+            <button class="tr-insert-pop-btn" data-i="${i}" data-table="mat" data-section="0">Строка</button>
+            <button class="tr-insert-pop-btn section" data-i="${i}" data-table="mat" data-section="1">Раздел</button>
+          </div>
         </div>
-        <div class="tr-insert-line"></div>
       </div>
     </td>`;
-    tbody.appendChild(insZone);
+    return insZone;
+  }
+
+  if (!_matRows.length) {
+    const emptyZone = document.createElement('tr');
+    emptyZone.className = 'tr-insert-zone';
+    emptyZone.innerHTML = `<td colspan="9">
+      <div style="position:relative">
+        <div class="tbl-empty-hint">Нет позиций — нажмите «+ Строка» или «+ Раздел»</div>
+        <div class="tr-insert-btn" style="opacity:1;pointer-events:auto;top:auto;position:static;justify-content:center;padding:4px 0 12px">
+          <div class="tr-insert-circle" data-i="0" data-table="mat">+
+            <div class="tr-insert-popup">
+              <button class="tr-insert-pop-btn" data-i="0" data-table="mat" data-section="0">Строка</button>
+              <button class="tr-insert-pop-btn section" data-i="0" data-table="mat" data-section="1">Раздел</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </td>`;
+    tbody.appendChild(emptyZone);
+    _bindMatEvents(tbody);
+    _initInsertZones(tbody, 'mat');
+    return;
+  }
+    tbody.appendChild(makeInsertZone(i));
 
     const tr = document.createElement('tr');
     tr.draggable = true;
@@ -537,20 +606,7 @@ function _renderMatTable() {
     }
     tbody.appendChild(tr);
   });
-  // Insert zone after last row
-  const insLast = document.createElement('tr');
-  insLast.className = 'tr-insert-zone';
-  insLast.innerHTML = `<td colspan="9">
-    <div class="tr-insert-btn">
-      <div class="tr-insert-line"></div>
-      <div class="tr-insert-actions">
-        <button class="tr-insert-act" data-i="${_matRows.length - 1}" data-table="mat" data-section="0">+ строка</button>
-        <button class="tr-insert-act section" data-i="${_matRows.length - 1}" data-table="mat" data-section="1">+ раздел</button>
-      </div>
-      <div class="tr-insert-line"></div>
-    </div>
-  </td>`;
-  tbody.appendChild(insLast);
+  tbody.appendChild(makeInsertZone(_matRows.length));
 
   _bindMatEvents(tbody);
   _initInsertZones(tbody, 'mat');
@@ -632,12 +688,15 @@ export function getMatTotal() {
 }
 
 // ── SECTION → GANTT SYNC ──────────────────────────────────────────
-// When sections in SMR change, sync them as Gantt stages
+// Sync SMR sections to Gantt stages (called on section name blur)
 function _syncSectionsToGantt() {
-  const sections = _smrRows.filter(r => r.isSection && r.name && r.name.trim());
-  sections.forEach(sec => {
-    const name = sec.name.trim();
-    if (!name) return;
+  // Collect current section names (non-empty)
+  const sections = _smrRows
+    .filter(r => r.isSection && r.name && r.name.trim())
+    .map(r => r.name.trim());
+
+  // Add stages for new sections not yet in gantt
+  sections.forEach(name => {
     const existing = _stages.find(s => s.name === name);
     if (!existing) {
       const id    = _newStageId();
@@ -646,6 +705,10 @@ function _syncSectionsToGantt() {
       _stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
     }
   });
+
+  // Remove stages whose section name no longer exists in SMR
+  _stages = _stages.filter(s => sections.includes(s.name));
+
   _renderGantt();
   _renderPayments();
 }
@@ -1065,7 +1128,6 @@ export async function generatePDF() {
 // ── INIT ──────────────────────────────────────────────────────────
 
 export function initSmeta() {
-  _initDrawer();
   _initCollapse();
   _initDaysSlider();
   _initGanttDrag();
