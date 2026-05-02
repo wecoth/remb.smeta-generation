@@ -296,6 +296,9 @@
   table.smeta-tbl tr.row-section input.inp-section {
     font-weight:600;font-size:11px;color:#555;letter-spacing:.3px;
   }
+  table.smeta-tbl tr.row-section input.inp-section::placeholder {
+    font-weight:400;font-style:italic;color:#bbb;letter-spacing:0;
+  }
 
   .tbl-footer {
     display:flex;justify-content:space-between;align-items:center;
@@ -809,7 +812,7 @@
         <div class="obj-new-layout">
           <div class="obj-new-center">
             <div class="obj-new-lbl">Объект</div>
-            <input class="obj-new-address" id="hdrAddress" placeholder="Адрес объекта">
+            <input class="obj-new-address" id="hdrAddress" placeholder="Введите адрес объекта, напр. ул. Ленина, 12, кв. 34">
           </div>
           <div class="obj-new-right">
             <div class="obj-meta-cell">
