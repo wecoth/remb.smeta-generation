@@ -13,7 +13,15 @@ import { toScreen, toWorld, getGuideAxes, getGuideLineScreenEndpoints, setViewpo
 
 let _canvas, _ctx, _hatchPat = null;
 let _getScale = () => 0.12;
-let _fontScale = 1; // множитель шрифта для offscreen рендера (PDF)
+let _fontScale = 1;
+
+// ── Режим рендера: 'draw' | 'finish' | 'unroll' ──────────────────
+let _plannerMode = 'draw';
+export function setPlannerMode(mode) { _plannerMode = mode; }
+
+// Для развёртки — какая комната выбрана
+let _unrollRoomId = null;
+export function setUnrollRoom(roomId) { _unrollRoomId = roomId; }
 
 export function initRenderer(canvas, ctx, getScaleFn) {
   _canvas = canvas; _ctx = ctx;
@@ -207,58 +215,7 @@ export function hitTestWallResizeHandle(sp, tool, selectedItems) {
 
 // ── MAIN REDRAW ───────────────────────────────────────────────────
 
-export function redraw(ps) {
-  if (!_ctx || !_canvas) return;
-  _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-  drawGrid();
-  drawRoomFills(ps.selectedItems);
-  drawWalls(ps.selectedItems);
-  drawWallJoints(ps.selectedItems);
-  drawDividers(ps.selectedItems);
-  drawMeasures(ps.selectedItems);   // ← добавить
-  drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  drawRoomDimensions();
-  drawOpeningLeaders(exteriorWallIds);
-  drawSelectedHandles(ps.tool, ps.selectedItems, ps.wallResizeState);
-  // Stage 1: базовая линия для выделенных стен (жёлтый пунктир)
-  for (const item of ps.selectedItems) {
-    if (item.type !== 'wall') continue;
-    const wall = appState.walls.find(w => w.id === item.id);
-    if (wall) drawBaseLine(wall);
-  }
-  if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.tool === 'wall' && ps.trackingLines?.length) {
-    drawTrackingLines(ps.activeTrackingPoint, ps.trackingLines);
-  }
-  if (ps.tool === 'wall' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
-  if (ps.tool === 'divider' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempDivider(ps);
-  if (ps.tool === 'measure' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempMeasure(ps);
-  if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentGuideLine)  drawGuideLine(ps.currentGuideLine);
-  if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentObjectSnap) drawCornerHotspots(ps.currentObjectSnap);
-  if ((ps.tool === 'wall' || ps.tool === 'measure' || ps.tool === 'divider') && ps.currentObjectSnap) drawObjectSnap(ps.currentObjectSnap);
-  drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
-  // Подсветка будущей комнаты (RoomTool)
-if (ps.roomToolHover) {
-  _ctx.save();
-  _ctx.fillStyle = 'rgba(74,111,227,0.15)';
-  _ctx.strokeStyle = 'rgba(74,111,227,0.65)';
-  _ctx.lineWidth = 2;
-  _ctx.setLineDash([]);
-  _ctx.beginPath();
-  const first = toScreen(ps.roomToolHover[0].x, ps.roomToolHover[0].y);
-  _ctx.moveTo(first.x, first.y);
-  for (let i = 1; i < ps.roomToolHover.length; i++) {
-    const p = toScreen(ps.roomToolHover[i].x, ps.roomToolHover[i].y);
-    _ctx.lineTo(p.x, p.y);
-  }
-  _ctx.closePath();
-  _ctx.fill();
-  _ctx.stroke();
-  _ctx.restore();
-}
-  drawCursorGhost(ps);
-}
+
 
 function drawHoverHighlight(hoverItem, selectedItems, dh, ds) {
   _ctx.save();
@@ -1714,6 +1671,432 @@ function drawCursorGhost(ps) {
   _ctx.strokeStyle = tool === 'window' ? DRAW_COLORS.windowStroke : DRAW_COLORS.doorStroke; _ctx.stroke();
   _ctx.fillStyle = DRAW_COLORS.roomLabel; _ctx.font = '600 10px Merriweather, Onest, Inter, sans-serif'; _ctx.textAlign = 'left'; _ctx.textBaseline = 'top';
   _ctx.fillText(`${w} × ${h} мм`, 0, gd + 8); _ctx.restore();
+}
+
+
+
+// ══════════════════════════════════════════════════════════════════
+// РЕЖИМ ОТДЕЛКИ — монохром + плюсики на месте размерных меток
+// ══════════════════════════════════════════════════════════════════
+
+function redrawFinish(ps) {
+  drawGridFinish();
+
+  for (const r of appState.rooms) {
+    if (!r.polygon || r.polygon.length < 3) continue;
+    _ctx.save();
+    _ctx.beginPath();
+    const fp = toScreen(r.polygon[0].x, r.polygon[0].y);
+    _ctx.moveTo(fp.x, fp.y);
+    for (let j = 1; j < r.polygon.length; j++) {
+      const p = toScreen(r.polygon[j].x, r.polygon[j].y);
+      _ctx.lineTo(p.x, p.y);
+    }
+    _ctx.closePath();
+    _ctx.fillStyle = ps.finishSelectedRooms?.has(r.id) ? 'rgba(74,111,227,0.08)' : '#f4f4f2';
+    _ctx.fill();
+    if (_getScale() > 0.06) {
+      const center = r.center || polygonCentroid(r.polygon);
+      const sc = toScreen(center.x, center.y);
+      _ctx.fillStyle = '#6b7280';
+      _ctx.font = `500 ${(_getScale()*180).toFixed(1)}px Onest,Inter,sans-serif`;
+      _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+      _ctx.fillText(r.name, sc.x, sc.y);
+    }
+    _ctx.restore();
+  }
+
+  drawWallsFinish(ps.finishSelectedWalls);
+  drawWallJointsFinish();
+  drawOpenings(ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
+  drawFinishPlusButtons(ps.finishSelectedWalls);
+  drawFinishFloorPlusButtons(ps.finishSelectedRooms);
+  if (ps.finishHoverWall != null) drawFinishWallHover(ps.finishHoverWall);
+  drawSelectionBox(ps.selectBoxStart, ps.selectBoxCurrent);
+}
+
+function drawGridFinish() {
+  const W = _canvas.width, H = _canvas.height;
+  const wMin = toWorld(0,0), wMax = toWorld(W,H);
+  _ctx.save(); _ctx.strokeStyle = '#efefed'; _ctx.lineWidth = 0.5;
+  for (let x = Math.floor(wMin.x/1000)*1000; x <= wMax.x+1000; x += 1000) {
+    const sx = toScreen(x,0).x; _ctx.beginPath(); _ctx.moveTo(sx,0); _ctx.lineTo(sx,H); _ctx.stroke();
+  }
+  for (let y = Math.floor(wMin.y/1000)*1000; y <= wMax.y+1000; y += 1000) {
+    const sy = toScreen(0,y).y; _ctx.beginPath(); _ctx.moveTo(0,sy); _ctx.lineTo(W,sy); _ctx.stroke();
+  }
+  _ctx.restore();
+}
+
+function drawWallsFinish(finishSelectedWalls) {
+  const jrects = getWallJointRects();
+  const jmap = buildWallJointMap();
+  const wallData = appState.walls.map(w => {
+    const g = sg(w);
+    const isSel = finishSelectedWalls?.has(w.id) || false;
+    const sjItems = getWallJointItemsForEndpoint(jmap,w,'start').filter(it=>it.wall.id!==w.id);
+    const ejItems = getWallJointItemsForEndpoint(jmap,w,'end').filter(it=>it.wall.id!==w.id);
+    const sj = sjItems.length>0||isWallEndpointCoveredByAnotherWall(w,'start');
+    const ej = ejItems.length>0||isWallEndpointCoveredByAnotherWall(w,'end');
+    const myJoints = jrects.filter(jr=>jr.wallIds.includes(w.id));
+    const sp = getWallContourPoint(w,'start'), ep = getWallContourPoint(w,'end');
+    const hasStartJR = myJoints.some(jr=>sp.x>=jr.left-2&&sp.x<=jr.right+2&&sp.y>=jr.top-2&&sp.y<=jr.bottom+2);
+    const hasEndJR   = myJoints.some(jr=>ep.x>=jr.left-2&&ep.x<=jr.right+2&&ep.y>=jr.top-2&&ep.y<=jr.bottom+2);
+    const fs = items=>items.filter(it=>!areWallsCollinear(w,it.wall)).map(i=>i.wall);
+    const wclipS = (sj&&!hasStartJR)?getWorldFaceClips(w,fs(sjItems),'start'):null;
+    const wclipE = (ej&&!hasEndJR)?getWorldFaceClips(w,fs(ejItems),'end'):null;
+    const ptA = wclipS?.ab?toScreen(wclipS.ab.x,wclipS.ab.y):g.a;
+    const ptB = wclipE?.ab?toScreen(wclipE.ab.x,wclipE.ab.y):g.b;
+    const ptC = wclipE?.dc?toScreen(wclipE.dc.x,wclipE.dc.y):g.c;
+    const ptD = wclipS?.dc?toScreen(wclipS.dc.x,wclipS.dc.y):g.d;
+    return {w,g,isSel,sj,ej,myJoints,ptA,ptB,ptC,ptD};
+  });
+
+  for (const {isSel,ptA,ptB,ptC,ptD} of wallData) {
+    _ctx.save(); _ctx.beginPath();
+    _ctx.moveTo(ptA.x,ptA.y); _ctx.lineTo(ptB.x,ptB.y);
+    _ctx.lineTo(ptC.x,ptC.y); _ctx.lineTo(ptD.x,ptD.y); _ctx.closePath();
+    _ctx.fillStyle = isSel?'#e8eeff':'#ffffff'; _ctx.fill(); _ctx.restore();
+  }
+  for (const jr of jrects) {
+    const tl=toScreen(jr.left,jr.top),br=toScreen(jr.right,jr.bottom);
+    const rl=Math.min(tl.x,br.x),rt=Math.min(tl.y,br.y),rr=Math.max(tl.x,br.x),rb=Math.max(tl.y,br.y);
+    _ctx.fillStyle='#ffffff'; _ctx.fillRect(rl,rt,rr-rl,rb-rt);
+  }
+  for (const {w,g,isSel,sj,ej,myJoints,ptA,ptB,ptC,ptD} of wallData) {
+    const jmS=getWallJointItemsForEndpoint(jmap,w,'start').filter(it=>it.wall.id!==w.id);
+    const jmE=getWallJointItemsForEndpoint(jmap,w,'end').filter(it=>it.wall.id!==w.id);
+    const colS=jmS.some(it=>areWallsCollinear(w,it.wall));
+    const colE=jmE.some(it=>areWallsCollinear(w,it.wall));
+    _ctx.save();
+    _ctx.strokeStyle=isSel?'#4a6fe3':'#b0b0aa';
+    _ctx.lineWidth=isSel?1.5:1; _ctx.lineCap='butt'; _ctx.lineJoin='miter'; _ctx.miterLimit=10;
+    _ctx.beginPath();
+    drawClippedFace(ptA,ptB,myJoints); drawClippedFace(ptD,ptC,myJoints);
+    if(!ej&&!colE){_ctx.moveTo(g.b.x,g.b.y);_ctx.lineTo(g.c.x,g.c.y);}
+    if(!sj&&!colS){_ctx.moveTo(g.d.x,g.d.y);_ctx.lineTo(g.a.x,g.a.y);}
+    _ctx.stroke(); _ctx.restore();
+  }
+}
+
+function drawWallJointsFinish() {
+  for (const jr of getWallJointRects()) {
+    const tl=toScreen(jr.left,jr.top),br=toScreen(jr.right,jr.bottom);
+    const rl=Math.min(tl.x,br.x),rt=Math.min(tl.y,br.y),rr=Math.max(tl.x,br.x),rb=Math.max(tl.y,br.y);
+    _ctx.save(); _ctx.fillStyle='#ffffff'; _ctx.fillRect(rl,rt,rr-rl,rb-rt);
+    _ctx.strokeStyle='#b0b0aa'; _ctx.lineWidth=1;
+    for (const path of getJointBoundaryPaths(jr)) {
+      if(!path.length) continue;
+      const s=toScreen(path[0].x,path[0].y);
+      _ctx.beginPath(); _ctx.moveTo(s.x,s.y);
+      for(let i=1;i<path.length;i++){const p=toScreen(path[i].x,path[i].y);_ctx.lineTo(p.x,p.y);}
+      _ctx.stroke();
+    }
+    _ctx.restore();
+  }
+}
+
+// Плюсики — на месте размерных меток (LINE_OFF_MM внутрь от контура)
+function drawFinishPlusButtons(finishSelectedWalls) {
+  if (_getScale()<0.05||!appState.rooms?.length) return;
+  const MIN_SEG_MM=100, LINE_OFF_MM=80, ANGLE_TOL=0.035;
+
+  function mergeCollinear(poly) {
+    if(poly.length<3) return poly;
+    const result=[],n=poly.length;
+    let startIdx=0;
+    for(let i=0;i<n;i++){
+      const prev=poly[(i-1+n)%n],cur=poly[i],next=poly[(i+1)%n];
+      const a1=Math.atan2(cur.y-prev.y,cur.x-prev.x),a2=Math.atan2(next.y-cur.y,next.x-cur.x);
+      let diff=Math.abs(a1-a2)%Math.PI; if(diff>Math.PI/2) diff=Math.PI-diff;
+      if(diff>ANGLE_TOL){startIdx=i;break;}
+    }
+    let i=startIdx;
+    do {
+      result.push(poly[i]);
+      let j=(i+1)%n;
+      const ca=Math.atan2(poly[j].y-poly[i].y,poly[j].x-poly[i].x);
+      while(true){
+        const n2=(j+1)%n,na=Math.atan2(poly[n2].y-poly[j].y,poly[n2].x-poly[j].x);
+        let d=Math.abs(ca-na)%Math.PI; if(d>Math.PI/2)d=Math.PI-d;
+        if(d>ANGLE_TOL) break; j=n2; if(j===startIdx) break;
+      }
+      i=j;
+    } while(i!==startIdx);
+    return result;
+  }
+
+  const drawn=new Set();
+  for (const room of appState.rooms) {
+    if(!room.polygon||room.polygon.length<3) continue;
+    const poly=mergeCollinear(room.polygon);
+    const signedArea=polygonSignedArea(poly);
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length];
+      const edgeLen=Math.hypot(b.x-a.x,b.y-a.y);
+      if(edgeLen<MIN_SEG_MM) continue;
+      const midW={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const key=`${Math.round(midW.x)}_${Math.round(midW.y)}`;
+      if(drawn.has(key)) continue; drawn.add(key);
+      const angle=Math.atan2(b.y-a.y,b.x-a.x);
+      const inward=signedArea>0?{x:-Math.sin(angle),y:Math.cos(angle)}:{x:Math.sin(angle),y:-Math.cos(angle)};
+      const plusWorld={x:midW.x+inward.x*LINE_OFF_MM,y:midW.y+inward.y*LINE_OFF_MM};
+      const plusScreen=toScreen(plusWorld.x,plusWorld.y);
+      const wall=room.boundarySegments?.find(bs=>{
+        if(!bs.wall) return false;
+        const w=bs.wall,wx1=w.cx1??w.x1,wy1=w.cy1??w.y1,wx2=w.cx2??w.x2,wy2=w.cy2??w.y2;
+        const wl=Math.hypot(wx2-wx1,wy2-wy1);if(wl<1)return false;
+        const wux=(wx2-wx1)/wl,wuy=(wy2-wy1)/wl,ux=Math.cos(angle),uy=Math.sin(angle);
+        return Math.abs(ux*wux+uy*wuy)>0.99;
+      })?.wall;
+      const isSel=wall&&finishSelectedWalls?.has(wall.id);
+      drawPlusBtn(plusScreen,isSel||false);
+    }
+  }
+}
+
+function drawFinishFloorPlusButtons(finishSelectedRooms) {
+  if(_getScale()<0.05) return;
+  for(const r of appState.rooms){
+    if(!r.center) continue;
+    const sc=toScreen(r.center.x,r.center.y);
+    const yOff=Math.max(18,_getScale()*220);
+    const isSel=finishSelectedRooms?.has(r.id)||false;
+    drawPlusBtn({x:sc.x,y:sc.y+yOff},isSel);
+  }
+}
+
+function drawPlusBtn(pos,isSelected) {
+  const R=10;
+  _ctx.save();
+  _ctx.beginPath(); _ctx.arc(pos.x,pos.y,R,0,Math.PI*2);
+  _ctx.fillStyle=isSelected?'#4a6fe3':'#ffffff'; _ctx.fill();
+  _ctx.strokeStyle=isSelected?'#3a5fd3':'#9ca3af'; _ctx.lineWidth=1.5; _ctx.stroke();
+  const C=R*0.55;
+  _ctx.strokeStyle=isSelected?'#ffffff':'#6b7280'; _ctx.lineWidth=1.8; _ctx.lineCap='round';
+  _ctx.beginPath();
+  _ctx.moveTo(pos.x-C,pos.y); _ctx.lineTo(pos.x+C,pos.y);
+  _ctx.moveTo(pos.x,pos.y-C); _ctx.lineTo(pos.x,pos.y+C);
+  _ctx.stroke(); _ctx.restore();
+}
+
+// Хит-тест плюсиков — вызывается из ui-planner при клике в режиме отделки
+export function hitTestFinishPlus(screenX, screenY) {
+  const HIT_R = 14;
+  const MIN_SEG_MM=100, LINE_OFF_MM=80, ANGLE_TOL=0.035;
+
+  function mergeCollinear(poly) {
+    if(poly.length<3) return poly;
+    const result=[],n=poly.length; let startIdx=0;
+    for(let i=0;i<n;i++){
+      const prev=poly[(i-1+n)%n],cur=poly[i],next=poly[(i+1)%n];
+      const a1=Math.atan2(cur.y-prev.y,cur.x-prev.x),a2=Math.atan2(next.y-cur.y,next.x-cur.x);
+      let diff=Math.abs(a1-a2)%Math.PI; if(diff>Math.PI/2)diff=Math.PI-diff;
+      if(diff>ANGLE_TOL){startIdx=i;break;}
+    }
+    let i=startIdx;
+    do{
+      result.push(poly[i]); let j=(i+1)%n;
+      const ca=Math.atan2(poly[j].y-poly[i].y,poly[j].x-poly[i].x);
+      while(true){const n2=(j+1)%n,na=Math.atan2(poly[n2].y-poly[j].y,poly[n2].x-poly[j].x);
+        let d=Math.abs(ca-na)%Math.PI;if(d>Math.PI/2)d=Math.PI-d;
+        if(d>ANGLE_TOL)break;j=n2;if(j===startIdx)break;}
+      i=j;
+    }while(i!==startIdx);
+    return result;
+  }
+
+  // Проверяем плюсики пола
+  for(const r of appState.rooms){
+    if(!r.center) continue;
+    const sc=toScreen(r.center.x,r.center.y);
+    const yOff=Math.max(18,_getScale()*220);
+    const px=sc.x,py=sc.y+yOff;
+    if(Math.hypot(screenX-px,screenY-py)<=HIT_R)
+      return {type:'floor',roomId:r.id,roomName:r.name,area:r.area};
+  }
+
+  // Проверяем плюсики стен
+  const drawn=new Set();
+  for(const room of appState.rooms){
+    if(!room.polygon||room.polygon.length<3) continue;
+    const poly=mergeCollinear(room.polygon);
+    const signedArea=polygonSignedArea(poly);
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length];
+      const edgeLen=Math.hypot(b.x-a.x,b.y-a.y);
+      if(edgeLen<MIN_SEG_MM) continue;
+      const midW={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const key=`${Math.round(midW.x)}_${Math.round(midW.y)}`;
+      if(drawn.has(key)) continue; drawn.add(key);
+      const angle=Math.atan2(b.y-a.y,b.x-a.x);
+      const inward=signedArea>0?{x:-Math.sin(angle),y:Math.cos(angle)}:{x:Math.sin(angle),y:-Math.cos(angle)};
+      const plusScreen=toScreen(midW.x+inward.x*LINE_OFF_MM,midW.y+inward.y*LINE_OFF_MM);
+      if(Math.hypot(screenX-plusScreen.x,screenY-plusScreen.y)<=HIT_R){
+        const wall=room.boundarySegments?.find(bs=>{
+          if(!bs.wall) return false;
+          const w=bs.wall,wx1=w.cx1??w.x1,wy1=w.cy1??w.y1,wx2=w.cx2??w.x2,wy2=w.cy2??w.y2;
+          const wl=Math.hypot(wx2-wx1,wy2-wy1);if(wl<1)return false;
+          const wux=(wx2-wx1)/wl,wuy=(wy2-wy1)/wl,ux=Math.cos(angle),uy=Math.sin(angle);
+          return Math.abs(ux*wux+uy*wuy)>0.99;
+        })?.wall;
+        return {type:'wall',wallId:wall?.id??null,roomName:room.name,
+          edgeLen:Math.round(edgeLen),area:Math.round(edgeLen*(wall?.height||2700)/1e6*100)/100};
+      }
+    }
+  }
+  return null;
+}
+
+function drawFinishWallHover(wallId) {
+  const wall=appState.walls.find(w=>w.id===wallId); if(!wall) return;
+  const g=sg(wall); _ctx.save(); _ctx.beginPath();
+  _ctx.moveTo(g.a.x,g.a.y);_ctx.lineTo(g.b.x,g.b.y);_ctx.lineTo(g.c.x,g.c.y);_ctx.lineTo(g.d.x,g.d.y);
+  _ctx.closePath(); _ctx.fillStyle='rgba(74,111,227,0.08)'; _ctx.fill();
+  _ctx.strokeStyle='rgba(74,111,227,0.5)'; _ctx.lineWidth=1.5; _ctx.stroke(); _ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// РЕЖИМ РАЗВЁРТКИ
+// ══════════════════════════════════════════════════════════════════
+
+function redrawUnroll(ps) {
+  const W=_canvas.width,H=_canvas.height;
+  _ctx.fillStyle='#f8f8f6'; _ctx.fillRect(0,0,W,H);
+  const room=_unrollRoomId!=null?appState.rooms.find(r=>r.id===_unrollRoomId):appState.rooms[0];
+  if(!room||!room.polygon||room.polygon.length<3){
+    _ctx.fillStyle='#aaa'; _ctx.font='14px Onest,sans-serif';
+    _ctx.textAlign='center'; _ctx.fillText('Выберите комнату в миникарте',W/2,H/2); return;
+  }
+  drawUnrollRoom(room,W,H,ps);
+}
+
+function drawUnrollRoom(room,W,H,ps) {
+  const PADDING=60,DIM_H=36,LABEL_H=22,BOT_ZONE=DIM_H+20,TOP_ZONE=LABEL_H+12;
+  const drawH=H-PADDING*2-BOT_ZONE-TOP_ZONE;
+  const wallHeightMM=room.wallHeight||2700;
+  const poly=room.polygon,n=poly.length;
+  const walls=[];
+  for(let i=0;i<n;i++){
+    const a=poly[i],b=poly[(i+1)%n];
+    const lengthMM=Math.hypot(b.x-a.x,b.y-a.y);
+    if(lengthMM<50) continue;
+    let wallObj=null;
+    if(room.boundarySegments){
+      const ux=(b.x-a.x)/lengthMM,uy=(b.y-a.y)/lengthMM;
+      wallObj=room.boundarySegments.find(bs=>{
+        if(!bs.wall) return false;
+        const w=bs.wall,wx1=w.cx1??w.x1,wy1=w.cy1??w.y1,wx2=w.cx2??w.x2,wy2=w.cy2??w.y2;
+        const wl=Math.hypot(wx2-wx1,wy2-wy1);if(wl<1)return false;
+        const wux=(wx2-wx1)/wl,wuy=(wy2-wy1)/wl;
+        return Math.abs(ux*wux+uy*wuy)>0.98;
+      })?.wall;
+    }
+    walls.push({a,b,lengthMM,wallObj,label:`С${walls.length+1}`});
+  }
+  if(!walls.length) return;
+
+  const totalLenMM=walls.reduce((s,w)=>s+w.lengthMM,0);
+  const availW=W-PADDING*2;
+  const scaleX=availW/totalLenMM;
+  const scaleY=Math.min(scaleX,drawH/wallHeightMM);
+  const wallPxH=wallHeightMM*scaleY;
+  const startX=PADDING,topY=PADDING+TOP_ZONE;
+
+  _ctx.save();
+  let curX=startX;
+  for(let i=0;i<walls.length;i++){
+    const wall=walls[i],wallPxW=wall.lengthMM*scaleX;
+    _ctx.fillStyle='#ffffff'; _ctx.strokeStyle='#333'; _ctx.lineWidth=1.2;
+    _ctx.beginPath(); _ctx.rect(curX,topY,wallPxW,wallPxH); _ctx.fill(); _ctx.stroke();
+    _ctx.fillStyle='#6b7280'; _ctx.font='500 11px Onest,Inter,sans-serif';
+    _ctx.textAlign='center'; _ctx.fillText(wall.label,curX+wallPxW/2,topY-8);
+    drawUnrollCornerCross(curX,topY); drawUnrollCornerCross(curX+wallPxW,topY);
+    drawUnrollCornerCross(curX,topY+wallPxH); drawUnrollCornerCross(curX+wallPxW,topY+wallPxH);
+
+    if(wall.wallObj){
+      const ops=appState.openings.filter(op=>op.wallId===wall.wallObj.id);
+      for(const op of ops){
+        const opX=op.t*wall.lengthMM*scaleX-op.width/2*scaleX;
+        const opW=op.width*scaleX;
+        if(op.type==='window'){
+          const wTop=(wallHeightMM-(op.height||1500))/2*scaleY,wH=(op.height||1500)*scaleY;
+          _ctx.fillStyle='#e8f4fd'; _ctx.strokeStyle='#4a90d9'; _ctx.lineWidth=1;
+          _ctx.beginPath(); _ctx.rect(curX+opX,topY+wTop,opW,wH); _ctx.fill(); _ctx.stroke();
+          _ctx.beginPath(); _ctx.moveTo(curX+opX,topY+wTop+wH/2); _ctx.lineTo(curX+opX+opW,topY+wTop+wH/2); _ctx.stroke();
+        } else {
+          const dH=(op.height||2100)*scaleY;
+          _ctx.fillStyle='#fef9ee'; _ctx.strokeStyle='#c47a00'; _ctx.lineWidth=1;
+          _ctx.beginPath(); _ctx.rect(curX+opX,topY+wallPxH-dH,opW,dH); _ctx.fill(); _ctx.stroke();
+        }
+      }
+    }
+
+    const dimY=topY+wallPxH+16; _ctx.strokeStyle='#555'; _ctx.lineWidth=0.8;
+    _ctx.beginPath();
+    _ctx.moveTo(curX,dimY-5);_ctx.lineTo(curX,dimY+5);
+    _ctx.moveTo(curX+wallPxW,dimY-5);_ctx.lineTo(curX+wallPxW,dimY+5);
+    _ctx.moveTo(curX,dimY);_ctx.lineTo(curX+wallPxW,dimY);
+    _ctx.stroke();
+    _ctx.fillStyle='#333'; _ctx.font='500 10px Onest,Inter,sans-serif';
+    _ctx.textAlign='center'; _ctx.fillText(`${Math.round(wall.lengthMM)} мм`,curX+wallPxW/2,dimY+12);
+    curX+=wallPxW;
+  }
+
+  const dimXR=curX+14; _ctx.strokeStyle='#555'; _ctx.lineWidth=0.8;
+  _ctx.beginPath();
+  _ctx.moveTo(dimXR-4,topY);_ctx.lineTo(dimXR+4,topY);
+  _ctx.moveTo(dimXR-4,topY+wallPxH);_ctx.lineTo(dimXR+4,topY+wallPxH);
+  _ctx.moveTo(dimXR,topY);_ctx.lineTo(dimXR,topY+wallPxH);
+  _ctx.stroke();
+  _ctx.save(); _ctx.translate(dimXR+10,topY+wallPxH/2); _ctx.rotate(-Math.PI/2);
+  _ctx.fillStyle='#555'; _ctx.font='500 9px Onest,Inter,sans-serif';
+  _ctx.textAlign='center'; _ctx.fillText(`${wallHeightMM} мм`,0,0); _ctx.restore();
+
+  _ctx.fillStyle='#1a1a1a'; _ctx.font='600 12px Onest,Inter,sans-serif';
+  _ctx.textAlign='left'; _ctx.fillText(`Развёртка: ${room.name}`,PADDING,PADDING/2+6);
+  _ctx.restore();
+}
+
+function drawUnrollCornerCross(x,y){
+  const S=5; _ctx.strokeStyle='#444'; _ctx.lineWidth=0.8;
+  _ctx.beginPath(); _ctx.moveTo(x-S,y);_ctx.lineTo(x+S,y);_ctx.moveTo(x,y-S);_ctx.lineTo(x,y+S); _ctx.stroke();
+}
+
+// Миникарта для режима Развёртка (рисует в отдельный canvas-элемент)
+export function renderMinimap(targetCanvas, highlightRoomId) {
+  if(!appState.walls.length) return;
+  const ctx=targetCanvas.getContext('2d'),W=targetCanvas.width,H=targetCanvas.height;
+  ctx.clearRect(0,0,W,H);
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const w of appState.walls){
+    const h=w.thickness/2;
+    minX=Math.min(minX,w.x1-h,w.x2-h);minY=Math.min(minY,w.y1-h,w.y2-h);
+    maxX=Math.max(maxX,w.x1+h,w.x2+h);maxY=Math.max(maxY,w.y1+h,w.y2+h);
+  }
+  if(maxX===minX||maxY===minY) return;
+  const pad=8,sc=Math.min((W-pad*2)/(maxX-minX),(H-pad*2)/(maxY-minY));
+  const ox=pad-minX*sc,oy=pad-minY*sc;
+  const ws=(x,y)=>({x:x*sc+ox,y:y*sc+oy});
+  ctx.fillStyle='#f8f8f6'; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<appState.rooms.length;i++){
+    const r=appState.rooms[i];
+    if(!r.polygon||r.polygon.length<3) continue;
+    ctx.beginPath();
+    const fp=ws(r.polygon[0].x,r.polygon[0].y); ctx.moveTo(fp.x,fp.y);
+    for(let j=1;j<r.polygon.length;j++){const p=ws(r.polygon[j].x,r.polygon[j].y);ctx.lineTo(p.x,p.y);}
+    ctx.closePath();
+    ctx.fillStyle=r.id===highlightRoomId?'rgba(74,111,227,0.25)':'#f0f0ee'; ctx.fill();
+    ctx.strokeStyle=r.id===highlightRoomId?'#4a6fe3':'#ccc';
+    ctx.lineWidth=r.id===highlightRoomId?1.5:0.8; ctx.stroke();
+  }
+  for(const w of appState.walls){
+    const angle=Math.atan2(w.y2-w.y1,w.x2-w.x1),nx=-Math.sin(angle)*w.thickness/2,ny=Math.cos(angle)*w.thickness/2;
+    const pts=[ws(w.x1+nx,w.y1+ny),ws(w.x2+nx,w.y2+ny),ws(w.x2-nx,w.y2-ny),ws(w.x1-nx,w.y1-ny)];
+    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
+    for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);
+    ctx.closePath(); ctx.fillStyle='#d8d6d2'; ctx.fill();
+  }
 }
 
 
