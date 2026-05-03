@@ -518,6 +518,10 @@ function _bindSmrEvents(tbody) {
       const i = +e.target.dataset.i;
       const f = e.target.dataset.f;
       activeRows[i][f] = e.target.value;
+      // Зеркалим редактирование клиентской строки в мастеров (тот же индекс)
+      if (_smrMode === 'client' && _smrRowsMasters[i] !== undefined) {
+        _smrRowsMasters[i][f] = e.target.value;
+      }
       if (f === 'qty' || f === 'price') {
         const r = activeRows[i];
         const q = parseFloat(r.qty) || 0;
@@ -525,6 +529,10 @@ function _bindSmrEvents(tbody) {
         r.total = q * p;
         const td = e.target.closest('tr').querySelector('.td-total');
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
+        // Зеркалим total в мастеров
+        if (_smrMode === 'client' && _smrRowsMasters[i] !== undefined) {
+          _smrRowsMasters[i].total = r.total;
+        }
         _updateTotals();
       }
       if (f === 'name' && activeRows[i].isSection && _smrMode === 'client') {
