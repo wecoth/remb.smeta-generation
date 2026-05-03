@@ -140,14 +140,21 @@ export function importRoomsFromPlanner(rooms) {
 }
 
 function _renderExpl() {
+  // Legacy drawer
   const body = document.getElementById('explBody');
-  if (!body) return;
+  // New inline header table
+  const wrap = document.getElementById('objExplWrap');
+
   if (!_rooms.length) {
-    body.innerHTML = '<div class="expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>';
+    if (body) body.innerHTML = '<div class="expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>';
+    if (wrap) wrap.innerHTML = '<div class="obj-expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>';
+    _updateHeader();
     return;
   }
   let tf = 0, tw = 0, tp = 0;
-  let html = _rooms.map(r => {
+
+  // Drawer HTML (legacy)
+  let drawerHtml = _rooms.map(r => {
     tf += r.floor; tw += r.walls; tp += r.perim;
     return `<div class="expl-row">
       <span class="expl-name">${esc(r.name)}</span>
@@ -156,22 +163,44 @@ function _renderExpl() {
       <span class="expl-num">${r.perim.toFixed(1)}</span>
     </div>`;
   }).join('');
-  html += `<div class="expl-row expl-total">
+  drawerHtml += `<div class="expl-row expl-total">
     <span class="expl-name">Итого</span>
     <span class="expl-num">${tf.toFixed(1)}</span>
     <span class="expl-num">${tw.toFixed(1)}</span>
     <span class="expl-num">${tp.toFixed(1)}</span>
   </div>`;
-  body.innerHTML = html;
+  if (body) body.innerHTML = drawerHtml;
+
+  // Inline header table HTML
+  tf = 0; tw = 0; tp = 0;
+  let rows = _rooms.map(r => {
+    tf += r.floor; tw += r.walls; tp += r.perim;
+    return `<tr>
+      <td>${esc(r.name)}</td>
+      <td>${r.floor.toFixed(1)}</td>
+      <td>${r.walls.toFixed(1)}</td>
+      <td>${r.perim.toFixed(1)}</td>
+    </tr>`;
+  }).join('');
+  rows += `<tr class="expl-total">
+    <td>Итого</td>
+    <td>${tf.toFixed(1)}</td>
+    <td>${tw.toFixed(1)}</td>
+    <td>${tp.toFixed(1)}</td>
+  </tr>`;
+  if (wrap) wrap.innerHTML = `<table class="obj-expl-tbl">
+    <thead><tr>
+      <th>Помещение</th><th>Пол м²</th><th>Стены м²</th><th>Пер. м</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
   _updateHeader();
 }
 
 // ── HEADER BLOCK ──────────────────────────────────────────────────
 
 function _updateHeader() {
-  const tf = _rooms.reduce((s, r) => s + r.floor, 0);
-  const el = document.getElementById('hdrFloor');
-  if (el) el.textContent = tf.toFixed(1) + ' м²';
   _updateTotals();
 }
 
@@ -186,6 +215,55 @@ function _updateTotals() {
   if (el('matFootTotal')) el('matFootTotal').textContent = fmt(matT);
   if (el('smrCount')) el('smrCount').textContent = _smrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(smrT) + ' ₽';
   if (el('matCount')) el('matCount').textContent = _matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
+
+  // Маржа (пока мастера = 0, будет подключено позже)
+  const mastersT = 0; // placeholder — будет из смет мастеров
+  const marginT  = smrT + matT - mastersT;
+  const totalDays = parseInt(document.getElementById('totalDaysVal')?.textContent) || 0;
+
+  if (el('hdrMasters')) el('hdrMasters').textContent = mastersT ? fmtInt(mastersT) + ' ₽' : '— ₽';
+
+  if (el('hdrMargin') && (smrT + matT) > 0) {
+    const pct = Math.round(marginT / (smrT + matT) * 100);
+    el('hdrMargin').textContent = fmtInt(marginT) + ' ₽  (' + pct + '%)';
+    el('hdrMargin').className = 'obj-meta-val' + (pct >= 30 ? ' margin-good' : pct >= 15 ? ' margin-mid' : ' margin-low');
+  } else if (el('hdrMargin')) {
+    el('hdrMargin').textContent = '—';
+    el('hdrMargin').className = 'obj-meta-val';
+  }
+
+  if (el('hdrMarginDay') && totalDays > 0 && (smrT + matT) > 0) {
+    el('hdrMarginDay').textContent = fmtInt(marginT / totalDays) + ' ₽/день';
+  } else if (el('hdrMarginDay')) {
+    el('hdrMarginDay').textContent = '—';
+  }
+
+  // Сроки из Гантта
+  _updateHeaderDates();
+}
+
+function _updateHeaderDates() {
+  const el = id => document.getElementById(id);
+  const totalDays = parseInt(el('totalDaysVal')?.textContent) || 0;
+  if (el('hdrDays')) el('hdrDays').textContent = totalDays ? totalDays + ' дн.' : '—';
+
+  // Try to get start date from first stage, calculate finish
+  const startStage = _stages.length ? _stages.reduce((a, b) => (a.start < b.start ? a : b), _stages[0]) : null;
+  const endStage   = _stages.length ? _stages.reduce((a, b) => ((a.start + a.dur) > (b.start + b.dur) ? a : b), _stages[0]) : null;
+
+  if (startStage && totalDays > 0) {
+    // Use today as project start reference if no explicit date
+    const base = new Date();
+    const startDay = startStage.start || 0;
+    const endDay   = endStage ? (endStage.start + endStage.dur) : totalDays;
+    const startDate = new Date(base); startDate.setDate(startDate.getDate() + startDay);
+    const finishDate = new Date(base); finishDate.setDate(finishDate.getDate() + endDay);
+    if (el('hdrStart'))  el('hdrStart').textContent  = startDate.toLocaleDateString('ru-RU', {day:'numeric',month:'short'});
+    if (el('hdrFinish')) el('hdrFinish').textContent = finishDate.toLocaleDateString('ru-RU', {day:'numeric',month:'short'});
+  } else {
+    if (el('hdrStart'))  el('hdrStart').textContent  = '—';
+    if (el('hdrFinish')) el('hdrFinish').textContent = '—';
+  }
 }
 
 // ── ROW DRAG-AND-DROP ─────────────────────────────────────────────
@@ -1042,13 +1120,18 @@ function _initDaysSlider() {
     output.textContent = _totalDays;
     _renderGantt();
     _renderPayments();
+    _updateHeaderDates();
+    _updateTotals();
   });
 }
 
 // ── PDF ───────────────────────────────────────────────────────────
 
 export async function generatePDF() {
-  const on = document.getElementById('hdrAddress')?.value || '—';
+  const street = document.getElementById('hdrStreet')?.value || '';
+  const house  = document.getElementById('hdrHouse')?.value || '';
+  const flat   = document.getElementById('hdrFlat')?.value || '';
+  const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
   const pageHtmlArr = [];
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
     const clone = page.cloneNode(true);
