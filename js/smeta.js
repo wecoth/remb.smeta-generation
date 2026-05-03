@@ -74,7 +74,6 @@ function smartParse(json) {
   });
   const fi = (...kw) => { for (const k of kw) { const i = h.findIndex(x => x.includes(k)); if (i >= 0) return i; } return -1; };
   const cols = {
-    num:   fi('№', 'п/п', 'n/n', 'номер', 'num'),
     name:  fi('наименование', 'вид работ', 'позиция', 'работ', 'материал', 'смр', 'name', 'description'),
     unit:  fi('ед. изм', 'ед.изм', 'единиц', 'ед ', 'unit', 'измер'),
     qty:   fi('кол-во', 'количество', 'объём', 'объем', 'кол ', 'qty', 'count'),
@@ -115,7 +114,7 @@ function smartParse(json) {
 // ── STATE ─────────────────────────────────────────────────────────
 
 // Stages (production)
-let _stages = []; // заполняется из колонки «Этап» в СМР или вручную в Ганtt
+let _stages = []; // синхронизируется с разделами SMR через _syncSectionsToGantt
 const STAGE_COLORS = ['#e07b39','#9b6dda','#5b8dd9','#4aaa6f','#da6d8a','#6da8b8','#a8b85b','#b85b6d'];
 let _stageCounter = 0;
 function _newStageId() { return 's' + (++_stageCounter); }
@@ -321,7 +320,6 @@ export function handleSmr(e) {
     const rows = smartParse(json);
     _smrRows = rows;
     _renderSmrTable();
-    _showSmrTable();
     _updateTotals();
   });
 }
@@ -329,13 +327,10 @@ export function handleSmr(e) {
 export function initSmrManual() {
   _smrRows = [];
   _smrRows.push({ name: '', isSection: true });
-  _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', stage: '', isSection: false });
+  _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false });
   _renderSmrTable();
   _updateTotals();
 }
-
-function _showSmrTable() { /* table always visible */ }
-function _showSmrDrop()  { /* no drop zone */ }
 
 function _renderSmrTable() {
   const tbody = document.getElementById('smrTbody');
@@ -432,7 +427,6 @@ function _bindSmrEvents(tbody) {
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         _updateTotals();
       }
-      if (f === 'stage') _updateTotals();
       // If editing a section name, sync to gantt
       if (f === 'name' && _smrRows[i].isSection) {
         _syncSectionsToGantt();
@@ -444,8 +438,7 @@ function _bindSmrEvents(tbody) {
       const i = +e.target.dataset.i;
       const wasSection = _smrRows[i]?.isSection;
       _smrRows.splice(i, 1);
-      if (!_smrRows.length) _showSmrDrop();
-      else _renderSmrTable();
+      _renderSmrTable();
       _updateTotals();
       if (wasSection) _syncSectionsToGantt();
     });
@@ -453,7 +446,6 @@ function _bindSmrEvents(tbody) {
 }
 
 export function addSmrRow(isSection = false) {
-  if (!_smrRows.length) _showSmrTable();
   _smrRows.push(isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
@@ -478,12 +470,8 @@ export function insertSmrRow(afterIdx, isSection = false) {
   _updateTotals();
   if (isSection) _syncSectionsToGantt();
   setTimeout(() => {
-    // Focus the newly inserted row's input
     const tbody = document.getElementById('smrTbody');
     if (!tbody) return;
-    const rows = tbody.querySelectorAll('tr:not(.tr-insert-zone)');
-    // find the row at afterIdx+1 position (skipping insert zones)
-    let dataIdx = 0;
     for (const tr of tbody.querySelectorAll('tr')) {
       if (tr.classList.contains('tr-insert-zone')) continue;
       if (+tr.dataset.rowIdx === afterIdx + 1) {
@@ -497,7 +485,6 @@ export function insertSmrRow(afterIdx, isSection = false) {
 
 export function clearSmr() {
   _smrRows = [];
-  _showSmrDrop();
   _updateTotals();
 }
 
@@ -516,7 +503,6 @@ export function handleMat(e) {
     const rows = smartParse(json);
     _matRows = rows;
     _renderMatTable();
-    _showMatTable();
     _updateTotals();
   });
 }
@@ -528,9 +514,6 @@ export function initMatManual() {
   _renderMatTable();
   _updateTotals();
 }
-
-function _showMatTable() { /* table always visible */ }
-function _showMatDrop()  { /* no drop zone */ }
 
 function _renderMatTable() {
   const tbody = document.getElementById('matTbody');
@@ -629,15 +612,13 @@ function _bindMatEvents(tbody) {
     btn.addEventListener('click', e => {
       const i = +e.target.dataset.i;
       _matRows.splice(i, 1);
-      if (!_matRows.length) _showMatDrop();
-      else _renderMatTable();
+      _renderMatTable();
       _updateTotals();
     });
   });
 }
 
 export function addMatRow(isSection = false) {
-  if (!_matRows.length) _showMatTable();
   _matRows.push(isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
@@ -652,7 +633,6 @@ export function addMatRow(isSection = false) {
 
 export function clearMat() {
   _matRows = [];
-  _showMatDrop();
   _updateTotals();
 }
 
@@ -917,7 +897,7 @@ function _renderPayments() {
       return s + (st ? _getStageAmount(st.name) : 0);
     }, 0);
     const totalReal = _getStagesTotalReal() || grandTotal || 1;
-    const pct = grandTotal > 0 ? Math.round(amount / grandTotal * 100) : 0;
+    const pct = totalReal > 0 ? Math.round(amount / totalReal * 100) : 0;
 
     const card = document.createElement('div');
     card.className = 'pay-slot';
@@ -1065,31 +1045,7 @@ function _initDaysSlider() {
   });
 }
 
-// ── FILE DROP ZONES ───────────────────────────────────────────────
-
-function _initDropZones() {
-  [['smrDropZone', 'smrFileInput'], ['matDropZone', 'matFileInput']].forEach(([zoneId, inputId]) => {
-    const zone  = document.getElementById(zoneId);
-    const input = document.getElementById(inputId);
-    if (!zone || !input) return;
-    zone.addEventListener('click', () => input.click());
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', e => {
-      e.preventDefault();
-      zone.classList.remove('drag-over');
-      const f = e.dataTransfer.files[0];
-      if (!f) return;
-      const fakeEvent = { target: { files: [f] } };
-      if (zoneId === 'smrDropZone') handleSmr(fakeEvent);
-      else handleMat(fakeEvent);
-    });
-  });
-}
-
-// ── PDF (preserved, reads from new state) ────────────────────────
-
-export function fmtForKp(v) { return fmt(v); }
+// ── PDF ───────────────────────────────────────────────────────────
 
 export async function generatePDF() {
   const on = document.getElementById('hdrAddress')?.value || '—';
