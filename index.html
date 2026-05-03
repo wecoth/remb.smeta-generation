@@ -57,6 +57,20 @@
     pointer-events:none;
     z-index:0;
   }
+
+  /* ── VIEW CONTAINER & WRAPPERS ───────────────────────────── */
+  /* viewContainer (=.app-views) должен заполнять оставшееся место в app-shell */
+  #viewContainer {
+    flex:1;
+    min-height:0;
+    overflow:hidden;
+    position:relative;
+  }
+  /* Каждый wrapper[data-view] должен занимать 100% контейнера */
+  #viewContainer > [data-view] {
+    position:absolute;
+    inset:0;
+  }
 </style>
 </head>
 <body>
@@ -486,7 +500,7 @@ async function mountView(viewName) {
   // Создаём обёртку и вставляем HTML
   const wrapper = document.createElement('div');
   wrapper.dataset.view = viewName;
-  wrapper.style.cssText = 'display:none;height:100%;width:100%;';
+  wrapper.style.display = 'none';
   wrapper.innerHTML = html;
   viewContainer.appendChild(wrapper);
   mountedViews[viewName] = wrapper;
@@ -614,7 +628,7 @@ async function loadView(viewName) {
   hideAllViews();
 
   const el = mountedViews[viewName];
-  el.style.display = viewName === 'planner' ? 'flex' : 'block';
+  el.style.display = 'block';
   currentView = viewName;
 
   // При показе планировщика — форсируем resize canvas
