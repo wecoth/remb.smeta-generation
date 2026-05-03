@@ -542,6 +542,30 @@
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
 
+  /* ── SMR Mode Toggle (pill) ──────────────────────────────────── */
+  .smr-mode-toggle {
+    display:flex;align-items:center;
+    background:var(--bg-hover);border-radius:20px;
+    padding:3px;gap:0;
+    border:1px solid var(--border-1);
+    flex-shrink:0;
+  }
+  .smr-mode-btn {
+    padding:4px 14px;border-radius:16px;border:none;
+    font-size:11px;font-weight:500;cursor:pointer;
+    font-family:Onest,Inter,sans-serif;
+    background:transparent;color:var(--text-2);
+    transition:background .18s,color .18s,box-shadow .18s;
+    white-space:nowrap;
+  }
+  .smr-mode-btn.active {
+    background:var(--bg-card);color:var(--text-1);
+    box-shadow:0 1px 3px rgba(15,18,30,.10);
+  }
+  .smr-mode-btn.active.masters {
+    color:var(--warn);
+  }
+
   /* Photo block — right of meta */
   .obj-photo-block {
     flex-shrink:0;width:220px;
@@ -723,6 +747,10 @@
           <div class="scard-num">2</div>
           <div class="scard-label">Смета работ (СМР)</div>
           <div class="scard-meta" id="smrCount">0 позиций</div>
+          <div class="smr-mode-toggle" onclick="event.stopPropagation()">
+            <button class="smr-mode-btn active" id="smrBtnClient" onclick="window._smetaModule.setSmrMode('client')">Заказчику</button>
+            <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="window._smetaModule.setSmrMode('masters')">Мастерам</button>
+          </div>
           <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
           <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
           <div class="scard-arrow">▾</div>
