@@ -358,11 +358,17 @@ function _initInsertZones(tbody, table) {
       _closeAll();
 
       if (table === 'smr') {
-        const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
         const newRow = isSection
           ? { name: '', isSection: true }
           : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        activeRows.splice(beforeIdx, 0, newRow);
+        if (_smrMode === 'masters') {
+          _smrRowsMasters.splice(beforeIdx, 0, { ...newRow });
+        } else {
+          _smrRows.splice(beforeIdx, 0, { ...newRow });
+          if (_smrRowsMasters.length > 0) {
+            _smrRowsMasters.splice(beforeIdx, 0, { ...newRow });
+          }
+        }
         _renderSmrTable();
         _updateTotals();
         if (isSection && _smrMode === 'client') _syncSectionsToGantt();
@@ -404,6 +410,10 @@ export function handleSmr(e) {
       _smrRowsMasters = rows;
     } else {
       _smrRows = rows;
+      // Если мастера пустые — сразу копируем
+      if (_smrRowsMasters.length === 0) {
+        _smrRowsMasters = rows.map(r => ({ ...r }));
+      }
     }
     _renderSmrTable();
     _updateTotals();
@@ -535,11 +545,18 @@ function _bindSmrEvents(tbody) {
 }
 
 export function addSmrRow(isSection = false) {
-  const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
-  activeRows.push(isSection
+  const newRow = isSection
     ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
-  );
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+  if (_smrMode === 'masters') {
+    _smrRowsMasters.push({ ...newRow });
+  } else {
+    _smrRows.push({ ...newRow });
+    // Зеркалим в мастеров если они уже были инициализированы
+    if (_smrRowsMasters.length > 0) {
+      _smrRowsMasters.push({ ...newRow });
+    }
+  }
   _renderSmrTable();
   _updateTotals();
   if (isSection && _smrMode === 'client') _syncSectionsToGantt();
@@ -551,11 +568,18 @@ export function addSmrRow(isSection = false) {
 
 // Insert a row/section at a specific index
 export function insertSmrRow(afterIdx, isSection = false) {
-  const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
   const newRow = isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  activeRows.splice(afterIdx + 1, 0, newRow);
+  if (_smrMode === 'masters') {
+    _smrRowsMasters.splice(afterIdx + 1, 0, { ...newRow });
+  } else {
+    _smrRows.splice(afterIdx + 1, 0, { ...newRow });
+    // Зеркалим в мастеров если они уже инициализированы
+    if (_smrRowsMasters.length > 0) {
+      _smrRowsMasters.splice(afterIdx + 1, 0, { ...newRow });
+    }
+  }
   _renderSmrTable();
   _updateTotals();
   if (isSection && _smrMode === 'client') _syncSectionsToGantt();
@@ -586,6 +610,10 @@ export function clearSmr() {
 export function setSmrMode(mode) {
   if (mode === _smrMode) return;
   _smrMode = mode;
+  // Если переключаемся на мастеров и их массив пустой — копируем клиентскую смету
+  if (mode === 'masters' && _smrRowsMasters.length === 0 && _smrRows.length > 0) {
+    _smrRowsMasters = _smrRows.map(r => ({ ...r }));
+  }
   const btnClient  = document.getElementById('smrBtnClient');
   const btnMasters = document.getElementById('smrBtnMasters');
   if (btnClient)  btnClient.classList.toggle('active',  mode === 'client');
