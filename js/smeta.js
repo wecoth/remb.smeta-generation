@@ -362,12 +362,11 @@ function _initInsertZones(tbody, table) {
           ? { name: '', isSection: true }
           : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
         if (_smrMode === 'masters') {
-          _smrRowsMasters.splice(beforeIdx, 0, { ...newRow });
+          _smrRowsMasters.splice(beforeIdx, 0, newRow);
         } else {
-          _smrRows.splice(beforeIdx, 0, { ...newRow });
-          if (_smrRowsMasters.length > 0) {
-            _smrRowsMasters.splice(beforeIdx, 0, { ...newRow });
-          }
+          _smrRows.splice(beforeIdx, 0, newRow);
+          // Один объект — изменения видны в обоих массивах
+          _smrRowsMasters.splice(beforeIdx, 0, newRow);
         }
         _renderSmrTable();
         _updateTotals();
@@ -410,9 +409,9 @@ export function handleSmr(e) {
       _smrRowsMasters = rows;
     } else {
       _smrRows = rows;
-      // Если мастера пустые — сразу копируем
+      // Инициализируем мастеров теми же объектами
       if (_smrRowsMasters.length === 0) {
-        _smrRowsMasters = rows.map(r => ({ ...r }));
+        _smrRowsMasters = [...rows];
       }
     }
     _renderSmrTable();
@@ -518,10 +517,6 @@ function _bindSmrEvents(tbody) {
       const i = +e.target.dataset.i;
       const f = e.target.dataset.f;
       activeRows[i][f] = e.target.value;
-      // Зеркалим редактирование клиентской строки в мастеров (тот же индекс)
-      if (_smrMode === 'client' && _smrRowsMasters[i] !== undefined) {
-        _smrRowsMasters[i][f] = e.target.value;
-      }
       if (f === 'qty' || f === 'price') {
         const r = activeRows[i];
         const q = parseFloat(r.qty) || 0;
@@ -529,10 +524,6 @@ function _bindSmrEvents(tbody) {
         r.total = q * p;
         const td = e.target.closest('tr').querySelector('.td-total');
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
-        // Зеркалим total в мастеров
-        if (_smrMode === 'client' && _smrRowsMasters[i] !== undefined) {
-          _smrRowsMasters[i].total = r.total;
-        }
         _updateTotals();
       }
       if (f === 'name' && activeRows[i].isSection && _smrMode === 'client') {
@@ -557,13 +548,11 @@ export function addSmrRow(isSection = false) {
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
   if (_smrMode === 'masters') {
-    _smrRowsMasters.push({ ...newRow });
+    _smrRowsMasters.push(newRow);
   } else {
-    _smrRows.push({ ...newRow });
-    // Зеркалим в мастеров если они уже были инициализированы
-    if (_smrRowsMasters.length > 0) {
-      _smrRowsMasters.push({ ...newRow });
-    }
+    _smrRows.push(newRow);
+    // Один и тот же объект — изменения видны в обоих массивах
+    _smrRowsMasters.push(newRow);
   }
   _renderSmrTable();
   _updateTotals();
@@ -580,13 +569,11 @@ export function insertSmrRow(afterIdx, isSection = false) {
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
   if (_smrMode === 'masters') {
-    _smrRowsMasters.splice(afterIdx + 1, 0, { ...newRow });
+    _smrRowsMasters.splice(afterIdx + 1, 0, newRow);
   } else {
-    _smrRows.splice(afterIdx + 1, 0, { ...newRow });
-    // Зеркалим в мастеров если они уже инициализированы
-    if (_smrRowsMasters.length > 0) {
-      _smrRowsMasters.splice(afterIdx + 1, 0, { ...newRow });
-    }
+    _smrRows.splice(afterIdx + 1, 0, newRow);
+    // Один объект — изменения видны в обоих массивах
+    _smrRowsMasters.splice(afterIdx + 1, 0, newRow);
   }
   _renderSmrTable();
   _updateTotals();
@@ -618,9 +605,9 @@ export function clearSmr() {
 export function setSmrMode(mode) {
   if (mode === _smrMode) return;
   _smrMode = mode;
-  // Если переключаемся на мастеров и их массив пустой — копируем клиентскую смету
+  // Если переключаемся на мастеров и их массив пустой — копируем те же объекты (не клоны)
   if (mode === 'masters' && _smrRowsMasters.length === 0 && _smrRows.length > 0) {
-    _smrRowsMasters = _smrRows.map(r => ({ ...r }));
+    _smrRowsMasters = [..._smrRows];
   }
   const btnClient  = document.getElementById('smrBtnClient');
   const btnMasters = document.getElementById('smrBtnMasters');
