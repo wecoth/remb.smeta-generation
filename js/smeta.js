@@ -544,16 +544,34 @@ export function addSmrRow(isSection = false) {
   _renderSmrTable();
   _updateTotals();
   if (isSection) _syncSectionsToGantt();
-  setTimeout(() => { ... }, 30);
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
+    inputs[inputs.length - 1]?.focus();
+  }, 30);
 }
-
 // Insert a row/section at a specific index
 export function insertSmrRow(afterIdx, isSection = false) {
   const rows = _getSmrRows();
-  const newRow = isSection ? ... : ...;
+  const newRow = isSection
+    ? { name: '', isSection: true }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
   rows.splice(afterIdx + 1, 0, newRow);
   _setSmrRows(rows);
-  _renderSmrTable(); ...
+  _renderSmrTable();
+  _updateTotals();
+  if (isSection) _syncSectionsToGantt();
+  setTimeout(() => {
+    const tbody = document.getElementById('smrTbody');
+    if (!tbody) return;
+    for (const tr of tbody.querySelectorAll('tr')) {
+      if (tr.classList.contains('tr-insert-zone')) continue;
+      if (+tr.dataset.rowIdx === afterIdx + 1) {
+        const inp = tr.querySelector('input.inp-name, input.inp-section');
+        if (inp) inp.focus();
+        break;
+      }
+    }
+  }, 30);
 }
 
 export function clearSmr() {
