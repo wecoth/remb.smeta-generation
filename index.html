@@ -457,7 +457,6 @@ async function mountView(viewName) {
       const [
         { appState },
         up,
-        { updateExpl },
         { loadFromLocalStorage },
         { clearHistory },
       ] = await Promise.all([
@@ -495,7 +494,6 @@ async function mountView(viewName) {
           btnZoomOut:        wrapper.querySelector('#btnZoomOut'),
           btnZoomReset:      wrapper.querySelector('#btnZoomReset'),
           btnImportRooms:    wrapper.querySelector('#btnImportRooms'),
-          explBody:          wrapper.querySelector('#explBody'),
           roomCount:         wrapper.querySelector('#roomCount'),
           lblTool:           wrapper.querySelector('#lblTool'),
           lblCoords:         wrapper.querySelector('#lblCoords'),
@@ -511,7 +509,6 @@ async function mountView(viewName) {
       }
 
       if (loadFromLocalStorage()) {
-        updateExpl(wrapper.querySelector('#explBody'), wrapper.querySelector('#roomCount'));
         clearHistory();
         forceRedraw();
       }
@@ -554,29 +551,6 @@ async function mountView(viewName) {
       window._renderModule = { renderToImage };
 
       initSmeta();
-
-      // Проставить сегодняшнюю дату в "Смета сформирована" если не заполнена
-      (function() {
-        var el = document.getElementById('smetaDate');
-        if (el && !el.value) {
-          var d = new Date();
-          el.value = d.getFullYear() + '-' +
-            String(d.getMonth() + 1).padStart(2, '0') + '-' +
-            String(d.getDate()).padStart(2, '0');
-        }
-        // Автообновление каждые 10 минут (если пользователь не менял вручную)
-        setInterval(function() {
-          var el = document.getElementById('smetaDate');
-          if (el && !el._userEdited) {
-            var d = new Date();
-            el.value = d.getFullYear() + '-' +
-              String(d.getMonth() + 1).padStart(2, '0') + '-' +
-              String(d.getDate()).padStart(2, '0');
-          }
-        }, 10 * 60 * 1000);
-        // Пометить как отредактированную если пользователь меняет
-        if (el) el.addEventListener('change', function() { el._userEdited = true; });
-      })();
     } catch(e) { console.error('Smeta init error:', e); }
 
   } else if (viewName === 'kp') {
@@ -650,7 +624,6 @@ requestAnimationFrame(() => {
 // ── Save/load project buttons (wired to storage module) ──────────
 async function wireStorageButtons() {
   const { autosaveToLocalStorage, downloadProject, uploadProject } = await import('./js/storage.js');
-  const { updateExpl } = await import('./js/room.js');
   const { clearHistory } = await import('./js/commands/CommandHistory.js');
 
   document.getElementById('btnSaveProject')?.addEventListener('click', downloadProject);
@@ -658,7 +631,6 @@ async function wireStorageButtons() {
     const f = e.target.files[0]; if (!f) return;
     uploadProject(f, err => {
       if (err) { alert('Ошибка загрузки: ' + err.message); return; }
-      updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
       clearHistory();
       // If planner is visible, redraw
       import('./js/ui-planner.js').then(({ forceRedraw }) => forceRedraw()).catch(() => {});
