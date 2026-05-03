@@ -117,7 +117,7 @@
   .scard-head {
     padding:12px 18px;display:flex;align-items:center;gap:10px;
     border-bottom:1px solid var(--border-2);cursor:pointer;user-select:none;
-    border-radius:10px 10px 0 0;
+    border-radius:10px 10px 0 0;position:relative;
   }
   .scard-head:hover { background:var(--bg-soft); }
   .scard-num {
@@ -552,7 +552,7 @@
     padding:3px;gap:0;
     border:1px solid var(--border-1);
     flex-shrink:0;
-    margin:0 auto;
+    position:absolute;left:50%;transform:translateX(-50%);
   }
   .smr-mode-btn {
     padding:4px 14px;border-radius:16px;border:none;
