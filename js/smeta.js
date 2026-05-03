@@ -122,6 +122,8 @@ function _nextColor() { return STAGE_COLORS[(_stageCounter - 1) % STAGE_COLORS.l
 
 // Smeta rows
 let _smrRows = [];
+let _smrRowsMasters = [];
+let _smrMode = 'client'; // 'client' | 'masters'
 let _matRows = [];
 
 // Rooms (from planner)
@@ -207,17 +209,22 @@ function _updateHeader() {
 function _updateTotals() {
   const smrT = _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
   const matT = _matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  const mastersSmrT = _smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
   const el = id => document.getElementById(id);
   if (el('hdrSmr'))   el('hdrSmr').textContent   = fmtInt(smrT) + ' ₽';
   if (el('hdrMat'))   el('hdrMat').textContent   = fmtInt(matT) + ' ₽';
   if (el('hdrTotal')) el('hdrTotal').textContent = fmtInt(smrT + matT) + ' ₽';
-  if (el('smrFootTotal')) el('smrFootTotal').textContent = fmt(smrT);
+  // Footer total shows active mode
+  const activeSmrT = _smrMode === 'masters' ? mastersSmrT : smrT;
+  if (el('smrFootTotal')) el('smrFootTotal').textContent = fmt(activeSmrT);
   if (el('matFootTotal')) el('matFootTotal').textContent = fmt(matT);
-  if (el('smrCount')) el('smrCount').textContent = _smrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(smrT) + ' ₽';
+  // Count badge shows active mode
+  const activeSmrRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
+  if (el('smrCount')) el('smrCount').textContent = activeSmrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(activeSmrT) + ' ₽';
   if (el('matCount')) el('matCount').textContent = _matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
 
-  // Маржа (пока мастера = 0, будет подключено позже)
-  const mastersT = 0; // placeholder — будет из смет мастеров
+  // Маржа — реальная из сметы мастеров
+  const mastersT = mastersSmrT;
   const marginT  = smrT + matT - mastersT;
   const totalDays = parseInt(document.getElementById('totalDaysVal')?.textContent) || 0;
 
@@ -355,13 +362,14 @@ function _initInsertZones(tbody, table) {
       _closeAll();
 
       if (table === 'smr') {
+        const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
         const newRow = isSection
           ? { name: '', isSection: true }
           : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        _smrRows.splice(beforeIdx, 0, newRow);
+        activeRows.splice(beforeIdx, 0, newRow);
         _renderSmrTable();
         _updateTotals();
-        if (isSection) _syncSectionsToGantt();
+        if (isSection && _smrMode === 'client') _syncSectionsToGantt();
         setTimeout(() => {
           const tbody2 = document.getElementById('smrTbody');
           for (const tr of tbody2.querySelectorAll('tr')) {
@@ -396,26 +404,34 @@ export function handleSmr(e) {
   parseFile(f, (json, err) => {
     if (err) { alert('Ошибка чтения файла'); return; }
     const rows = smartParse(json);
-    _smrRows = rows;
+    if (_smrMode === 'masters') {
+      _smrRowsMasters = rows;
+    } else {
+      _smrRows = rows;
+    }
     _renderSmrTable();
     _updateTotals();
   });
 }
 
 export function initSmrManual() {
-  _smrRows = [];
-  _smrRows.push({ name: '', isSection: true });
-  _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false });
+  const rows = [
+    { name: '', isSection: true },
+    { name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false }
+  ];
+  _smrRows = [...rows];
+  _smrRowsMasters = [];
   _renderSmrTable();
   _updateTotals();
 }
 
 function _renderSmrTable() {
+  const rows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
   const tbody = document.getElementById('smrTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
   let idx = 0;
-  _smrRows.forEach((r, i) => {
+  rows.forEach((r, i) => {
     // Insert zone BEFORE each row (for inserting above)
     const insZone = document.createElement('tr');
     insZone.className = 'tr-insert-zone';
@@ -469,13 +485,13 @@ function _renderSmrTable() {
   insLast.className = 'tr-insert-zone';
   insLast.innerHTML = `<td colspan="9">
     <div class="tr-insert-btn">
-      <div class="tr-insert-plus-wrap" data-i="${_smrRows.length}" data-table="smr">
+      <div class="tr-insert-plus-wrap" data-i="${rows.length}" data-table="smr">
         <button class="tr-insert-plus" title="Вставить">+</button>
         <div class="tr-insert-dropdown">
-          <div class="tr-insert-dd-item dd-row" data-i="${_smrRows.length}" data-table="smr" data-section="0">
+          <div class="tr-insert-dd-item dd-row" data-i="${rows.length}" data-table="smr" data-section="0">
             <span class="dd-dot"></span>Строка
           </div>
-          <div class="tr-insert-dd-item dd-sec" data-i="${_smrRows.length}" data-table="smr" data-section="1">
+          <div class="tr-insert-dd-item dd-sec" data-i="${rows.length}" data-table="smr" data-section="1">
             <span class="dd-dot"></span>Раздел
           </div>
         </div>
@@ -487,17 +503,18 @@ function _renderSmrTable() {
 
   _bindSmrEvents(tbody);
   _initInsertZones(tbody, 'smr');
-  _initRowDnd(tbody, _smrRows, () => { _renderSmrTable(); _updateTotals(); });
+  _initRowDnd(tbody, rows, () => { _renderSmrTable(); _updateTotals(); });
 }
 
 function _bindSmrEvents(tbody) {
+  const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
   tbody.querySelectorAll('input, select').forEach(inp => {
     inp.addEventListener('input', e => {
       const i = +e.target.dataset.i;
       const f = e.target.dataset.f;
-      _smrRows[i][f] = e.target.value;
+      activeRows[i][f] = e.target.value;
       if (f === 'qty' || f === 'price') {
-        const r = _smrRows[i];
+        const r = activeRows[i];
         const q = parseFloat(r.qty) || 0;
         const p = parseFloat(r.price) || 0;
         r.total = q * p;
@@ -505,8 +522,8 @@ function _bindSmrEvents(tbody) {
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         _updateTotals();
       }
-      // If editing a section name, sync to gantt
-      if (f === 'name' && _smrRows[i].isSection) {
+      // If editing a section name, sync to gantt (only client mode drives gantt)
+      if (f === 'name' && activeRows[i].isSection && _smrMode === 'client') {
         _syncSectionsToGantt();
       }
     });
@@ -514,23 +531,24 @@ function _bindSmrEvents(tbody) {
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
     btn.addEventListener('click', e => {
       const i = +e.target.dataset.i;
-      const wasSection = _smrRows[i]?.isSection;
-      _smrRows.splice(i, 1);
+      const wasSection = activeRows[i]?.isSection;
+      activeRows.splice(i, 1);
       _renderSmrTable();
       _updateTotals();
-      if (wasSection) _syncSectionsToGantt();
+      if (wasSection && _smrMode === 'client') _syncSectionsToGantt();
     });
   });
 }
 
 export function addSmrRow(isSection = false) {
-  _smrRows.push(isSection
+  const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
+  activeRows.push(isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
   );
   _renderSmrTable();
   _updateTotals();
-  if (isSection) _syncSectionsToGantt();
+  if (isSection && _smrMode === 'client') _syncSectionsToGantt();
   // Focus last name input
   setTimeout(() => {
     const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
@@ -540,13 +558,14 @@ export function addSmrRow(isSection = false) {
 
 // Insert a row/section at a specific index
 export function insertSmrRow(afterIdx, isSection = false) {
+  const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
   const newRow = isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  _smrRows.splice(afterIdx + 1, 0, newRow);
+  activeRows.splice(afterIdx + 1, 0, newRow);
   _renderSmrTable();
   _updateTotals();
-  if (isSection) _syncSectionsToGantt();
+  if (isSection && _smrMode === 'client') _syncSectionsToGantt();
   setTimeout(() => {
     const tbody = document.getElementById('smrTbody');
     if (!tbody) return;
@@ -562,14 +581,34 @@ export function insertSmrRow(afterIdx, isSection = false) {
 }
 
 export function clearSmr() {
-  _smrRows = [];
+  if (_smrMode === 'masters') {
+    _smrRowsMasters = [];
+  } else {
+    _smrRows = [];
+  }
   _updateTotals();
 }
 
-// Collect for KP/PDF
+export function setSmrMode(mode) {
+  if (mode === _smrMode) return;
+  _smrMode = mode;
+  // Update pill buttons
+  const btnClient  = document.getElementById('smrBtnClient');
+  const btnMasters = document.getElementById('smrBtnMasters');
+  if (btnClient)  btnClient.classList.toggle('active',  mode === 'client');
+  if (btnMasters) btnMasters.classList.toggle('active', mode === 'masters');
+  // Re-render the active table
+  _renderSmrTable();
+  _updateTotals();
+}
+
+// Collect for KP/PDF — always client rows
 export function collectSmrRows() { return _smrRows; }
 export function getSmrTotal() {
   return _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+}
+export function getMastersSmrTotal() {
+  return _smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 
 // ── MATERIALS TABLE ───────────────────────────────────────────────
