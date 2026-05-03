@@ -122,9 +122,15 @@ function _nextColor() { return STAGE_COLORS[(_stageCounter - 1) % STAGE_COLORS.l
 
 // ── STATE ─────────────────────────────────────────────────────────
 // Вместо старой одной переменной:
-let _clientSmrRows = [];   // смета для заказчика
-let _masterSmrRows = [];   // смета для мастеров
-let _smrMode = 'client';   // 'client' | 'master'
+let _clientSmrRows = [];
+let _masterSmrRows = [];
+let _smrMode = 'client';
+
+function _getSmrRows() { … }
+function _setSmrRows(arr) { … }
+
+let _matRows = [];
+let _rooms = [];
 
 // Геттер/сеттер для работы с активной сметой
 function _getSmrRows() {
@@ -365,20 +371,17 @@ function _initInsertZones(tbody, table) {
       _closeAll();
 
       if (table === 'smr') {
-        const newRow = isSection
-          ? { name: '', isSection: true }
-          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        _smrRows.splice(beforeIdx, 0, newRow);
-        _renderSmrTable();
-        _updateTotals();
-        if (isSection) _syncSectionsToGantt();
-        setTimeout(() => {
-          const tbody2 = document.getElementById('smrTbody');
-          for (const tr of tbody2.querySelectorAll('tr')) {
-            if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
-          }
-        }, 30);
+  const newRow = isSection
+    ? { name: '', isSection: true }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+  const rows = _getSmrRows();
+  rows.splice(beforeIdx, 0, newRow);
+  _setSmrRows(rows);
+  _renderSmrTable();
+  _updateTotals();
+  if (isSection) _syncSectionsToGantt();
+  setTimeout(() => { ... }, 30);
+}
       } else {
         const newRow = isSection
           ? { name: '', isSection: true }
@@ -726,6 +729,7 @@ export function addMatRow(isSection = false) {
 
 export function clearMat() {
   _matRows = [];
+  _renderMatTable();
   _updateTotals();
 }
 
@@ -947,7 +951,7 @@ export function ensureStage(name) {
 function _getStageAmount(stageName) {
   let total = 0;
   let inSection = false;
-  for (const r of _smrRows) {
+  for (const r of _clientSmrRows) {
     if (r.isSection) {
       inSection = (r.name && r.name.trim() === stageName);
       continue;
