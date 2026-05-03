@@ -19,6 +19,17 @@ const _state = {
   logoData: null,
   planData: null,
 
+  // ── Smeta data (persisted) ──
+  smrRows:        [],      // строки сметы работ (Заказчику)
+  smrRowsMasters: [],      // строки сметы работ (Мастерам)
+  smrMode:        'client',// 'client' | 'masters'
+  matRows:        [],      // строки материалов
+  stages:         [],      // этапы Гантта
+  payments:       [],      // платёжные слоты
+  totalDays:      60,      // общее число рабочих дней
+  stageCounter:   0,       // счётчик id этапов
+  payCounter:     0,       // счётчик id платежей
+
   // ── UI ──
   activeTab: 'smeta',  // 'planner' | 'smeta'
 };
