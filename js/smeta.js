@@ -377,8 +377,13 @@ function _initInsertZones(tbody, table) {
   _renderSmrTable();
   _updateTotals();
   if (isSection) _syncSectionsToGantt();
-  setTimeout(() => { ... }, 30);
-}
+         setTimeout(() => {
+          const tbody2 = document.getElementById('smrTbody');
+          for (const tr of tbody2.querySelectorAll('tr')) {
+            if (tr.classList.contains('tr-insert-zone')) continue;
+            if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
+          }
+        }, 30);
       } else {
         const newRow = isSection
           ? { name: '', isSection: true }
