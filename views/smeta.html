@@ -735,11 +735,11 @@
               </div>
               <div class="obj-meta-row">
                 <span class="obj-meta-lbl">Старт</span>
-                <input class="obj-meta-inp-inline" type="date" id="hdrStart" onchange="window._calcFinish()">
+                <span class="obj-meta-val" id="hdrStart">—</span>
               </div>
               <div class="obj-meta-row">
                 <span class="obj-meta-lbl">Финиш</span>
-                <input class="obj-meta-inp-inline" type="date" id="hdrFinish">
+                <span class="obj-meta-val" id="hdrFinish">—</span>
               </div>
             </div>
 
@@ -879,80 +879,4 @@
 
   </div><!-- /smeta-main -->
 </div><!-- /smeta-screen -->
-
-<script>
-(function() {
-  // --- Сегодняшняя дата в формате YYYY-MM-DD ---
-  function toInputDate(d) {
-    return d.toISOString().slice(0, 10);
-  }
-
-  // --- Установить дату "Смета сформирована" = сегодня ---
-  function setTodayDate() {
-    var el = document.getElementById('smetaDate');
-    if (el && !el._userEdited) {
-      el.value = toInputDate(new Date());
-    }
-  }
-
-  // --- Добавить N рабочих дней (пн-пт) к дате ---
-  function addWorkingDays(date, days) {
-    var d = new Date(date);
-    var added = 0;
-    while (added < days) {
-      d.setDate(d.getDate() + 1);
-      var dow = d.getDay();
-      if (dow !== 0 && dow !== 6) added++;
-    }
-    return d;
-  }
-
-  // --- Пересчитать финиш при изменении старта ---
-  window._calcFinish = function() {
-    var startEl = document.getElementById('hdrStart');
-    var finishEl = document.getElementById('hdrFinish');
-    var daysEl = document.getElementById('totalDaysSlider');
-    if (!startEl || !startEl.value) return;
-    var days = parseInt(daysEl ? daysEl.value : 60) || 60;
-    var finish = addWorkingDays(new Date(startEl.value), days);
-    finishEl.value = toInputDate(finish);
-    // Обновить отображение срока в шапке
-    var hdrDays = document.getElementById('hdrDays');
-    if (hdrDays) hdrDays.textContent = days + ' дн.';
-  };
-
-  // --- При ручном изменении totalDaysSlider — пересчитать финиш ---
-  function hookDaysInput() {
-    var daysEl = document.getElementById('totalDaysSlider');
-    if (!daysEl) return;
-    daysEl.addEventListener('input', function() {
-      document.getElementById('totalDaysVal') && (document.getElementById('totalDaysVal').textContent = this.value);
-      window._calcFinish();
-    });
-  }
-
-  // --- Пометить smetaDate как отредактированную вручную ---
-  function hookSmetaDate() {
-    var el = document.getElementById('smetaDate');
-    if (!el) return;
-    el.addEventListener('change', function() { el._userEdited = true; });
-  }
-
-  // --- Инициализация ---
-  function init() {
-    setTodayDate();
-    hookSmetaDate();
-    hookDaysInput();
-    // Автообновление даты каждые 10 минут (если не редактировалась)
-    setInterval(setTodayDate, 10 * 60 * 1000);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
-</script>
-
 </div>
