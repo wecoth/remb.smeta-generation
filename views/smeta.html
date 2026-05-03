@@ -117,7 +117,7 @@
   .scard-head {
     padding:12px 18px;display:flex;align-items:center;gap:10px;
     border-bottom:1px solid var(--border-2);cursor:pointer;user-select:none;
-    border-radius:10px 10px 0 0;position:relative;
+    border-radius:10px 10px 0 0;
   }
   .scard-head:hover { background:var(--bg-soft); }
   .scard-num {
@@ -552,7 +552,7 @@
     padding:3px;gap:0;
     border:1px solid var(--border-1);
     flex-shrink:0;
-    position:absolute;left:50%;transform:translateX(-50%);
+    margin:0 auto;
   }
   .smr-mode-btn {
     padding:4px 14px;border-radius:16px;border:none;
@@ -849,8 +849,9 @@
         <div class="scard-body">
           <div class="gantt-wrap">
             <div class="gantt-controls">
-              <span class="gantt-days-lbl">Общий срок: <strong id="totalDaysVal">60</strong> рабочих дней</span>
-              <input type="range" id="totalDaysSlider" min="10" max="365" value="60" style="width:160px">
+              <span class="gantt-days-lbl">Общий срок:</span>
+              <input type="number" id="totalDaysSlider" min="1" max="999" value="60" style="width:64px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-1);font-size:13px;font-weight:600;font-family:Onest,Inter,sans-serif;color:var(--text-1);text-align:center;background:var(--bg-card);outline:none;" oninput="document.getElementById('totalDaysVal').textContent=this.value">
+              <span class="gantt-days-lbl">рабочих дней</span>
             </div>
             <div class="gantt-rows" id="ganttBars"></div>
             <div class="gantt-ruler" id="ganttRuler"></div>
