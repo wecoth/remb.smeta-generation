@@ -116,65 +116,117 @@
   }
   .scard-upload-btn:hover { background:#f0f0f0; }
 
-  /* Block 1 — Object header (compact horizontal) */
+  /* Block 1 — Object header (new expanded layout) */
   .obj-scard { overflow:visible; }
-  .obj-new-layout {
-    display:flex;
-    align-items:stretch;
-    min-height:0;
-  }
-  .obj-new-center {
-    padding:12px 20px;
-    display:flex;flex-direction:column;
-    justify-content:center;gap:2px;
-    border-right:0.5px solid var(--color-border-tertiary);
-    flex:1;min-width:0;
-  }
-  .obj-new-lbl {
-    font-size:10px;color:var(--color-text-secondary);
-    letter-spacing:.3px;text-transform:uppercase;
-  }
-  .obj-new-address {
-    background:none;border:none;outline:none;
-    font-size:15px;font-weight:500;
-    color:var(--color-text-primary);
-    font-family:Onest,Inter,sans-serif;
-    width:100%;
-  }
-  .obj-new-address::placeholder { color:#c0c4cc;font-style:italic; }
 
   /* All table inputs — placeholder clearly lighter than real text */
   table.smeta-tbl td input::placeholder {
     color:#ccc;font-style:italic;
   }
 
-  .obj-new-right {
-    padding:10px 16px;
-    display:flex;flex-direction:row;align-items:center;gap:0;
-    flex-shrink:0;
+  /* Row 1: address fields centered at top */
+  .obj-addr-row {
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:10px 20px 8px;
+    border-bottom:0.5px solid var(--color-border-tertiary,#ececec);
   }
-  .obj-meta-cell {
-    display:flex;flex-direction:column;align-items:flex-start;gap:2px;
-    padding:0 16px;border-right:0.5px solid var(--color-border-tertiary);
+  .obj-addr-field {
+    display:flex;flex-direction:column;gap:2px;
   }
-  .obj-meta-cell:last-child { border-right:none; }
-  .obj-new-meta-lbl {
-    font-size:10px;color:var(--color-text-secondary);letter-spacing:.2px;white-space:nowrap;
+  .obj-addr-lbl {
+    font-size:9px;color:var(--color-text-secondary,#aaa);
+    letter-spacing:.3px;text-transform:uppercase;
   }
-  .obj-new-meta-inp {
-    background:none;border:none;outline:none;
-    font-size:12px;font-weight:500;color:var(--color-text-primary);
+  .obj-addr-inp {
+    background:none;border:none;border-bottom:0.5px solid #e0e0e0;
+    outline:none;font-size:13px;font-weight:500;
+    color:var(--color-text-primary,#1a1a2e);
     font-family:Onest,Inter,sans-serif;
-    width:110px;padding:0;
+    padding:1px 0 3px;transition:border-color .15s;
   }
-  .obj-new-meta-val {
-    font-size:12px;font-weight:500;color:var(--color-text-primary);white-space:nowrap;
+  .obj-addr-inp:focus { border-bottom-color:#1a1a2e; }
+  .obj-addr-inp::placeholder { color:#c0c4cc;font-style:italic; }
+  .obj-addr-inp.wide { width:220px; }
+  .obj-addr-inp.mid  { width:80px; }
+  .obj-addr-inp.sm   { width:60px; }
+  .obj-addr-sep { width:0.5px;height:28px;background:#e8e8e8;margin:0 4px; }
+
+  /* Row 2: expl table left + meta right */
+  .obj-body-row {
+    display:flex;align-items:stretch;min-height:0;
   }
-  .obj-meta-cell.grand .obj-new-meta-lbl {
-    font-size:10px;font-weight:600;color:var(--color-text-primary);
+
+  /* Left: экспликация inline */
+  .obj-expl-inline {
+    flex:1;min-width:0;
+    padding:8px 16px 10px;
+    border-right:0.5px solid var(--color-border-tertiary,#ececec);
+    overflow-x:auto;
   }
-  .obj-meta-cell.grand .obj-new-meta-val {
-    font-size:15px;font-weight:700;color:var(--color-text-primary);
+  .obj-expl-title {
+    font-size:10px;color:var(--color-text-secondary,#aaa);
+    text-transform:uppercase;letter-spacing:.3px;
+    margin-bottom:6px;
+  }
+  .obj-expl-tbl {
+    width:100%;border-collapse:collapse;font-size:11px;
+  }
+  .obj-expl-tbl th {
+    font-size:9px;font-weight:500;color:#bbb;
+    text-align:right;padding:0 6px 4px;
+    letter-spacing:.2px;white-space:nowrap;
+  }
+  .obj-expl-tbl th:first-child { text-align:left; }
+  .obj-expl-tbl td {
+    padding:3px 6px;color:var(--color-text-primary,#333);
+    border-top:0.5px solid #f4f4f4;text-align:right;white-space:nowrap;
+  }
+  .obj-expl-tbl td:first-child { text-align:left;color:#444; }
+  .obj-expl-tbl tr.expl-total td {
+    font-weight:600;border-top:0.5px solid #ddd;
+    padding-top:5px;
+  }
+  .obj-expl-empty {
+    font-size:11px;color:#ccc;padding:8px 0;
+  }
+
+  /* Right: meta column */
+  .obj-meta-right {
+    flex-shrink:0;
+    display:flex;flex-direction:column;gap:0;
+    padding:0;
+  }
+  .obj-meta-group {
+    display:flex;flex-direction:column;gap:0;
+    padding:8px 16px 8px;
+    border-bottom:0.5px solid var(--color-border-tertiary,#ececec);
+  }
+  .obj-meta-group:last-child { border-bottom:none; }
+  .obj-meta-row {
+    display:flex;align-items:baseline;justify-content:space-between;gap:24px;
+    padding:2px 0;
+  }
+  .obj-meta-lbl {
+    font-size:10px;color:var(--color-text-secondary,#aaa);
+    white-space:nowrap;letter-spacing:.1px;
+  }
+  .obj-meta-val {
+    font-size:12px;font-weight:500;
+    color:var(--color-text-primary,#1a1a2e);
+    white-space:nowrap;text-align:right;
+  }
+  .obj-meta-val.grand {
+    font-size:14px;font-weight:700;
+  }
+  .obj-meta-val.margin-good { color:#2d9c5e; }
+  .obj-meta-val.margin-mid  { color:#c08c2a; }
+  .obj-meta-val.margin-low  { color:#c0392b; }
+  .obj-meta-inp-inline {
+    background:none;border:none;outline:none;
+    font-size:12px;font-weight:500;
+    color:var(--color-text-primary,#1a1a2e);
+    font-family:Onest,Inter,sans-serif;
+    width:100px;text-align:right;padding:0;
   }
 
   /* Block 2/3 — Tables */
@@ -495,30 +547,106 @@
 
       <!-- BLOCK 1: Объект -->
       <div class="scard obj-scard">
-        <div class="obj-new-layout">
-          <div class="obj-new-center">
-            <div class="obj-new-lbl">Объект</div>
-            <input class="obj-new-address" id="hdrAddress" placeholder="Адрес объекта">
+
+        <!-- Row 1: Адрес по центру -->
+        <div class="obj-addr-row">
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Улица / ЖК</div>
+            <input class="obj-addr-inp wide" id="hdrStreet" placeholder="ул. Ленина или ЖК Любимого">
           </div>
-          <div class="obj-new-right">
-            <div class="obj-meta-cell">
-              <span class="obj-new-meta-lbl">Дата осмотра</span>
-              <input class="obj-new-meta-inp" type="date" id="inspDate">
-            </div>
-            <div class="obj-meta-cell">
-              <span class="obj-new-meta-lbl">Работы</span>
-              <span class="obj-new-meta-val" id="hdrSmr">0 ₽</span>
-            </div>
-            <div class="obj-meta-cell">
-              <span class="obj-new-meta-lbl">Материалы</span>
-              <span class="obj-new-meta-val" id="hdrMat">0 ₽</span>
-            </div>
-            <div class="obj-meta-cell grand">
-              <span class="obj-new-meta-lbl">Итого</span>
-              <span class="obj-new-meta-val" id="hdrTotal">0 ₽</span>
-            </div>
+          <div class="obj-addr-sep"></div>
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Дом</div>
+            <input class="obj-addr-inp mid" id="hdrHouse" placeholder="16 или 5/1">
+          </div>
+          <div class="obj-addr-sep"></div>
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Кв.</div>
+            <input class="obj-addr-inp sm" id="hdrFlat" placeholder="48">
+          </div>
+          <div class="obj-addr-sep"></div>
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Этаж</div>
+            <input class="obj-addr-inp sm" id="hdrFloor" placeholder="12">
           </div>
         </div>
+
+        <!-- Row 2: Экспликация слева + мета справа -->
+        <div class="obj-body-row">
+
+          <!-- Левая: экспликация помещений -->
+          <div class="obj-expl-inline">
+            <div class="obj-expl-title">Экспликация помещений</div>
+            <div id="objExplWrap">
+              <div class="obj-expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>
+            </div>
+          </div>
+
+          <!-- Правая: мета-данные -->
+          <div class="obj-meta-right">
+
+            <!-- Группа 1: даты -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Дата осмотра</span>
+                <input class="obj-meta-inp-inline" type="date" id="inspDate">
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Смета сформирована</span>
+                <input class="obj-meta-inp-inline" type="date" id="smetaDate">
+              </div>
+            </div>
+
+            <!-- Группа 2: финансы клиент -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Работы</span>
+                <span class="obj-meta-val" id="hdrSmr">0 ₽</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Материалы</span>
+                <span class="obj-meta-val" id="hdrMat">0 ₽</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Итого клиенту</span>
+                <span class="obj-meta-val grand" id="hdrTotal">0 ₽</span>
+              </div>
+            </div>
+
+            <!-- Группа 3: маржа -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Мастерам</span>
+                <span class="obj-meta-val" id="hdrMasters">— ₽</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Маржа</span>
+                <span class="obj-meta-val" id="hdrMargin">—</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Маржа в день</span>
+                <span class="obj-meta-val" id="hdrMarginDay">—</span>
+              </div>
+            </div>
+
+            <!-- Группа 4: сроки -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Срок</span>
+                <span class="obj-meta-val" id="hdrDays">— дн.</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Старт</span>
+                <span class="obj-meta-val" id="hdrStart">—</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Финиш</span>
+                <span class="obj-meta-val" id="hdrFinish">—</span>
+              </div>
+            </div>
+
+          </div><!-- /obj-meta-right -->
+        </div><!-- /obj-body-row -->
       </div>
 
       <!-- BLOCK 2: Смета работ (СМР) -->
