@@ -120,23 +120,12 @@ let _stageCounter = 0;
 function _newStageId() { return 's' + (++_stageCounter); }
 function _nextColor() { return STAGE_COLORS[(_stageCounter - 1) % STAGE_COLORS.length]; }
 
-// ── STATE ─────────────────────────────────────────────────────────
-// Вместо старой одной переменной:
-let _clientSmrRows = [];
-let _masterSmrRows = [];
-let _smrMode = 'client';
-
+// Smeta rows
+let _smrRows = [];
 let _matRows = [];
-let _rooms = [];
 
-// Геттер/сеттер для работы с активной сметой
-function _getSmrRows() {
-  return _smrMode === 'master' ? _masterSmrRows : _clientSmrRows;
-}
-function _setSmrRows(arr) {
-  if (_smrMode === 'master') _masterSmrRows = arr;
-  else _clientSmrRows = arr;
-}
+// Rooms (from planner)
+let _rooms = [];
 
 // ── ROOMS ─────────────────────────────────────────────────────────
 
@@ -216,26 +205,23 @@ function _updateHeader() {
 }
 
 function _updateTotals() {
-  const clientSmrT = _clientSmrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-  const masterSmrT = _masterSmrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  const smrT = _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
   const matT = _matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-
-  const smrT = clientSmrT; // для клиента всегда показываем клиентскую
   const el = id => document.getElementById(id);
   if (el('hdrSmr'))   el('hdrSmr').textContent   = fmtInt(smrT) + ' ₽';
   if (el('hdrMat'))   el('hdrMat').textContent   = fmtInt(matT) + ' ₽';
   if (el('hdrTotal')) el('hdrTotal').textContent = fmtInt(smrT + matT) + ' ₽';
   if (el('smrFootTotal')) el('smrFootTotal').textContent = fmt(smrT);
   if (el('matFootTotal')) el('matFootTotal').textContent = fmt(matT);
-  if (el('smrCount')) el('smrCount').textContent = _clientSmrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(smrT) + ' ₽';
+  if (el('smrCount')) el('smrCount').textContent = _smrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(smrT) + ' ₽';
   if (el('matCount')) el('matCount').textContent = _matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
 
-  // Мастера
-  if (el('hdrMasters')) el('hdrMasters').textContent = masterSmrT ? fmtInt(masterSmrT) + ' ₽' : '— ₽';
-
-  // Маржа
-  const marginT = smrT + matT - masterSmrT;
+  // Маржа (пока мастера = 0, будет подключено позже)
+  const mastersT = 0; // placeholder — будет из смет мастеров
+  const marginT  = smrT + matT - mastersT;
   const totalDays = parseInt(document.getElementById('totalDaysVal')?.textContent) || 0;
+
+  if (el('hdrMasters')) el('hdrMasters').textContent = mastersT ? fmtInt(mastersT) + ' ₽' : '— ₽';
 
   if (el('hdrMargin') && (smrT + matT) > 0) {
     const pct = Math.round(marginT / (smrT + matT) * 100);
@@ -252,6 +238,7 @@ function _updateTotals() {
     el('hdrMarginDay').textContent = '—';
   }
 
+  // Сроки из Гантта
   _updateHeaderDates();
 }
 
@@ -368,16 +355,14 @@ function _initInsertZones(tbody, table) {
       _closeAll();
 
       if (table === 'smr') {
-  const newRow = isSection
-    ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  const rows = _getSmrRows();
-  rows.splice(beforeIdx, 0, newRow);
-  _setSmrRows(rows);
-  _renderSmrTable();
-  _updateTotals();
-  if (isSection) _syncSectionsToGantt();
-         setTimeout(() => {
+        const newRow = isSection
+          ? { name: '', isSection: true }
+          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+        _smrRows.splice(beforeIdx, 0, newRow);
+        _renderSmrTable();
+        _updateTotals();
+        if (isSection) _syncSectionsToGantt();
+        setTimeout(() => {
           const tbody2 = document.getElementById('smrTbody');
           for (const tr of tbody2.querySelectorAll('tr')) {
             if (tr.classList.contains('tr-insert-zone')) continue;
@@ -411,17 +396,16 @@ export function handleSmr(e) {
   parseFile(f, (json, err) => {
     if (err) { alert('Ошибка чтения файла'); return; }
     const rows = smartParse(json);
-    _setSmrRows(rows);          // ← пишем в активную смету
+    _smrRows = rows;
     _renderSmrTable();
     _updateTotals();
   });
 }
 
 export function initSmrManual() {
-  _clientSmrRows = [];   // клиентская
-  _masterSmrRows = [];   // мастерская – пока пусто
-  _clientSmrRows.push({ name: '', isSection: true });
-  _clientSmrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false });
+  _smrRows = [];
+  _smrRows.push({ name: '', isSection: true });
+  _smrRows.push({ name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false });
   _renderSmrTable();
   _updateTotals();
 }
@@ -431,7 +415,7 @@ function _renderSmrTable() {
   if (!tbody) return;
   tbody.innerHTML = '';
   let idx = 0;
-  _getSmrRows().forEach((r, i) => {
+  _smrRows.forEach((r, i) => {
     // Insert zone BEFORE each row (for inserting above)
     const insZone = document.createElement('tr');
     insZone.className = 'tr-insert-zone';
@@ -485,13 +469,13 @@ function _renderSmrTable() {
   insLast.className = 'tr-insert-zone';
   insLast.innerHTML = `<td colspan="9">
     <div class="tr-insert-btn">
-      <div class="tr-insert-plus-wrap" data-i="${_getSmrRows().length}" data-table="smr">
+      <div class="tr-insert-plus-wrap" data-i="${_smrRows.length}" data-table="smr">
         <button class="tr-insert-plus" title="Вставить">+</button>
         <div class="tr-insert-dropdown">
-          <div class="tr-insert-dd-item dd-row" data-i="${_getSmrRows().length}" data-table="smr" data-section="0">
+          <div class="tr-insert-dd-item dd-row" data-i="${_smrRows.length}" data-table="smr" data-section="0">
             <span class="dd-dot"></span>Строка
           </div>
-          <div class="tr-insert-dd-item dd-sec" data-i="${_getSmrRows().length}" data-table="smr" data-section="1">
+          <div class="tr-insert-dd-item dd-sec" data-i="${_smrRows.length}" data-table="smr" data-section="1">
             <span class="dd-dot"></span>Раздел
           </div>
         </div>
@@ -503,7 +487,7 @@ function _renderSmrTable() {
 
   _bindSmrEvents(tbody);
   _initInsertZones(tbody, 'smr');
-  _initRowDnd(tbody, _getSmrRows(), () => { _renderSmrTable(); _updateTotals(); });
+  _initRowDnd(tbody, _smrRows, () => { _renderSmrTable(); _updateTotals(); });
 }
 
 function _bindSmrEvents(tbody) {
@@ -511,9 +495,9 @@ function _bindSmrEvents(tbody) {
     inp.addEventListener('input', e => {
       const i = +e.target.dataset.i;
       const f = e.target.dataset.f;
-      _getSmrRows()[i][f] = e.target.value;
+      _smrRows[i][f] = e.target.value;
       if (f === 'qty' || f === 'price') {
-        const r = _getSmrRows()[i];
+        const r = _smrRows[i];
         const q = parseFloat(r.qty) || 0;
         const p = parseFloat(r.price) || 0;
         r.total = q * p;
@@ -522,7 +506,7 @@ function _bindSmrEvents(tbody) {
         _updateTotals();
       }
       // If editing a section name, sync to gantt
-      if (f === 'name' && _getSmrRows()[i].isSection) {
+      if (f === 'name' && _smrRows[i].isSection) {
         _syncSectionsToGantt();
       }
     });
@@ -530,8 +514,8 @@ function _bindSmrEvents(tbody) {
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
     btn.addEventListener('click', e => {
       const i = +e.target.dataset.i;
-      const wasSection = _getSmrRows()[i]?.isSection;
-      _getSmrRows().splice(i, 1);
+      const wasSection = _smrRows[i]?.isSection;
+      _smrRows.splice(i, 1);
       _renderSmrTable();
       _updateTotals();
       if (wasSection) _syncSectionsToGantt();
@@ -540,28 +524,26 @@ function _bindSmrEvents(tbody) {
 }
 
 export function addSmrRow(isSection = false) {
-  const rows = _getSmrRows();
-  rows.push(isSection
+  _smrRows.push(isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
   );
-  _setSmrRows(rows);
   _renderSmrTable();
   _updateTotals();
   if (isSection) _syncSectionsToGantt();
+  // Focus last name input
   setTimeout(() => {
     const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
     inputs[inputs.length - 1]?.focus();
   }, 30);
 }
+
 // Insert a row/section at a specific index
 export function insertSmrRow(afterIdx, isSection = false) {
-  const rows = _getSmrRows();
   const newRow = isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  rows.splice(afterIdx + 1, 0, newRow);
-  _setSmrRows(rows);
+  _smrRows.splice(afterIdx + 1, 0, newRow);
   _renderSmrTable();
   _updateTotals();
   if (isSection) _syncSectionsToGantt();
@@ -580,16 +562,14 @@ export function insertSmrRow(afterIdx, isSection = false) {
 }
 
 export function clearSmr() {
-  _setSmrRows([]);
+  _smrRows = [];
   _updateTotals();
-  _renderSmrTable();
 }
 
 // Collect for KP/PDF
-export function collectSmrRows() { return _getSmrRows(); }
+export function collectSmrRows() { return _smrRows; }
 export function getSmrTotal() {
-  const rows = _getSmrRows();
-  return rows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  return _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 
 // ── MATERIALS TABLE ───────────────────────────────────────────────
@@ -731,7 +711,6 @@ export function addMatRow(isSection = false) {
 
 export function clearMat() {
   _matRows = [];
-  _renderMatTable();
   _updateTotals();
 }
 
@@ -764,7 +743,7 @@ export function getMatTotal() {
 // ── SECTION → GANTT SYNC ──────────────────────────────────────────
 // When sections in SMR change, sync them as Gantt stages
 function _syncSectionsToGantt() {
-  const sections = _clientSmrRows.filter(r => r.isSection && r.name && r.name.trim());
+  const sections = _smrRows.filter(r => r.isSection && r.name && r.name.trim());
   const sectionNames = new Set(sections.map(s => s.name.trim()));
 
   // Remove stages that no longer have a matching section
@@ -953,7 +932,7 @@ export function ensureStage(name) {
 function _getStageAmount(stageName) {
   let total = 0;
   let inSection = false;
-  for (const r of _clientSmrRows) {
+  for (const r of _smrRows) {
     if (r.isSection) {
       inSection = (r.name && r.name.trim() === stageName);
       continue;
@@ -1206,29 +1185,10 @@ export function initSmeta() {
   _initDaysSlider();
   _initGanttDrag();
   _renderExpl();
+  // Init tables with empty section + row
   initSmrManual();
   initMatManual();
   _renderGantt();
   _renderPayments();
   _updateTotals();
-  // Привязываем кнопки переключения режима
-  document.querySelectorAll('.smr-mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchSmrMode(btn.dataset.mode));
-  });
-}
-
-export function switchSmrMode(mode) {
-  if (mode !== 'client' && mode !== 'master') return;
-  if (mode === _smrMode) return;
-  // При первом переключении на "мастера" копируем смету заказчика, если мастерская пуста
-  if (mode === 'master' && _masterSmrRows.length === 0) {
-    _masterSmrRows = _clientSmrRows.map(r => ({...r}));  // копия
-  }
-  _smrMode = mode;
-  _renderSmrTable();
-  _updateTotals();
-  // Визуально переключаем кнопки
-  document.querySelectorAll('.smr-mode-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
-  });
 }
