@@ -665,7 +665,7 @@
               </div>
               <div class="obj-meta-row">
                 <span class="obj-meta-lbl">Смета сформирована</span>
-                <input class="obj-meta-inp-inline" type="date" id="smetaDate"><script>(function(){var e=document.getElementById('smetaDate');if(e&&!e.value){var d=new Date();e.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}})()</script>
+                <input class="obj-meta-inp-inline" type="date" id="smetaDate">
               </div>
             </div>
 
@@ -856,29 +856,9 @@
 
 <script>
 (function() {
-  // --- Сегодняшняя дата в формате YYYY-MM-DD ---
-  function toInputDate(d) {
-    return d.toISOString().slice(0, 10);
-  }
+  function toInputDate(d) { return d.toISOString().slice(0, 10); }
 
-  // --- Установить дату "Смета сформирована" = сегодня ---
-  function setTodayDate() {
-    var el = document.getElementById('smetaDate');
-    if (el && !el._userEdited) {
-      el.value = toInputDate(new Date());
-    }
-  }
-  // Надёжная установка с повторными попытками (на случай если DOM ещё не готов)
-  function setTodayDateRetry(attempts) {
-    var el = document.getElementById('smetaDate');
-    if (el && !el._userEdited) {
-      el.value = toInputDate(new Date());
-    } else if (!el && attempts > 0) {
-      setTimeout(function() { setTodayDateRetry(attempts - 1); }, 200);
-    }
-  }
-
-  // --- Добавить N рабочих дней (пн-пт) к дате ---
+  // Добавить N рабочих дней (пн-пт) к дате
   function addWorkingDays(date, days) {
     var d = new Date(date);
     var added = 0;
@@ -890,51 +870,31 @@
     return d;
   }
 
-  // --- Пересчитать финиш при изменении старта ---
+  // Пересчитать финиш при изменении старта
   window._calcFinish = function() {
-    var startEl = document.getElementById('hdrStart');
+    var startEl  = document.getElementById('hdrStart');
     var finishEl = document.getElementById('hdrFinish');
-    var daysEl = document.getElementById('totalDaysSlider');
+    var daysEl   = document.getElementById('totalDaysSlider');
     if (!startEl || !startEl.value) return;
-    var days = parseInt(daysEl ? daysEl.value : 60) || 60;
+    var days   = parseInt(daysEl ? daysEl.value : 60) || 60;
     var finish = addWorkingDays(new Date(startEl.value), days);
     finishEl.value = toInputDate(finish);
-    // Обновить отображение срока в шапке
     var hdrDays = document.getElementById('hdrDays');
     if (hdrDays) hdrDays.textContent = days + ' дн.';
   };
 
-  // --- При ручном изменении totalDaysSlider — пересчитать финиш ---
+  // При изменении слайдера дней — пересчитать финиш
   function hookDaysInput() {
     var daysEl = document.getElementById('totalDaysSlider');
     if (!daysEl) return;
     daysEl.addEventListener('input', function() {
-      document.getElementById('totalDaysVal') && (document.getElementById('totalDaysVal').textContent = this.value);
+      var val = document.getElementById('totalDaysVal');
+      if (val) val.textContent = this.value;
       window._calcFinish();
     });
   }
 
-  // --- Пометить smetaDate как отредактированную вручную ---
-  function hookSmetaDate() {
-    var el = document.getElementById('smetaDate');
-    if (!el) return;
-    el.addEventListener('change', function() { el._userEdited = true; });
-  }
-
-  // --- Инициализация ---
-  function init() {
-    setTodayDateRetry(20);
-    hookSmetaDate();
-    hookDaysInput();
-    // Автообновление даты каждые 10 минут (если не редактировалась)
-    setInterval(setTodayDate, 10 * 60 * 1000);
-  }
-
-  // Запускаем сразу, через 100ms, 500ms и 1s — чтобы точно поймать момент рендера
-  init();
-  setTimeout(function() { setTodayDateRetry(5); }, 100);
-  setTimeout(function() { setTodayDateRetry(5); }, 500);
-  setTimeout(function() { setTodayDateRetry(5); }, 1000);
+  hookDaysInput();
 })();
 </script>
 
