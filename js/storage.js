@@ -28,7 +28,17 @@ export function saveProject() {
     idOpen:            appState.idOpen ?? nextId(openings, 'id', 1),
     idDivider:         appState.idDivider ?? nextId(dividers, 'id', 1),
     idMeasure:         appState.idMeasure ?? nextId(measures, 'id', 1),
-    savedAt:           Date.now(),
+    // ── Смета ──
+    smrRows:        (appState.smrRows || []).map(r => ({ ...r })),
+    smrRowsMasters: (appState.smrRowsMasters || []).map(r => ({ ...r })),
+    smrMode:        appState.smrMode || 'client',
+    matRows:        (appState.matRows || []).map(r => ({ ...r })),
+    stages:         (appState.stages || []).map(s => ({ ...s })),
+    payments:       (appState.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] })),
+    totalDays:      appState.totalDays ?? 60,
+    stageCounter:   appState.stageCounter ?? 0,
+    payCounter:     appState.payCounter ?? 0,
+    savedAt:        Date.now(),
   };
   return JSON.stringify(data);
 }
@@ -44,6 +54,16 @@ export function loadProject(jsonStr) {
   appState.idOpen            = Number.isFinite(Number(data.idOpen)) ? Number(data.idOpen) : nextId(appState.openings, 'id', 1);
   appState.idDivider         = Number.isFinite(Number(data.idDivider)) ? Number(data.idDivider) : nextId(appState.dividers, 'id', 1);
   appState.idMeasure         = Number.isFinite(Number(data.idMeasure)) ? Number(data.idMeasure) : nextId(appState.measures, 'id', 1);
+  // ── Смета ──
+  if (data.smrRows        !== undefined) appState.smrRows        = (data.smrRows || []).map(r => ({ ...r }));
+  if (data.smrRowsMasters !== undefined) appState.smrRowsMasters = (data.smrRowsMasters || []).map(r => ({ ...r }));
+  if (data.smrMode        !== undefined) appState.smrMode        = data.smrMode || 'client';
+  if (data.matRows        !== undefined) appState.matRows        = (data.matRows || []).map(r => ({ ...r }));
+  if (data.stages         !== undefined) appState.stages         = (data.stages || []).map(s => ({ ...s }));
+  if (data.payments       !== undefined) appState.payments       = (data.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] }));
+  if (data.totalDays      !== undefined) appState.totalDays      = data.totalDays ?? 60;
+  if (data.stageCounter   !== undefined) appState.stageCounter   = data.stageCounter ?? 0;
+  if (data.payCounter     !== undefined) appState.payCounter     = data.payCounter ?? 0;
 }
 
 export function autosaveToLocalStorage() {
@@ -59,12 +79,99 @@ export function loadFromLocalStorage() {
 }
 
 export function downloadProject() {
-  const json = saveProject();
-  const blob = new Blob([json], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'remb_project.json';
-  a.click();
+  // Собираем адрес объекта из полей сметы
+  const street = document.getElementById('hdrStreet')?.value?.trim() || '';
+  const house  = document.getElementById('hdrHouse')?.value?.trim()  || '';
+  const flat   = document.getElementById('hdrFlat')?.value?.trim()   || '';
+  const addressParts = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean);
+  const address = addressParts.join(', ');
+
+  function _doDownload(filename) {
+    const json = saveProject();
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename.endsWith('.json') ? filename : filename + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
+  if (address) {
+    // Адрес заполнен — сразу сохраняем под ним
+    _doDownload('Проект — ' + address);
+  } else {
+    // Адрес не заполнен — спрашиваем название файла через модальное окно
+    _promptFilename(name => {
+      if (name !== null) _doDownload(name || 'remb_project');
+    });
+  }
+}
+
+function _promptFilename(callback) {
+  // Удаляем старый модал если вдруг остался
+  document.getElementById('_rembSaveModal')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '_rembSaveModal';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:99999;
+    background:rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;
+  `;
+
+  const box = document.createElement('div');
+  box.style.cssText = `
+    background:#fff;border-radius:14px;padding:28px 28px 22px;
+    box-shadow:0 8px 40px rgba(0,0,0,.22);
+    width:340px;font-family:Onest,Inter,sans-serif;
+  `;
+
+  box.innerHTML = `
+    <div style="font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:6px">Сохранить проект</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Укажите название файла</div>
+    <input id="_rembSaveInput" type="text" placeholder="Название проекта"
+      style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;
+             border-radius:8px;font-size:14px;outline:none;font-family:inherit;
+             transition:border-color .15s;" />
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+      <button id="_rembSaveCancel"
+        style="padding:8px 18px;border-radius:8px;border:1.5px solid #e5e7eb;
+               background:#fff;font-size:13px;font-family:inherit;cursor:pointer;color:#555">
+        Отмена
+      </button>
+      <button id="_rembSaveOk"
+        style="padding:8px 22px;border-radius:8px;border:none;
+               background:#1a1a2e;color:#fff;font-size:13px;font-family:inherit;cursor:pointer">
+        Сохранить
+      </button>
+    </div>
+  `;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const inp = box.querySelector('#_rembSaveInput');
+  const btnOk = box.querySelector('#_rembSaveOk');
+  const btnCancel = box.querySelector('#_rembSaveCancel');
+
+  inp.focus();
+
+  // Стиль фокуса инпута
+  inp.addEventListener('focus', () => inp.style.borderColor = '#4a6fe3');
+  inp.addEventListener('blur',  () => inp.style.borderColor = '#d1d5db');
+
+  function _close(result) {
+    overlay.remove();
+    callback(result);
+  }
+
+  btnOk.addEventListener('click', () => _close(inp.value.trim() || 'remb_project'));
+  btnCancel.addEventListener('click', () => _close(null));
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') _close(inp.value.trim() || 'remb_project');
+    if (e.key === 'Escape') _close(null);
+  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) _close(null); });
 }
 
 export function uploadProject(file, onLoaded) {
