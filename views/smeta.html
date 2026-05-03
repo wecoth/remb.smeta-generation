@@ -1,0 +1,189 @@
+<div id="smetaView" style="height:100%;overflow:hidden">
+<div class="smeta-screen">
+
+  <!-- DRAWER: Экспликация -->
+  <div class="expl-drawer" id="explDrawer">
+    <div class="expl-tab" id="explTab">
+      <span class="tab-arrow">▶</span>
+      <span class="tab-text">Экспликация</span>
+    </div>
+    <div class="expl-head">Помещения из чертежа</div>
+    <div class="expl-col-head">
+      <span>Помещение</span><span>Пол м²</span><span>Стены м²</span><span>Пер. м</span>
+    </div>
+    <div class="expl-body" id="explBody">
+      <div class="expl-empty">Нет данных.<br>Создайте план на вкладке Чертёж.</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="smeta-main" id="smetaMain">
+
+    <!-- Top bar -->
+    <div class="smeta-topbar">
+      <div class="smeta-topbar-title">Смета</div>
+      <div class="smeta-chip active" id="chipGeneral">Общий список</div>
+      <div class="smeta-topbar-sep"></div>
+      <button class="smeta-btn" onclick="window._smetaModule.captureCanvas()">⊕ Захватить чертёж</button>
+      <button class="smeta-btn">Экспорт Excel</button>
+      <button class="smeta-btn primary" onclick="window._smetaModule.generatePDF()">Сформировать КП →</button>
+    </div>
+
+    <!-- Scroll area with 5 blocks -->
+    <div class="smeta-scroll">
+
+      <!-- BLOCK 1: Объект -->
+      <div class="scard obj-scard">
+        <div class="obj-new-layout">
+          <div class="obj-new-center">
+            <div class="obj-new-lbl">Объект</div>
+            <input class="obj-new-address" id="hdrAddress" placeholder="Адрес объекта">
+          </div>
+          <div class="obj-new-right">
+            <div class="obj-meta-cell">
+              <span class="obj-new-meta-lbl">Дата осмотра</span>
+              <input class="obj-new-meta-inp" type="date" id="inspDate">
+            </div>
+            <div class="obj-meta-cell">
+              <span class="obj-new-meta-lbl">Работы</span>
+              <span class="obj-new-meta-val" id="hdrSmr">0 ₽</span>
+            </div>
+            <div class="obj-meta-cell">
+              <span class="obj-new-meta-lbl">Материалы</span>
+              <span class="obj-new-meta-val" id="hdrMat">0 ₽</span>
+            </div>
+            <div class="obj-meta-cell grand">
+              <span class="obj-new-meta-lbl">Итого</span>
+              <span class="obj-new-meta-val" id="hdrTotal">0 ₽</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOCK 2: Смета работ (СМР) -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">2</div>
+          <div class="scard-label">Смета работ (СМР)</div>
+          <div class="scard-meta" id="smrCount">0 позиций</div>
+          <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
+          <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div id="smrTableWrap">
+            <div class="smeta-table-wrap">
+              <table class="smeta-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:20px"></th>
+                    <th style="width:32px">№</th>
+                    <th>Наименование работы</th>
+                    <th style="width:52px">Ед.</th>
+                    <th style="width:68px;text-align:right">Кол-во</th>
+                    <th style="width:68px;text-align:right">Цена ₽</th>
+                    <th style="width:68px;text-align:right">Сумма ₽</th>
+                    <th style="width:102px">Примечание</th>
+                    <th style="width:28px"></th>
+                  </tr>
+                </thead>
+                <tbody id="smrTbody"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer">
+              <div class="tbl-footer-actions">
+                <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(false)">+ Строка</button>
+                <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(true)">+ Раздел</button>
+                <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearSmr()">Очистить</button>
+              </div>
+              <div>
+                <span class="tbl-footer-total-lbl">Итого СМР:</span>
+                <span class="tbl-footer-total" id="smrFootTotal">0 ₽</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOCK 3: Смета материалов -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">3</div>
+          <div class="scard-label">Смета материалов</div>
+          <div class="scard-meta" id="matCount">0 позиций</div>
+          <input type="file" id="matFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleMat(event)">
+          <button class="scard-upload-btn" onclick="document.getElementById('matFileInput').click()">↑ Загрузить</button>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div id="matTableWrap">
+            <div class="smeta-table-wrap">
+              <table class="smeta-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:20px"></th>
+                    <th style="width:32px">№</th>
+                    <th>Наименование материала</th>
+                    <th style="width:52px">Ед.</th>
+                    <th style="width:68px;text-align:right">Кол-во</th>
+                    <th style="width:68px;text-align:right">Цена ₽</th>
+                    <th style="width:68px;text-align:right">Сумма ₽</th>
+                    <th style="width:102px">Примечание</th>
+                    <th style="width:28px"></th>
+                  </tr>
+                </thead>
+                <tbody id="matTbody"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer">
+              <div class="tbl-footer-actions">
+                <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(false)">+ Строка</button>
+                <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(true)">+ Раздел</button>
+                <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearMat()">Очистить</button>
+              </div>
+              <div>
+                <span class="tbl-footer-total-lbl">Итого материалы:</span>
+                <span class="tbl-footer-total" id="matFootTotal">0 ₽</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOCK 4: График производства работ (Ганtt) -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">4</div>
+          <div class="scard-label">График производства работ</div>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div class="gantt-wrap">
+            <div class="gantt-controls">
+              <span class="gantt-days-lbl">Общий срок: <strong id="totalDaysVal">60</strong> рабочих дней</span>
+              <input type="range" id="totalDaysSlider" min="10" max="365" value="60" style="width:160px">
+            </div>
+            <div class="gantt-rows" id="ganttBars"></div>
+            <div class="gantt-ruler" id="ganttRuler"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOCK 5: График платежей -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">5</div>
+          <div class="scard-label">График платежей</div>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div id="paymentsWrap" class="payments-wrap"></div>
+        </div>
+      </div>
+
+      <div style="height:20px"></div>
+    </div><!-- /smeta-scroll -->
+
+  </div><!-- /smeta-main -->
+</div><!-- /smeta-screen -->
+</div>
