@@ -275,10 +275,23 @@ function _initRowDnd(tbody, rows, onReorder) {
   let dragSrc = null;
 
   function getDragRow(el) {
-    return el.closest('tr[draggable]');
+    return el.closest('tr');
   }
 
+  // Enable draggable only when pressing the handle, disable on release
+  tbody.addEventListener('mousedown', e => {
+    const handle = e.target.closest('.td-drag');
+    const tr = handle && handle.closest('tr');
+    if (tr) {
+      tr.draggable = true;
+      const reset = () => { tr.draggable = false; document.removeEventListener('mouseup', reset); };
+      document.addEventListener('mouseup', reset);
+    }
+  });
+
   tbody.addEventListener('dragstart', e => {
+    const handle = e.target.closest('.td-drag');
+    if (!handle) { e.preventDefault(); return; }
     const tr = getDragRow(e.target);
     if (!tr) return;
     dragSrc = tr;
@@ -459,7 +472,7 @@ function _renderSmrTable() {
     tbody.appendChild(insZone);
 
     const tr = document.createElement('tr');
-    tr.draggable = true;
+    tr.draggable = false;
     tr.dataset.rowIdx = i;
     if (r.isSection) {
       tr.className = 'row-section';
@@ -674,7 +687,7 @@ function _renderMatTable() {
     tbody.appendChild(insZone);
 
     const tr = document.createElement('tr');
-    tr.draggable = true;
+    tr.draggable = false;
     tr.dataset.rowIdx = i;
     if (r.isSection) {
       tr.className = 'row-section';
