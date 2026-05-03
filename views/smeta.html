@@ -160,7 +160,6 @@
   .obj-expl-inline {
     width:380px;flex-shrink:0;
     padding:10px 16px 12px;
-    border-right:0.5px solid var(--color-border-tertiary,#ececec);
     overflow:hidden;
   }
   .obj-expl-scroll {
@@ -194,11 +193,12 @@
     font-size:11px;color:#ccc;padding:8px 0;
   }
 
-  /* Right: meta column */
+  /* Right: meta column — прижата к правому краю */
   .obj-meta-right {
-    flex:1;min-width:0;
+    flex-shrink:0;width:260px;
     display:flex;flex-direction:column;gap:0;
     padding:0;
+    border-left:0.5px solid var(--color-border-tertiary,#ececec);
   }
   .obj-meta-group {
     display:flex;flex-direction:column;gap:0;
@@ -207,11 +207,11 @@
   }
   .obj-meta-group:last-child { border-bottom:none; }
   .obj-meta-row {
-    display:flex;align-items:baseline;justify-content:space-between;gap:16px;
-    padding:2.5px 0;
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:3px 0;
   }
   .obj-meta-lbl {
-    font-size:10px;color:#b0b4bc;
+    font-size:11px;color:#888;
     white-space:nowrap;letter-spacing:.1px;
   }
   .obj-meta-val {
@@ -220,13 +220,13 @@
     white-space:nowrap;text-align:right;
   }
   .obj-meta-val.grand {
-    font-size:14px;font-weight:700;
+    font-size:15px;font-weight:700;
   }
   .obj-meta-val.accent {
-    font-size:13px;font-weight:700;
+    font-size:14px;font-weight:700;
   }
   .obj-meta-lbl.accent-lbl {
-    font-size:10px;font-weight:600;color:var(--color-text-primary,#333);
+    font-size:11px;font-weight:600;color:#333;
   }
   .obj-meta-val.margin-good { color:#2d9c5e; }
   .obj-meta-val.margin-mid  { color:#c08c2a; }
