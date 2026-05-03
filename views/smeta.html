@@ -571,6 +571,33 @@
   .obj-photo-hint {
     font-size:10px;color:var(--text-3);text-align:center;
   }
+
+  /* Переключатель Заказчику / Мастерам */
+.smr-mode-switch {
+  display: flex;
+  gap: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-1, #e6e8ed);
+  margin: 0 12px;
+}
+.smr-mode-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-family: Onest, Inter, sans-serif;
+  border: none;
+  background: transparent;
+  color: var(--text-2, #6b7280);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.smr-mode-btn:first-child { border-right: 1px solid var(--border-1, #e6e8ed); }
+.smr-mode-btn.active {
+  background: var(--accent, #3b6ef5);
+  color: #fff;
+  font-weight: 500;
+}
 </style>
 
 <div id="smetaView" style="height:100%;overflow:hidden">
@@ -720,13 +747,17 @@
       <!-- BLOCK 2: Смета работ (СМР) -->
       <div class="scard">
         <div class="scard-head" data-collapse="1">
-          <div class="scard-num">2</div>
-          <div class="scard-label">Смета работ (СМР)</div>
-          <div class="scard-meta" id="smrCount">0 позиций</div>
-          <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
-          <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
-          <div class="scard-arrow">▾</div>
-        </div>
+  <div class="scard-num">2</div>
+  <div class="scard-label">Смета работ (СМР)</div>
+  <div class="smr-mode-switch">
+    <button class="smr-mode-btn active" data-mode="client">Заказчику</button>
+    <button class="smr-mode-btn" data-mode="master">Мастерам</button>
+  </div>
+  <div class="scard-meta" id="smrCount">0 позиций</div>
+  <input type="file" id="smrFileInput" ...>
+  <button class="scard-upload-btn" ...>↑ Загрузить</button>
+  <div class="scard-arrow">▾</div>
+</div>
         <div class="scard-body">
           <div id="smrTableWrap">
             <div class="smeta-table-wrap">
