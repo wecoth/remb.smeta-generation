@@ -1138,7 +1138,9 @@ function _initDrawer() {
 
 function _initCollapse() {
   document.querySelectorAll('.scard-head[data-collapse]').forEach(head => {
-    head.addEventListener('click', () => {
+    head.addEventListener('click', e => {
+      // Ignore clicks on interactive elements inside the header
+      if (e.target.closest('button, input, .smr-mode-toggle')) return;
       const body = head.nextElementSibling;
       const arrow = head.querySelector('.scard-arrow');
       const collapsed = body.style.display === 'none';
