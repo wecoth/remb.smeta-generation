@@ -226,10 +226,10 @@ function _updateTotals() {
   if (el('hdrMargin') && (smrT + matT) > 0) {
     const pct = Math.round(marginT / (smrT + matT) * 100);
     el('hdrMargin').textContent = fmtInt(marginT) + ' ₽  (' + pct + '%)';
-    el('hdrMargin').className = 'obj-meta-val' + (pct >= 30 ? ' margin-good' : pct >= 15 ? ' margin-mid' : ' margin-low');
+    el('hdrMargin').className = 'obj-meta-val accent' + (pct >= 30 ? ' margin-good' : pct >= 15 ? ' margin-mid' : ' margin-low');
   } else if (el('hdrMargin')) {
     el('hdrMargin').textContent = '—';
-    el('hdrMargin').className = 'obj-meta-val';
+    el('hdrMargin').className = 'obj-meta-val accent';
   }
 
   if (el('hdrMarginDay') && totalDays > 0 && (smrT + matT) > 0) {
