@@ -272,146 +272,79 @@ function _updateHeaderDates() {
 // ── ROW DRAG-AND-DROP ─────────────────────────────────────────────
 // Generic: works for both SMR and MAT tables
 function _initRowDnd(tbody, rows, onReorder) {
-  let ghost    = null;   // floating clone following cursor
-  let srcTr    = null;   // original row being dragged
-  let placeholder = null; // invisible spacer keeping layout stable
-  let offsetY  = 0;
-  let ghost_left = 0;
-
-  function getRowAt(y) {
-    // Find which real tr the cursor is over (excluding placeholder & ghost)
-    const trs = [...tbody.querySelectorAll('tr:not(.dnd-placeholder)')];
-    for (const tr of trs) {
-      const r = tr.getBoundingClientRect();
-      if (y >= r.top && y <= r.bottom) return tr;
-    }
-    return null;
-  }
+  let dragSrc = null;
+  let dropTarget = null;
 
   function clearHighlights() {
-    tbody.querySelectorAll('tr').forEach(r =>
-      r.classList.remove('row-active-top', 'row-active-bottom'));
-  }
-
-  function highlightRow(tr) {
-    clearHighlights();
-    if (!tr || tr === placeholder) return;
-    tr.classList.add('row-active-top', 'row-active-bottom');
-  }
-
-  function startDrag(e, tr) {
-    srcTr = tr;
-    const rect = tr.getBoundingClientRect();
-    offsetY = e.clientY - rect.top;
-    // Snap ghost X to table left edge always
-    ghost_left = rect.left;
-
-    // Create placeholder — same height, invisible
-    placeholder = document.createElement('tr');
-    placeholder.className = 'dnd-placeholder';
-    placeholder.style.cssText = `height:${rect.height}px;visibility:hidden;`;
-    placeholder.innerHTML = '<td colspan="20"></td>';
-    tbody.insertBefore(placeholder, srcTr.nextSibling);
-
-    // Hide original
-    srcTr.style.opacity = '0';
-    srcTr.style.pointerEvents = 'none';
-
-    // Create ghost — wrap tr in table so it renders correctly
-    const ghostTable = document.createElement('table');
-    ghostTable.className = 'smeta-tbl';
-    ghostTable.style.cssText = `
-      position:fixed;left:${rect.left}px;top:${rect.top}px;
-      width:${rect.width}px;z-index:9999;pointer-events:none;
-      opacity:.88;box-shadow:0 6px 24px rgba(0,0,0,.16);
-      border-radius:6px;border-collapse:collapse;
-      outline:2px solid var(--accent);
-      background:var(--bg-card);transition:none;
-    `;
-    const ghostTbody = document.createElement('tbody');
-    const ghostTr = tr.cloneNode(true);
-    ghostTr.style.cssText = '';
-    ghostTbody.appendChild(ghostTr);
-    ghostTable.appendChild(ghostTbody);
-    document.body.appendChild(ghostTable);
-    ghost = ghostTable;
-
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onDrop);
-  }
-
-  function onMove(e) {
-    if (!ghost) return;
-    // Move ghost
-    ghost.style.top = (e.clientY - offsetY) + 'px';
-    ghost.style.left = ghost_left + 'px';
-
-    // Find target row
-    const targetTr = getRowAt(e.clientY);
-    if (!targetTr || targetTr === srcTr) return;
-
-    const rect = targetTr.getBoundingClientRect();
-    const mid  = rect.top + rect.height / 2;
-
-    // Move placeholder to new position (this IS the live reorder)
-    if (e.clientY < mid) {
-      tbody.insertBefore(placeholder, targetTr);
-    } else {
-      tbody.insertBefore(placeholder, targetTr.nextSibling);
-    }
-
-    // Highlight the row currently adjacent to placeholder
-    const prev = placeholder.previousElementSibling;
-    const next = placeholder.nextElementSibling;
-    clearHighlights();
-    if (prev && prev !== srcTr) prev.classList.add('row-active-bottom');
-    if (next && next !== srcTr) next.classList.add('row-active-top');
-  }
-
-  function onDrop() {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onDrop);
-
-    if (!srcTr || !placeholder) { cleanup(); return; }
-
-    // Insert srcTr where placeholder is
-    clearHighlights();
-    tbody.insertBefore(srcTr, placeholder);
-    placeholder.remove();
-    srcTr.style.opacity = '';
-    srcTr.style.pointerEvents = '';
-
-    // Rebuild rows array from new DOM order
-    const newOrder = [];
-    tbody.querySelectorAll('tr[data-row-idx]').forEach(tr => {
-      const i = +tr.dataset.rowIdx;
-      if (!isNaN(i)) newOrder.push(rows[i]);
+    tbody.querySelectorAll('tr').forEach(r => {
+      r.classList.remove('row-dragging', 'row-drop-before', 'row-drop-after');
     });
-    rows.length = 0;
-    newOrder.forEach(r => rows.push(r));
-
-    cleanup();
-    onReorder();
   }
 
-  function cleanup() {
-    if (ghost) { ghost.remove(); ghost = null; }
-    if (placeholder) { placeholder.remove(); placeholder = null; }
-    if (srcTr) { srcTr.style.opacity = ''; srcTr.style.pointerEvents = ''; srcTr = null; }
-    clearHighlights();
-  }
-
-  // Attach: only trigger from the ⠿ handle
   tbody.addEventListener('mousedown', e => {
     const handle = e.target.closest('.td-drag');
-    if (!handle) return;
-    const tr = handle.closest('tr');
+    const tr = handle ? handle.closest('tr') : null;
     if (!tr) return;
+    tr.draggable = true;
+    const reset = () => {
+      tr.draggable = false;
+      document.removeEventListener('mouseup', reset);
+    };
+    document.addEventListener('mouseup', reset);
+  });
+
+  tbody.addEventListener('dragstart', e => {
+    const tr = e.target.closest('tr');
+    if (!tr || !tr.draggable) { e.preventDefault(); return; }
+    dragSrc = tr;
+    setTimeout(() => tr.classList.add('row-dragging'), 0);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tr.dataset.rowIdx);
+  });
+
+  tbody.addEventListener('dragover', e => {
     e.preventDefault();
-    startDrag(e, tr);
+    e.dataTransfer.dropEffect = 'move';
+    const tr = e.target.closest('tr');
+    if (!tr || tr === dragSrc) return;
+    const rect = tr.getBoundingClientRect();
+    const pos  = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    if (dropTarget && dropTarget.tr === tr && dropTarget.position === pos) return;
+    clearHighlights();
+    dragSrc.classList.add('row-dragging');
+    dropTarget = { tr, position: pos };
+    tr.classList.add(pos === 'before' ? 'row-drop-before' : 'row-drop-after');
+  });
+
+  tbody.addEventListener('dragleave', e => {
+    if (!tbody.contains(e.relatedTarget)) {
+      clearHighlights();
+      dropTarget = null;
+    }
+  });
+
+  tbody.addEventListener('drop', e => {
+    e.preventDefault();
+    if (!dragSrc || !dropTarget) { clearHighlights(); return; }
+    const fromIdx = +dragSrc.dataset.rowIdx;
+    let toIdx     = +dropTarget.tr.dataset.rowIdx;
+    const pos     = dropTarget.position;
+    clearHighlights();
+    dropTarget = null;
+    if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx) return;
+    const [moved] = rows.splice(fromIdx, 1);
+    const adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx;
+    const finalTo = pos === 'after' ? adjustedTo + 1 : adjustedTo;
+    rows.splice(Math.min(finalTo, rows.length), 0, moved);
+    onReorder();
+  });
+
+  tbody.addEventListener('dragend', () => {
+    clearHighlights();
+    dragSrc = null;
+    dropTarget = null;
   });
 }
-
 
 
 
