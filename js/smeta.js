@@ -126,9 +126,6 @@ let _clientSmrRows = [];
 let _masterSmrRows = [];
 let _smrMode = 'client';
 
-function _getSmrRows() { … }
-function _setSmrRows(arr) { … }
-
 let _matRows = [];
 let _rooms = [];
 
