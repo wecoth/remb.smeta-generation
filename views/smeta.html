@@ -110,8 +110,10 @@
   table.smeta-tbl input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none;margin:0; }
   table.smeta-tbl input[type=number] { -moz-appearance:textfield; }
   /* Убираем вертикальные разделители в таблицах — горизонтальные строк хватает */
-  table.smeta-tbl td { border-right:none; }
-  table.smeta-tbl th { border-right:none; }
+  table.smeta-tbl td { border-right:1px solid var(--border-2); }
+  table.smeta-tbl th { border-right:1px solid var(--border-1); }
+  table.smeta-tbl td:last-child { border-right:none; }
+  table.smeta-tbl th:last-child { border-right:none; }
   .scard-head {
     padding:12px 18px;display:flex;align-items:center;gap:10px;
     border-bottom:1px solid var(--border-2);cursor:pointer;user-select:none;
@@ -765,10 +767,10 @@
                     <th style="width:30px"></th>
                     <th style="width:32px">№</th>
                     <th>Наименование работы</th>
-                    <th style="width:76px">Ед.</th>
-                    <th style="width:76px;text-align:right">Кол-во</th>
-                    <th style="width:76px;text-align:right">Цена ₽</th>
-                    <th style="width:76px;text-align:right">Сумма ₽</th>
+                    <th style="width:74px">Ед.</th>
+                    <th style="width:74px;text-align:right">Кол-во</th>
+                    <th style="width:74px;text-align:right">Цена ₽</th>
+                    <th style="width:74px;text-align:right">Сумма ₽</th>
                     <th style="width:120px">Примечание</th>
                     <th style="width:30px"></th>
                   </tr>
@@ -810,10 +812,10 @@
                     <th style="width:30px"></th>
                     <th style="width:32px">№</th>
                     <th>Наименование материала</th>
-                    <th style="width:76px">Ед.</th>
-                    <th style="width:76px;text-align:right">Кол-во</th>
-                    <th style="width:76px;text-align:right">Цена ₽</th>
-                    <th style="width:76px;text-align:right">Сумма ₽</th>
+                    <th style="width:74px">Ед.</th>
+                    <th style="width:74px;text-align:right">Кол-во</th>
+                    <th style="width:74px;text-align:right">Цена ₽</th>
+                    <th style="width:74px;text-align:right">Сумма ₽</th>
                     <th style="width:120px">Примечание</th>
                     <th style="width:30px"></th>
                   </tr>
