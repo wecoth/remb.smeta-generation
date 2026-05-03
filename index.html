@@ -1,674 +1,181 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>REMB — Планировщик + Смета/КП</title>
-<link rel="stylesheet" href="css/main.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<style>
-  @font-face {
-    font-family: 'Merriweather';
-    src: url('https://raw.githubusercontent.com/MishkinIN/Font_GOST_2.304/master/gost_2.304.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
+// ─── STORAGE.JS ───────────────────────────────────────────────────
+import { appState } from './state.js';
+
+const LS_KEY = 'remb_project_v1';
+
+function nextId(items, field = 'id', min = 1) {
+  let maxId = min - 1;
+  for (const item of items || []) {
+    const v = Number(item?.[field]);
+    if (Number.isFinite(v) && v > maxId) maxId = v;
   }
-  .btn-use-drawing {
-    display:block;width:100%;margin-top:8px;
-    padding:9px 16px;border-radius:8px;
-    background:#f0f4ff;border:1.5px dashed #4a6fe3;
-    color:#4a6fe3;font:600 13px/1 Onest,Inter,sans-serif;
-    cursor:pointer;transition:background .15s;
-  }
-  .btn-use-drawing:hover{background:#e0e9ff;}
+  return Math.max(min, maxId + 1);
+}
 
-  /* ── TOPBAR PILL SWITCHER ─────────────────────────────── */
-  .topbar-pill-wrap {
-    position:absolute;left:50%;transform:translateX(-50%);
-    display:flex;align-items:center;
-  }
-  .topbar-pill {
-    position:relative;
-    display:flex;
-    background:#f0f2f5;
-    border-radius:10px;
-    padding:3px;
-    gap:0;
-  }
-  .pill-btn {
-    position:relative;z-index:1;
-    display:flex;align-items:center;gap:6px;
-    padding:6px 18px;
-    border:none;background:transparent;
-    font:500 13px/1 Onest,Inter,sans-serif;
-    color:#777;
-    border-radius:8px;
-    cursor:pointer;
-    transition:color .18s;
-    white-space:nowrap;
-  }
-  .pill-btn.active { color:#1a1a2e; }
-  .pill-slider {
-    position:absolute;top:3px;left:3px;bottom:3px;
-    background:#fff;
-    border-radius:8px;
-    box-shadow:0 1px 4px rgba(0,0,0,.12);
-    transition:transform .22s cubic-bezier(.4,0,.2,1), width .22s cubic-bezier(.4,0,.2,1);
-    pointer-events:none;
-    z-index:0;
-  }
+export function saveProject() {
+  const walls = appState.walls.map(w => ({ ...w }));
+  const openings = appState.openings.map(o => ({ ...o }));
+  const dividers = (appState.dividers || []).map(d => ({ ...d }));
+  const measures = (appState.measures || []).map(m => ({ ...m }));
 
-  /* ── VIEW CONTAINER & WRAPPERS ───────────────────────────── */
-  /* viewContainer (=.app-views) должен заполнять оставшееся место в app-shell */
-  #viewContainer {
-    flex:1;
-    min-height:0;
-    overflow:hidden;
-    position:relative;
-  }
-  /* Каждый wrapper[data-view] должен занимать 100% контейнера */
-  #viewContainer > [data-view] {
-    position:absolute;
-    inset:0;
-  }
-</style>
-</head>
-<body>
+  const data = {
+    walls,
+    openings,
+    dividers,
+    measures,
+    roomNameOverrides: { ...appState.roomNameOverrides },
+    idWall:            appState.idWall ?? nextId(walls, 'id', 1),
+    idOpen:            appState.idOpen ?? nextId(openings, 'id', 1),
+    idDivider:         appState.idDivider ?? nextId(dividers, 'id', 1),
+    idMeasure:         appState.idMeasure ?? nextId(measures, 'id', 1),
+    // ── Смета ──
+    smrRows:        (appState.smrRows || []).map(r => ({ ...r })),
+    smrRowsMasters: (appState.smrRowsMasters || []).map(r => ({ ...r })),
+    smrMode:        appState.smrMode || 'client',
+    matRows:        (appState.matRows || []).map(r => ({ ...r })),
+    stages:         (appState.stages || []).map(s => ({ ...s })),
+    payments:       (appState.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] })),
+    totalDays:      appState.totalDays ?? 60,
+    stageCounter:   appState.stageCounter ?? 0,
+    payCounter:     appState.payCounter ?? 0,
+    savedAt:        Date.now(),
+  };
+  return JSON.stringify(data);
+}
 
-<!-- ═══════════════════════════════════════════════════════════
-     GLOBAL TOP BAR
-════════════════════════════════════════════════════════════ -->
-<div class="app-shell">
-<div class="global-topbar">
-  <div class="app-logo">
-    <div class="app-logo-icon">R</div>
-    REMB
-  </div>
-  <div class="topbar-pill-wrap">
-    <div class="topbar-pill" id="topbarPill">
-      <button class="pill-btn" id="tabPlanner" data-view="planner">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
-        Чертёж
-      </button>
-      <button class="pill-btn active" id="tabSmeta" data-view="smeta">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-        Смета
-      </button>
-      <button class="pill-btn" id="tabKP" data-view="kp">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        КП
-      </button>
-      <div class="pill-slider" id="pillSlider"></div>
-    </div>
-  </div>
-  <div class="topbar-actions">
-    <button class="tb-action-btn" id="btnCompanySettings" title="Настройки компании" onclick="window._auth.openProfile()">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Настройки
-    </button>
-    <label class="tb-action-btn" title="Загрузить проект">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Загрузить
-      <input type="file" id="btnLoadProject" accept=".json" style="display:none">
-    </label>
-    <button class="tb-action-btn" id="btnSaveProject" title="Сохранить проект">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Сохранить
-    </button>
-  </div>
-</div>
+export function loadProject(jsonStr) {
+  const data = JSON.parse(jsonStr);
+  appState.walls             = (data.walls || []).map(w => ({ ...w }));
+  appState.openings          = (data.openings || []).map(o => ({ ...o }));
+  appState.dividers          = (data.dividers || []).map(d => ({ ...d }));
+  appState.measures          = (data.measures || []).map(m => ({ ...m }));
+  appState.roomNameOverrides = data.roomNameOverrides || {};
+  appState.idWall            = Number.isFinite(Number(data.idWall)) ? Number(data.idWall) : nextId(appState.walls, 'id', 1);
+  appState.idOpen            = Number.isFinite(Number(data.idOpen)) ? Number(data.idOpen) : nextId(appState.openings, 'id', 1);
+  appState.idDivider         = Number.isFinite(Number(data.idDivider)) ? Number(data.idDivider) : nextId(appState.dividers, 'id', 1);
+  appState.idMeasure         = Number.isFinite(Number(data.idMeasure)) ? Number(data.idMeasure) : nextId(appState.measures, 'id', 1);
+  // ── Смета ──
+  if (data.smrRows        !== undefined) appState.smrRows        = (data.smrRows || []).map(r => ({ ...r }));
+  if (data.smrRowsMasters !== undefined) appState.smrRowsMasters = (data.smrRowsMasters || []).map(r => ({ ...r }));
+  if (data.smrMode        !== undefined) appState.smrMode        = data.smrMode || 'client';
+  if (data.matRows        !== undefined) appState.matRows        = (data.matRows || []).map(r => ({ ...r }));
+  if (data.stages         !== undefined) appState.stages         = (data.stages || []).map(s => ({ ...s }));
+  if (data.payments       !== undefined) appState.payments       = (data.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] }));
+  if (data.totalDays      !== undefined) appState.totalDays      = data.totalDays ?? 60;
+  if (data.stageCounter   !== undefined) appState.stageCounter   = data.stageCounter ?? 0;
+  if (data.payCounter     !== undefined) appState.payCounter     = data.payCounter ?? 0;
+}
 
-<!-- ═══════════════════════════════════════════════════════════
-     APP VIEWS
-════════════════════════════════════════════════════════════ -->
-<div class="app-views" id="viewContainer"></div>
+export function autosaveToLocalStorage() {
+  try { localStorage.setItem(LS_KEY, saveProject()); } catch {}
+}
 
-</div><!-- /app-shell -->
+export function loadFromLocalStorage() {
+  try {
+    const data = localStorage.getItem(LS_KEY);
+    if (data) { loadProject(data); return true; }
+  } catch {}
+  return false;
+}
 
+export function downloadProject() {
+  // Собираем адрес объекта из полей сметы
+  const street = document.getElementById('hdrStreet')?.value?.trim() || '';
+  const house  = document.getElementById('hdrHouse')?.value?.trim()  || '';
+  const flat   = document.getElementById('hdrFlat')?.value?.trim()   || '';
+  const addressParts = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean);
+  const address = addressParts.join(', ');
 
-
-
-
-
-
-<script>
-// Контекстное переключение панели инструментов
-(function() {
-  function syncCtxPanel(tool) {
-    // Скрываем все контексты
-    const ctxSelect = document.getElementById('ctxSelect');
-    const ctxWall   = document.getElementById('ctxWall');
-    const winP      = document.getElementById('windowParams');
-    const doorP     = document.getElementById('doorParams');
-    const editP     = document.getElementById('editPanel');
-    const selEmpty  = document.getElementById('selectEmpty');
-
-    [ctxWall, winP, doorP].forEach(el => { if(el) el.style.display = 'none'; });
-    if (ctxSelect) ctxSelect.style.display = 'block';
-    if (editP)     editP.style.display = 'none';
-    if (selEmpty)  selEmpty.style.display = 'block';
-
-    if (tool === 'wall') {
-      ctxSelect.style.display = 'none';
-      ctxWall.style.display = 'block';
-    } else if (tool === 'window') {
-      ctxSelect.style.display = 'none';
-      winP.style.display = 'block';
-    } else if (tool === 'door') {
-      ctxSelect.style.display = 'none';
-      doorP.style.display = 'block';
-    }
+  function _doDownload(filename) {
+    const json = saveProject();
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename.endsWith('.json') ? filename : filename + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
-  // Экспортируем для вызова из tools.js (роутер вызывает после загрузки planner.html)
-  window._syncCtxPanel = syncCtxPanel;
-})();
-</script>
-
-
-
-
-<!-- ══════════════════════════════════════════
-     AUTH SCREEN
-══════════════════════════════════════════ -->
-<div id="authScreen" style="display:none">
-  <div class="auth-overlay">
-    <div class="auth-card">
-      <div class="auth-logo">REMB</div>
-      <div class="auth-subtitle">Система документации</div>
-
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tabLogin" onclick="window._auth.switchTab('login')">Войти</button>
-        <button class="auth-tab" id="tabReg" onclick="window._auth.switchTab('register')">Регистрация</button>
-      </div>
-
-      <div id="authError" class="auth-error" style="display:none"></div>
-
-      <div class="auth-fields">
-        <div class="auth-field">
-          <label>Email</label>
-          <input type="email" id="authEmail" placeholder="you@company.ru" autocomplete="email">
-        </div>
-        <div class="auth-field">
-          <label>Пароль</label>
-          <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password">
-        </div>
-      </div>
-
-      <button class="auth-submit" id="authSubmitBtn" onclick="window._auth.submit()">
-        <span id="authBtnText">Войти</span>
-        <span id="authBtnLoader" style="display:none">…</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════
-     PROFILE SCREEN
-══════════════════════════════════════════ -->
-<div id="profileScreen" style="display:none">
-  <div class="profile-overlay" onclick="window._auth.closeProfile(event)">
-    <div class="profile-card">
-      <div class="profile-header">
-        <div class="profile-title">Настройки компании</div>
-        <button class="profile-close" onclick="window._auth.closeProfile()">✕</button>
-      </div>
-
-      <div class="profile-body">
-        <!-- Логотип -->
-        <div class="profile-logo-zone" id="profileLogoZone" onclick="document.getElementById('profileLogoInput').click()">
-          <input type="file" id="profileLogoInput" accept="image/*" style="display:none" onchange="window._auth.handleProfileLogo(event)">
-          <img id="profileLogoPreview" alt="" style="display:none">
-          <div id="profileLogoPlaceholder">
-            <div style="font-size:28px">⊕</div>
-            <div style="font-size:12px;margin-top:4px">Загрузить логотип</div>
-          </div>
-        </div>
-
-        <div class="profile-field">
-          <label>Название компании</label>
-          <input type="text" id="profileCompanyName" placeholder="СтройКомфорт">
-        </div>
-        <div class="profile-field">
-          <label>Слоган</label>
-          <input type="text" id="profileSlogan" placeholder="Качество под ключ">
-        </div>
-        <div class="profile-field-row">
-          <div class="profile-field">
-            <label>ФИО исполнителя</label>
-            <input type="text" id="profileOwnerName" placeholder="ИП Иванов И.И.">
-          </div>
-          <div class="profile-field">
-            <label>Телефон</label>
-            <input type="text" id="profilePhone" placeholder="+7 (000) 000-00-00">
-          </div>
-        </div>
-        <div class="profile-field">
-          <label>ОГРН / ИНН <span style="font-weight:300;font-size:10px">(опц.)</span></label>
-          <input type="text" id="profileOgrn" placeholder="ОГРН 123456789012">
-        </div>
-
-        <div id="profileSaveMsg" style="display:none;text-align:center;font-size:13px;color:#27ae60;margin-top:8px">✓ Сохранено</div>
-      </div>
-
-      <div class="profile-footer">
-        <button class="profile-btn-save" onclick="window._auth.saveProfile()">Сохранить</button>
-        <button class="profile-btn-logout" onclick="window._auth.logout()">Выйти из аккаунта</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<style>
-/* ── AUTH ─────────────────────────────── */
-.auth-overlay {
-  position:fixed;inset:0;z-index:9999;
-  background:rgba(15,20,40,0.72);
-  backdrop-filter:blur(8px);
-  display:flex;align-items:center;justify-content:center;
-}
-.auth-card {
-  background:#fff;border-radius:20px;
-  padding:40px 36px 36px;
-  width:380px;max-width:calc(100vw - 32px);
-  box-shadow:0 24px 64px rgba(0,0,0,0.18);
-}
-.auth-logo {
-  font:800 28px/1 Onest,Inter,sans-serif;
-  color:#1a1a2e;letter-spacing:-1px;
-  margin-bottom:4px;
-}
-.auth-subtitle {
-  font:400 13px/1 Onest,Inter,sans-serif;
-  color:#888;margin-bottom:28px;
-}
-.auth-tabs {
-  display:flex;gap:4px;margin-bottom:24px;
-  background:#f4f5f7;border-radius:10px;padding:3px;
-}
-.auth-tab {
-  flex:1;padding:8px;border:none;background:transparent;
-  font:500 13px/1 Onest,Inter,sans-serif;color:#888;
-  border-radius:8px;cursor:pointer;transition:all .18s;
-}
-.auth-tab.active {
-  background:#fff;color:#1a1a2e;
-  box-shadow:0 1px 4px rgba(0,0,0,.1);
-}
-.auth-error {
-  background:#fff0f0;border:1px solid #ffd0d0;
-  border-radius:8px;padding:10px 14px;
-  font:400 13px/1.4 Onest,Inter,sans-serif;color:#c0392b;
-  margin-bottom:16px;
-}
-.auth-fields { display:flex;flex-direction:column;gap:14px;margin-bottom:20px; }
-.auth-field { display:flex;flex-direction:column;gap:6px; }
-.auth-field label { font:500 12px/1 Onest,Inter,sans-serif;color:#555; }
-.auth-field input {
-  border:1.5px solid #e5e7eb;border-radius:10px;
-  padding:11px 14px;
-  font:400 14px/1 Onest,Inter,sans-serif;color:#1a1a2e;
-  outline:none;transition:border-color .15s;
-}
-.auth-field input:focus { border-color:#4a6fe3; }
-.auth-submit {
-  width:100%;padding:13px;border:none;border-radius:10px;
-  background:#4a6fe3;color:#fff;
-  font:600 14px/1 Onest,Inter,sans-serif;
-  cursor:pointer;transition:background .15s;
-}
-.auth-submit:hover { background:#3a5fd3; }
-
-/* ── PROFILE BUTTON IN SIDEBAR ─────── */
-.btn-open-profile {
-  display:flex;align-items:center;gap:12px;
-  width:calc(100% - 32px);margin:8px 16px 0;
-  padding:12px 14px;
-  border:1.5px solid #e5e7eb;border-radius:12px;
-  background:#f9fafb;cursor:pointer;
-  transition:all .15s;text-align:left;
-}
-.btn-open-profile:hover { background:#f0f4ff;border-color:#c5d3f8; }
-.bop-icon { font-size:18px;flex-shrink:0; }
-.bop-text { flex:1;display:flex;flex-direction:column;gap:3px; }
-.bop-title { font:600 13px/1 Onest,Inter,sans-serif;color:#1a1a2e; }
-.bop-sub { font:400 11px/1 Onest,Inter,sans-serif;color:#888; }
-.bop-arrow { font-size:18px;color:#ccc;flex-shrink:0; }
-
-/* ── PROFILE SCREEN ────────────────── */
-.profile-overlay {
-  position:fixed;inset:0;z-index:9998;
-  background:rgba(15,20,40,0.5);
-  backdrop-filter:blur(4px);
-  display:flex;align-items:center;justify-content:center;
-}
-.profile-card {
-  background:#fff;border-radius:20px;
-  width:440px;max-width:calc(100vw - 32px);
-  max-height:90vh;display:flex;flex-direction:column;
-  box-shadow:0 24px 64px rgba(0,0,0,0.18);
-}
-.profile-header {
-  display:flex;align-items:center;justify-content:space-between;
-  padding:20px 24px 16px;
-  border-bottom:1px solid #f0f0f0;
-}
-.profile-title { font:600 16px/1 Onest,Inter,sans-serif;color:#1a1a2e; }
-.profile-close {
-  border:none;background:none;font-size:18px;
-  color:#aaa;cursor:pointer;padding:4px 8px;
-  border-radius:6px;transition:background .15s;
-}
-.profile-close:hover { background:#f4f5f7;color:#555; }
-.profile-body { padding:20px 24px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px; }
-.profile-logo-zone {
-  width:90px;height:90px;border-radius:12px;
-  border:2px dashed #d0d5e0;background:#f9fafb;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  cursor:pointer;color:#aaa;transition:border-color .15s;overflow:hidden;
-  align-self:center;
-}
-.profile-logo-zone:hover { border-color:#4a6fe3;color:#4a6fe3; }
-#profileLogoPreview { width:100%;height:100%;object-fit:contain; }
-.profile-field { display:flex;flex-direction:column;gap:6px; }
-.profile-field label { font:500 12px/1 Onest,Inter,sans-serif;color:#555; }
-.profile-field input {
-  border:1.5px solid #e5e7eb;border-radius:10px;
-  padding:10px 14px;
-  font:400 14px/1 Onest,Inter,sans-serif;color:#1a1a2e;
-  outline:none;transition:border-color .15s;
-}
-.profile-field input:focus { border-color:#4a6fe3; }
-.profile-field-row { display:flex;gap:12px; }
-.profile-field-row .profile-field { flex:1; }
-.profile-footer {
-  padding:16px 24px;border-top:1px solid #f0f0f0;
-  display:flex;gap:10px;
-}
-.profile-btn-save {
-  flex:1;padding:11px;border:none;border-radius:10px;
-  background:#4a6fe3;color:#fff;
-  font:600 13px/1 Onest,Inter,sans-serif;cursor:pointer;
-  transition:background .15s;
-}
-.profile-btn-save:hover { background:#3a5fd3; }
-.profile-btn-logout {
-  padding:11px 16px;border:1.5px solid #ffd0d0;border-radius:10px;
-  background:#fff;color:#e74c3c;
-  font:500 13px/1 Onest,Inter,sans-serif;cursor:pointer;
-  transition:all .15s;
-}
-.profile-btn-logout:hover { background:#fff0f0; }
-</style>
-
-<script src="js/auth.js"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', async () => {
-    await window._auth.checkAuth();
-  });
-</script>
-
-<script type="module">
-// ── MINI-ROUTER ────────────────────────────────────────────────────
-// Загружает HTML вкладки в #viewContainer и инициализирует её логику
-
-const viewContainer = document.getElementById('viewContainer');
-const tabButtons    = document.querySelectorAll('.pill-btn');
-const pillSlider    = document.getElementById('pillSlider');
-
-// Кэш смонтированных вьюшек: { planner: HTMLElement, smeta: HTMLElement, kp: HTMLElement }
-const mountedViews = {};
-let currentView = null;
-
-// ── Pill slider animation ─────────────────────────────────────────
-function movePillSlider(btn) {
-  const pill = document.getElementById('topbarPill');
-  if (!pill || !pillSlider) return;
-  const pillRect = pill.getBoundingClientRect();
-  const btnRect  = btn.getBoundingClientRect();
-  pillSlider.style.width     = btnRect.width + 'px';
-  pillSlider.style.transform = 'translateX(' + (btnRect.left - pillRect.left - 3) + 'px)';
-}
-
-// ── Скрыть все смонтированные вьюшки ─────────────────────────────
-function hideAllViews() {
-  Object.values(mountedViews).forEach(el => { el.style.display = 'none'; });
-}
-
-// ── Загрузить и инициализировать вьюшку (только первый раз) ──────
-async function mountView(viewName) {
-  if (mountedViews[viewName]) return; // уже смонтирована
-
-  const res  = await fetch('/views/' + viewName + '.html');
-  const html = await res.text();
-
-  // Создаём обёртку и вставляем HTML
-  const wrapper = document.createElement('div');
-  wrapper.dataset.view = viewName;
-  wrapper.style.display = 'none';
-  wrapper.innerHTML = html;
-  viewContainer.appendChild(wrapper);
-  mountedViews[viewName] = wrapper;
-
-  // Инициализация логики модуля
-  if (viewName === 'planner') {
-    try {
-      // Грузим все модули параллельно
-      const [
-        { appState },
-        up,
-        { loadFromLocalStorage },
-        { clearHistory },
-      ] = await Promise.all([
-        import('./js/state.js'),
-        import('./js/ui-planner.js'),
-        import('./js/room.js'),
-        import('./js/storage.js'),
-        import('./js/commands/CommandHistory.js'),
-      ]);
-
-      window._appState = appState;
-      const { initPlanner, forceRedraw, getViewport } = up;
-
-      if (getViewport) {
-        Object.defineProperty(window, '_plannerViewport', { get: () => getViewport(), configurable: true });
-      }
-
-      const canvas     = wrapper.querySelector('#planCanvas');
-      const canvasWrap = wrapper.querySelector('#canvasWrap');
-      if (canvas && canvasWrap) {
-        initPlanner({
-          canvas, canvasWrap,
-          toolGrid:          wrapper.querySelector('#toolGrid'),
-          offsetBtns:        wrapper.querySelector('#offsetBtns'),
-          doorHingeButtons:  wrapper.querySelector('#doorHingeButtons'),
-          doorSwingButtons:  wrapper.querySelector('#doorSwingButtons'),
-          editPanel:         wrapper.querySelector('#editPanel'),
-          editContent:       wrapper.querySelector('#editContent'),
-          btnDeleteSelected: wrapper.querySelector('#btnDeleteSelected'),
-          btnUndo:           wrapper.querySelector('#btnUndo'),
-          btnRedo:           wrapper.querySelector('#btnRedo'),
-          btnNew:            wrapper.querySelector('#btnNew'),
-          btnRecalc:         wrapper.querySelector('#btnRecalc'),
-          btnZoomIn:         wrapper.querySelector('#btnZoomIn'),
-          btnZoomOut:        wrapper.querySelector('#btnZoomOut'),
-          btnZoomReset:      wrapper.querySelector('#btnZoomReset'),
-          btnImportRooms:    wrapper.querySelector('#btnImportRooms'),
-          roomCount:         wrapper.querySelector('#roomCount'),
-          lblTool:           wrapper.querySelector('#lblTool'),
-          lblCoords:         wrapper.querySelector('#lblCoords'),
-          lblLen:            wrapper.querySelector('#lblLen'),
-          lblLenVal:         wrapper.querySelector('#lblLenVal'),
-          snapBadge:         wrapper.querySelector('#snapBadge'),
-          lengthOverlay:     wrapper.querySelector('#lengthOverlay'),
-          lengthLabel:       wrapper.querySelector('#lengthLabel'),
-          inpWallThick:      wrapper.querySelector('#inpWallThick'),
-          inpWallHeight:     wrapper.querySelector('#inpWallHeight'),
-          rulerTooltip:      wrapper.querySelector('#rulerTooltip'),
-        });
-      }
-
-      if (loadFromLocalStorage()) {
-        clearHistory();
-        forceRedraw();
-      }
-
-      // Привязываем syncCtxPanel к toolGrid этой вьюшки
-      const toolGrid = wrapper.querySelector('#toolGrid');
-      if (toolGrid && window._syncCtxPanel) {
-        toolGrid.addEventListener('click', e => {
-          const btn = e.target.closest('[data-tool]');
-          if (btn) setTimeout(() => window._syncCtxPanel(btn.dataset.tool), 0);
-        });
-        window._syncCtxPanel('select');
-      }
-
-    } catch(e) { console.error('Planner init error:', e); }
-
-  } else if (viewName === 'smeta') {
-    try {
-      const { appState } = await import('./js/state.js');
-      window._appState = appState;
-
-      const sm = await import('./js/smeta.js');
-      const { initSmeta,
-        handleSmr, initSmrManual, addSmrRow, clearSmr,
-        handleMat, initMatManual, addMatRow, clearMat,
-        generatePDF, importRoomsFromPlanner, captureCanvas,
-        collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
-        setSmrMode,
-      } = sm;
-
-      window._smetaModule = {
-        handleSmr, initSmrManual, addSmrRow, clearSmr,
-        handleMat, initMatManual, addMatRow, clearMat,
-        generatePDF, importRoomsFromPlanner, captureCanvas,
-        collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
-        setSmrMode,
-      };
-
-      const { renderToImage } = await import('./js/render.js');
-      window._renderModule = { renderToImage };
-
-      initSmeta();
-    } catch(e) { console.error('Smeta init error:', e); }
-
-  } else if (viewName === 'kp') {
-    // SPP toggles
-    wrapper.querySelectorAll('#sppToggles input[type="checkbox"]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const page  = inp.dataset.page;
-        const label = inp.closest('.spp-toggle');
-        const pageEl = wrapper.querySelector('.spp-page[data-page="' + page + '"]');
-        if (inp.checked) { label.classList.add('active'); pageEl?.classList.remove('spp-hidden'); }
-        else             { label.classList.remove('active'); pageEl?.classList.add('spp-hidden'); }
-      });
-    });
-    setTimeout(() => {
-      if (window.BlockEditor) {
-        wrapper.querySelectorAll('.spp-a4').forEach(a4 => window.BlockEditor.initPage(a4));
-      }
-      if (typeof window.setA4Scale === 'function') window.setA4Scale();
-    }, 80);
-  }
-}
-
-// ── Показать нужную вьюшку ────────────────────────────────────────
-async function loadView(viewName) {
-  await mountView(viewName); // если не смонтирована — монтируем
-
-  hideAllViews();
-
-  const el = mountedViews[viewName];
-  el.style.display = 'block';
-  currentView = viewName;
-
-  // При показе планировщика — форсируем resize canvas
-  if (viewName === 'planner') {
-    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-  }
-
-  // При показе KP — A4 масштаб и сброс скролла
-  if (viewName === 'kp') {
-    const sppBody = el.querySelector('#sppBody');
-    if (sppBody) sppBody.scrollTop = 0;
-    requestAnimationFrame(() => {
-      if (typeof window.setA4Scale === 'function') {
-        window.setA4Scale();
-        setTimeout(window.setA4Scale, 80);
-      }
+  if (address) {
+    // Адрес заполнен — сразу сохраняем под ним
+    _doDownload('Проект — ' + address);
+  } else {
+    // Адрес не заполнен — спрашиваем название файла через модальное окно
+    _promptFilename(name => {
+      if (name !== null) _doDownload(name || 'remb_project');
     });
   }
 }
 
-// ── Tab click handlers ────────────────────────────────────────────
-tabButtons.forEach(btn => {
-  btn.addEventListener('click', () => {
-    tabButtons.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    movePillSlider(btn);
-    loadView(btn.dataset.view);
-  });
-});
+function _promptFilename(callback) {
+  // Удаляем старый модал если вдруг остался
+  document.getElementById('_rembSaveModal')?.remove();
 
-// ── Pill slider init (no transition on first paint) ───────────────
-requestAnimationFrame(() => {
-  const active = document.querySelector('.pill-btn.active');
-  if (active) {
-    pillSlider.style.transition = 'none';
-    movePillSlider(active);
-    requestAnimationFrame(() => { pillSlider.style.transition = ''; });
+  const overlay = document.createElement('div');
+  overlay.id = '_rembSaveModal';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:99999;
+    background:rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;
+  `;
+
+  const box = document.createElement('div');
+  box.style.cssText = `
+    background:#fff;border-radius:14px;padding:28px 28px 22px;
+    box-shadow:0 8px 40px rgba(0,0,0,.22);
+    width:340px;font-family:Onest,Inter,sans-serif;
+  `;
+
+  box.innerHTML = `
+    <div style="font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:6px">Сохранить проект</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Укажите название файла</div>
+    <input id="_rembSaveInput" type="text" placeholder="Название проекта"
+      style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;
+             border-radius:8px;font-size:14px;outline:none;font-family:inherit;
+             transition:border-color .15s;" />
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+      <button id="_rembSaveCancel"
+        style="padding:8px 18px;border-radius:8px;border:1.5px solid #e5e7eb;
+               background:#fff;font-size:13px;font-family:inherit;cursor:pointer;color:#555">
+        Отмена
+      </button>
+      <button id="_rembSaveOk"
+        style="padding:8px 22px;border-radius:8px;border:none;
+               background:#1a1a2e;color:#fff;font-size:13px;font-family:inherit;cursor:pointer">
+        Сохранить
+      </button>
+    </div>
+  `;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const inp = box.querySelector('#_rembSaveInput');
+  const btnOk = box.querySelector('#_rembSaveOk');
+  const btnCancel = box.querySelector('#_rembSaveCancel');
+
+  inp.focus();
+
+  // Стиль фокуса инпута
+  inp.addEventListener('focus', () => inp.style.borderColor = '#4a6fe3');
+  inp.addEventListener('blur',  () => inp.style.borderColor = '#d1d5db');
+
+  function _close(result) {
+    overlay.remove();
+    callback(result);
   }
-});
 
-// ── Save/load project buttons (wired to storage module) ──────────
-async function wireStorageButtons() {
-  const { autosaveToLocalStorage, downloadProject, uploadProject } = await import('./js/storage.js');
-  const { clearHistory } = await import('./js/commands/CommandHistory.js');
-
-  document.getElementById('btnSaveProject')?.addEventListener('click', downloadProject);
-  document.getElementById('btnLoadProject')?.addEventListener('change', e => {
-    const f = e.target.files[0]; if (!f) return;
-    uploadProject(f, err => {
-      if (err) { alert('Ошибка загрузки: ' + err.message); return; }
-      clearHistory();
-      // If planner is visible, redraw
-      import('./js/ui-planner.js').then(({ forceRedraw }) => forceRedraw()).catch(() => {});
-    });
+  btnOk.addEventListener('click', () => _close(inp.value.trim() || 'remb_project'));
+  btnCancel.addEventListener('click', () => _close(null));
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') _close(inp.value.trim() || 'remb_project');
+    if (e.key === 'Escape') _close(null);
   });
-  setInterval(autosaveToLocalStorage, 30000);
+  overlay.addEventListener('click', e => { if (e.target === overlay) _close(null); });
 }
-wireStorageButtons();
 
-// ── Preload GOST font ─────────────────────────────────────────────
-try { await document.fonts.load('16px Merriweather'); } catch(e) {}
-
-// ── Initial load: active tab ──────────────────────────────────────
-const activeBtn = document.querySelector('.pill-btn.active');
-if (activeBtn) await loadView(activeBtn.dataset.view);
-
-// ── Фоновый preload модулей планировщика ──────────────────────────
-// Запускаем сразу после первой вьюшки — браузер закачает и закэширует
-// модули пока пользователь смотрит на смету, и при клике «Чертёж»
-// import() вернётся мгновенно из кэша.
-setTimeout(() => {
-  import('./js/ui-planner.js').catch(() => {});
-  import('./js/state.js').catch(() => {});
-  import('./js/room.js').catch(() => {});
-  import('./js/storage.js').catch(() => {});
-  import('./js/commands/CommandHistory.js').catch(() => {});
-  fetch('/views/planner.html').catch(() => {});
-}, 800); // небольшая задержка чтобы не конкурировать с текущей вьюшкой
-
-// ── KP scroll reset (smeta.js calls liveUpdate which populates KP) ─
-function resetSppScroll() {
-  const b = document.getElementById('sppBody');
-  if (b) b.scrollTop = 0;
+export function uploadProject(file, onLoaded) {
+  const r = new FileReader();
+  r.onload = e => { try { loadProject(e.target.result); onLoaded?.(null); } catch (err) { onLoaded?.(err); } };
+  r.readAsText(file);
 }
-[50, 200, 600].forEach(t => setTimeout(resetSppScroll, t));
-</script>
-
-
-</body>
-
-</html>
