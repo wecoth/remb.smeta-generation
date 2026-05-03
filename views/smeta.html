@@ -516,6 +516,37 @@
   /* Hide old modal preview button */
   .btn-preview { display:none !important; }
 
+  /* Photo block — right of meta */
+  .obj-photo-block {
+    flex-shrink:0;width:220px;
+    border-left:0.5px solid var(--color-border-tertiary,#ececec);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:12px;gap:8px;cursor:pointer;position:relative;
+    transition:background .15s;
+  }
+  .obj-photo-block:hover { background:#fafafa; }
+  .obj-photo-block input[type=file] { display:none; }
+  .obj-photo-preview {
+    width:100%;flex:1;min-height:0;
+    border-radius:7px;overflow:hidden;
+    background:#f5f5f5;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .obj-photo-preview img {
+    width:100%;height:100%;object-fit:cover;display:block;
+    border-radius:7px;
+  }
+  .obj-photo-placeholder {
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    color:#ccc;font-size:11px;text-align:center;line-height:1.5;
+    padding:16px 8px;
+  }
+  .obj-photo-placeholder-icon { font-size:28px;line-height:1; }
+  .obj-photo-hint {
+    font-size:10px;color:#ccc;text-align:center;
+  }
+  .obj-photo
+
 
 
 
@@ -581,11 +612,11 @@
           </div>
         </div>
 
-        <!-- Row 2: Экспликация слева + мета справа -->
+        <!-- Row 2: мета слева + пустое место + экспликация справа -->
         <div class="obj-body-row">
 
           <!-- Левая: экспликация помещений -->
-          <div class="obj-expl-inline">
+          <div class="obj-expl-inline" style="border-right:0.5px solid var(--color-border-tertiary,#ececec)">
             <div class="obj-expl-title">Экспликация помещений</div>
             <div class="obj-expl-scroll">
               <div id="objExplWrap">
@@ -593,6 +624,9 @@
               </div>
             </div>
           </div>
+
+          <!-- Пустое пространство -->
+          <div style="flex:1"></div>
 
           <!-- Правая: мета-данные -->
           <div class="obj-meta-right">
@@ -658,6 +692,7 @@
             </div>
 
           </div><!-- /obj-meta-right -->
+
         </div><!-- /obj-body-row -->
       </div>
 
