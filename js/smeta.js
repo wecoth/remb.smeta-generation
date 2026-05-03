@@ -276,6 +276,7 @@ function _initRowDnd(tbody, rows, onReorder) {
   let srcTr    = null;   // original row being dragged
   let placeholder = null; // invisible spacer keeping layout stable
   let offsetY  = 0;
+  let ghost_left = 0;
 
   function getRowAt(y) {
     // Find which real tr the cursor is over (excluding placeholder & ghost)
@@ -302,6 +303,8 @@ function _initRowDnd(tbody, rows, onReorder) {
     srcTr = tr;
     const rect = tr.getBoundingClientRect();
     offsetY = e.clientY - rect.top;
+    // Snap ghost X to table left edge always
+    ghost_left = rect.left;
 
     // Create placeholder — same height, invisible
     placeholder = document.createElement('tr');
@@ -314,19 +317,24 @@ function _initRowDnd(tbody, rows, onReorder) {
     srcTr.style.opacity = '0';
     srcTr.style.pointerEvents = 'none';
 
-    // Create ghost (visual clone following cursor)
-    ghost = tr.cloneNode(true);
-    ghost.style.cssText = `
+    // Create ghost — wrap tr in table so it renders correctly
+    const ghostTable = document.createElement('table');
+    ghostTable.className = 'smeta-tbl';
+    ghostTable.style.cssText = `
       position:fixed;left:${rect.left}px;top:${rect.top}px;
       width:${rect.width}px;z-index:9999;pointer-events:none;
-      opacity:.92;box-shadow:0 8px 32px rgba(0,0,0,.18);
-      border-radius:6px;background:var(--bg-card);
-      border:1.5px solid var(--accent);transition:none;
+      opacity:.88;box-shadow:0 6px 24px rgba(0,0,0,.16);
+      border-radius:6px;border-collapse:collapse;
+      outline:2px solid var(--accent);
+      background:var(--bg-card);transition:none;
     `;
-    ghost.querySelectorAll('td').forEach(td => {
-      td.style.background = 'transparent';
-    });
-    document.body.appendChild(ghost);
+    const ghostTbody = document.createElement('tbody');
+    const ghostTr = tr.cloneNode(true);
+    ghostTr.style.cssText = '';
+    ghostTbody.appendChild(ghostTr);
+    ghostTable.appendChild(ghostTbody);
+    document.body.appendChild(ghostTable);
+    ghost = ghostTable;
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onDrop);
@@ -336,6 +344,7 @@ function _initRowDnd(tbody, rows, onReorder) {
     if (!ghost) return;
     // Move ghost
     ghost.style.top = (e.clientY - offsetY) + 'px';
+    ghost.style.left = ghost_left + 'px';
 
     // Find target row
     const targetTr = getRowAt(e.clientY);
