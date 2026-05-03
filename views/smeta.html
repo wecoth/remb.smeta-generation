@@ -138,53 +138,57 @@
     letter-spacing:.3px;text-transform:uppercase;
   }
   .obj-addr-inp {
-    background:none;border:none;border-bottom:0.5px solid #e0e0e0;
+    background:none;border:none;border-bottom:1px solid #e4e4e4;
     outline:none;font-size:13px;font-weight:500;
     color:var(--color-text-primary,#1a1a2e);
     font-family:Onest,Inter,sans-serif;
-    padding:1px 0 3px;transition:border-color .15s;
+    padding:2px 0 4px;transition:border-color .15s;
   }
   .obj-addr-inp:focus { border-bottom-color:#1a1a2e; }
-  .obj-addr-inp::placeholder { color:#c0c4cc;font-style:italic; }
-  .obj-addr-inp.wide { width:220px; }
-  .obj-addr-inp.mid  { width:80px; }
-  .obj-addr-inp.sm   { width:60px; }
-  .obj-addr-sep { width:0.5px;height:28px;background:#e8e8e8;margin:0 4px; }
+  .obj-addr-inp::placeholder { color:#c8ccd4;font-style:italic;font-weight:400; }
+  .obj-addr-inp.wide { width:210px; }
+  .obj-addr-inp.mid  { width:72px; }
+  .obj-addr-inp.sm   { width:52px; }
+  .obj-addr-sep { width:0.5px;height:26px;background:#ebebeb;margin:0 2px; }
 
   /* Row 2: expl table left + meta right */
   .obj-body-row {
     display:flex;align-items:stretch;min-height:0;
   }
 
-  /* Left: экспликация inline */
+  /* Left: экспликация inline — фиксированная ширина, не растягивается */
   .obj-expl-inline {
-    flex:1;min-width:0;
-    padding:8px 16px 10px;
+    width:380px;flex-shrink:0;
+    padding:10px 16px 12px;
     border-right:0.5px solid var(--color-border-tertiary,#ececec);
-    overflow-x:auto;
+    overflow:hidden;
+  }
+  .obj-expl-scroll {
+    max-height:160px;overflow-y:auto;
   }
   .obj-expl-title {
-    font-size:10px;color:var(--color-text-secondary,#aaa);
-    text-transform:uppercase;letter-spacing:.3px;
-    margin-bottom:6px;
+    font-size:9px;color:var(--color-text-secondary,#bbb);
+    text-transform:uppercase;letter-spacing:.4px;
+    margin-bottom:7px;
   }
   .obj-expl-tbl {
     width:100%;border-collapse:collapse;font-size:11px;
   }
   .obj-expl-tbl th {
-    font-size:9px;font-weight:500;color:#bbb;
-    text-align:right;padding:0 6px 4px;
+    font-size:9px;font-weight:500;color:#c8c8c8;
+    text-align:right;padding:0 4px 5px;
     letter-spacing:.2px;white-space:nowrap;
   }
-  .obj-expl-tbl th:first-child { text-align:left; }
+  .obj-expl-tbl th:first-child { text-align:left;padding-left:0; }
   .obj-expl-tbl td {
-    padding:3px 6px;color:var(--color-text-primary,#333);
+    padding:3px 4px;color:var(--color-text-primary,#333);
     border-top:0.5px solid #f4f4f4;text-align:right;white-space:nowrap;
+    font-size:11px;
   }
-  .obj-expl-tbl td:first-child { text-align:left;color:#444; }
+  .obj-expl-tbl td:first-child { text-align:left;color:#444;padding-left:0; }
   .obj-expl-tbl tr.expl-total td {
-    font-weight:600;border-top:0.5px solid #ddd;
-    padding-top:5px;
+    font-weight:600;border-top:1px solid #e4e4e4;
+    padding-top:5px;color:var(--color-text-primary,#222);
   }
   .obj-expl-empty {
     font-size:11px;color:#ccc;padding:8px 0;
@@ -192,22 +196,22 @@
 
   /* Right: meta column */
   .obj-meta-right {
-    flex-shrink:0;
+    flex:1;min-width:0;
     display:flex;flex-direction:column;gap:0;
     padding:0;
   }
   .obj-meta-group {
     display:flex;flex-direction:column;gap:0;
-    padding:8px 16px 8px;
-    border-bottom:0.5px solid var(--color-border-tertiary,#ececec);
+    padding:8px 20px 8px;
+    border-bottom:1px solid #f0f0f0;
   }
   .obj-meta-group:last-child { border-bottom:none; }
   .obj-meta-row {
-    display:flex;align-items:baseline;justify-content:space-between;gap:24px;
-    padding:2px 0;
+    display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+    padding:2.5px 0;
   }
   .obj-meta-lbl {
-    font-size:10px;color:var(--color-text-secondary,#aaa);
+    font-size:10px;color:#b0b4bc;
     white-space:nowrap;letter-spacing:.1px;
   }
   .obj-meta-val {
@@ -218,6 +222,12 @@
   .obj-meta-val.grand {
     font-size:14px;font-weight:700;
   }
+  .obj-meta-val.accent {
+    font-size:13px;font-weight:700;
+  }
+  .obj-meta-lbl.accent-lbl {
+    font-size:10px;font-weight:600;color:var(--color-text-primary,#333);
+  }
   .obj-meta-val.margin-good { color:#2d9c5e; }
   .obj-meta-val.margin-mid  { color:#c08c2a; }
   .obj-meta-val.margin-low  { color:#c0392b; }
@@ -226,7 +236,7 @@
     font-size:12px;font-weight:500;
     color:var(--color-text-primary,#1a1a2e);
     font-family:Onest,Inter,sans-serif;
-    width:100px;text-align:right;padding:0;
+    width:110px;text-align:right;padding:0;
   }
 
   /* Block 2/3 — Tables */
@@ -577,8 +587,10 @@
           <!-- Левая: экспликация помещений -->
           <div class="obj-expl-inline">
             <div class="obj-expl-title">Экспликация помещений</div>
-            <div id="objExplWrap">
-              <div class="obj-expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>
+            <div class="obj-expl-scroll">
+              <div id="objExplWrap">
+                <div class="obj-expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>
+              </div>
             </div>
           </div>
 
@@ -620,8 +632,8 @@
                 <span class="obj-meta-val" id="hdrMasters">— ₽</span>
               </div>
               <div class="obj-meta-row">
-                <span class="obj-meta-lbl">Маржа</span>
-                <span class="obj-meta-val" id="hdrMargin">—</span>
+                <span class="obj-meta-lbl accent-lbl">Маржа</span>
+                <span class="obj-meta-val accent" id="hdrMargin">—</span>
               </div>
               <div class="obj-meta-row">
                 <span class="obj-meta-lbl">Маржа в день</span>
