@@ -273,29 +273,31 @@ function _updateHeaderDates() {
 // Generic: works for both SMR and MAT tables
 function _initRowDnd(tbody, rows, onReorder) {
   let dragSrc = null;
+  let dropTarget = null;
 
-  function getDragRow(el) {
-    return el.closest('tr');
+  function clearHighlights() {
+    tbody.querySelectorAll('tr').forEach(r => {
+      r.classList.remove('row-dragging', 'row-drop-before', 'row-drop-after');
+    });
   }
 
-  // Enable draggable only when pressing the handle, disable on release
   tbody.addEventListener('mousedown', e => {
     const handle = e.target.closest('.td-drag');
-    const tr = handle && handle.closest('tr');
-    if (tr) {
-      tr.draggable = true;
-      const reset = () => { tr.draggable = false; document.removeEventListener('mouseup', reset); };
-      document.addEventListener('mouseup', reset);
-    }
+    const tr = handle ? handle.closest('tr') : null;
+    if (!tr) return;
+    tr.draggable = true;
+    const reset = () => {
+      tr.draggable = false;
+      document.removeEventListener('mouseup', reset);
+    };
+    document.addEventListener('mouseup', reset);
   });
 
   tbody.addEventListener('dragstart', e => {
-    const handle = e.target.closest('.td-drag');
-    if (!handle) { e.preventDefault(); return; }
-    const tr = getDragRow(e.target);
-    if (!tr) return;
+    const tr = e.target.closest('tr');
+    if (!tr || !tr.draggable) { e.preventDefault(); return; }
     dragSrc = tr;
-    tr.classList.add('row-dragging');
+    setTimeout(() => tr.classList.add('row-dragging'), 0);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', tr.dataset.rowIdx);
   });
@@ -303,37 +305,47 @@ function _initRowDnd(tbody, rows, onReorder) {
   tbody.addEventListener('dragover', e => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    const tr = getDragRow(e.target);
+    const tr = e.target.closest('tr');
     if (!tr || tr === dragSrc) return;
-    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over'));
-    tr.classList.add('row-drag-over');
+    const rect = tr.getBoundingClientRect();
+    const pos  = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    if (dropTarget && dropTarget.tr === tr && dropTarget.position === pos) return;
+    clearHighlights();
+    dragSrc.classList.add('row-dragging');
+    dropTarget = { tr, position: pos };
+    tr.classList.add(pos === 'before' ? 'row-drop-before' : 'row-drop-after');
   });
 
   tbody.addEventListener('dragleave', e => {
     if (!tbody.contains(e.relatedTarget)) {
-      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over'));
+      clearHighlights();
+      dropTarget = null;
     }
   });
 
   tbody.addEventListener('drop', e => {
     e.preventDefault();
-    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over', 'row-dragging'));
-    const tr = getDragRow(e.target);
-    if (!tr || tr === dragSrc) return;
+    if (!dragSrc || !dropTarget) { clearHighlights(); return; }
     const fromIdx = +dragSrc.dataset.rowIdx;
-    const toIdx   = +tr.dataset.rowIdx;
+    let toIdx     = +dropTarget.tr.dataset.rowIdx;
+    const pos     = dropTarget.position;
+    clearHighlights();
+    dropTarget = null;
     if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx) return;
-    // Reorder array
     const [moved] = rows.splice(fromIdx, 1);
-    rows.splice(toIdx, 0, moved);
+    const adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx;
+    const finalTo = pos === 'after' ? adjustedTo + 1 : adjustedTo;
+    rows.splice(Math.min(finalTo, rows.length), 0, moved);
     onReorder();
   });
 
   tbody.addEventListener('dragend', () => {
-    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('row-drag-over', 'row-dragging'));
+    clearHighlights();
     dragSrc = null;
+    dropTarget = null;
   });
 }
+
 
 
 // ── INSERT ZONES ──────────────────────────────────────────────────
