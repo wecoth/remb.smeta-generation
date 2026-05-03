@@ -113,20 +113,15 @@ function smartParse(json) {
 
 // ── STATE ─────────────────────────────────────────────────────────
 
-// Stages (production)
-let _stages = []; // синхронизируется с разделами SMR через _syncSectionsToGantt
+// Все данные сметы живут в appState (state.js):
+// appState.smrRows, appState.smrRowsMasters, appState.smrMode,
+// appState.matRows, appState.stages, appState.payments,
+// appState.payCounter, appState.stageCounter, appState.totalDays
 const STAGE_COLORS = ['#e07b39','#9b6dda','#5b8dd9','#4aaa6f','#da6d8a','#6da8b8','#a8b85b','#b85b6d'];
-let _stageCounter = 0;
-function _newStageId() { return 's' + (++_stageCounter); }
-function _nextColor() { return STAGE_COLORS[(_stageCounter - 1) % STAGE_COLORS.length]; }
+function _newStageId() { return 's' + (++appState.stageCounter); }
+function _nextColor()  { return STAGE_COLORS[(appState.stageCounter - 1) % STAGE_COLORS.length]; }
 
-// Smeta rows
-let _smrRows = [];
-let _smrRowsMasters = [];
-let _smrMode = 'client'; // 'client' | 'masters'
-let _matRows = [];
-
-// Rooms (from planner)
+// Rooms (from planner) — только текущая сессия, не персистируется
 let _rooms = [];
 
 // ── ROOMS ─────────────────────────────────────────────────────────
@@ -207,19 +202,19 @@ function _updateHeader() {
 }
 
 function _updateTotals() {
-  const smrT = _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-  const matT = _matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-  const mastersSmrT = _smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  const smrT = appState.smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  const matT = appState.matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  const mastersSmrT = appState.smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
   const el = id => document.getElementById(id);
   if (el('hdrSmr'))   el('hdrSmr').textContent   = fmtInt(smrT) + ' ₽';
   if (el('hdrMat'))   el('hdrMat').textContent   = fmtInt(matT) + ' ₽';
   if (el('hdrTotal')) el('hdrTotal').textContent = fmtInt(smrT + matT) + ' ₽';
-  const activeSmrT = _smrMode === 'masters' ? mastersSmrT : smrT;
+  const activeSmrT = appState.smrMode === 'masters' ? mastersSmrT : smrT;
   if (el('smrFootTotal')) el('smrFootTotal').textContent = fmt(activeSmrT);
   if (el('matFootTotal')) el('matFootTotal').textContent = fmt(matT);
-  const activeSmrRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
+  const activeSmrRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
   if (el('smrCount')) el('smrCount').textContent = activeSmrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(activeSmrT) + ' ₽';
-  if (el('matCount')) el('matCount').textContent = _matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
+  if (el('matCount')) el('matCount').textContent = appState.matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
 
   const mastersT = mastersSmrT;
   const marginT  = smrT + matT - mastersT;
@@ -251,8 +246,8 @@ function _updateHeaderDates() {
   if (el('hdrDays')) el('hdrDays').textContent = totalDays ? totalDays + ' дн.' : '—';
 
   // Try to get start date from first stage, calculate finish
-  const startStage = _stages.length ? _stages.reduce((a, b) => (a.start < b.start ? a : b), _stages[0]) : null;
-  const endStage   = _stages.length ? _stages.reduce((a, b) => ((a.start + a.dur) > (b.start + b.dur) ? a : b), _stages[0]) : null;
+  const startStage = appState.stages.length ? appState.stages.reduce((a, b) => (a.start < b.start ? a : b), appState.stages[0]) : null;
+  const endStage   = appState.stages.length ? appState.stages.reduce((a, b) => ((a.start + a.dur) > (b.start + b.dur) ? a : b), appState.stages[0]) : null;
 
   if (startStage && totalDays > 0) {
     // Use today as project start reference if no explicit date
@@ -386,16 +381,16 @@ function _initInsertZones(tbody, table) {
         const newRow = isSection
           ? { name: '', isSection: true }
           : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        if (_smrMode === 'masters') {
-          _smrRowsMasters.splice(beforeIdx, 0, newRow);
+        if (appState.smrMode === 'masters') {
+          appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
         } else {
-          _smrRows.splice(beforeIdx, 0, newRow);
+          appState.smrRows.splice(beforeIdx, 0, newRow);
           // Один объект — изменения видны в обоих массивах
-          _smrRowsMasters.splice(beforeIdx, 0, newRow);
+          appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
         }
         _renderSmrTable();
         _updateTotals();
-        if (isSection && _smrMode === 'client') _syncSectionsToGantt();
+        if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
         setTimeout(() => {
           const tbody2 = document.getElementById('smrTbody');
           for (const tr of tbody2.querySelectorAll('tr')) {
@@ -407,7 +402,7 @@ function _initInsertZones(tbody, table) {
         const newRow = isSection
           ? { name: '', isSection: true }
           : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        _matRows.splice(beforeIdx, 0, newRow);
+        appState.matRows.splice(beforeIdx, 0, newRow);
         _renderMatTable();
         _updateTotals();
         setTimeout(() => {
@@ -430,13 +425,13 @@ export function handleSmr(e) {
   parseFile(f, (json, err) => {
     if (err) { alert('Ошибка чтения файла'); return; }
     const rows = smartParse(json);
-    if (_smrMode === 'masters') {
-      _smrRowsMasters = rows;
+    if (appState.smrMode === 'masters') {
+      appState.smrRowsMasters = rows;
     } else {
-      _smrRows = rows;
+      appState.smrRows = rows;
       // Инициализируем мастеров теми же объектами
-      if (_smrRowsMasters.length === 0) {
-        _smrRowsMasters = [...rows];
+      if (appState.smrRowsMasters.length === 0) {
+        appState.smrRowsMasters = [...rows];
       }
     }
     _renderSmrTable();
@@ -445,17 +440,17 @@ export function handleSmr(e) {
 }
 
 export function initSmrManual() {
-  _smrRows = [
+  appState.smrRows = [
     { name: '', isSection: true },
     { name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false }
   ];
-  _smrRowsMasters = [];
+  appState.smrRowsMasters = [];
   _renderSmrTable();
   _updateTotals();
 }
 
 function _renderSmrTable() {
-  const rows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
+  const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
   const tbody = document.getElementById('smrTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
@@ -536,7 +531,7 @@ function _renderSmrTable() {
 }
 
 function _bindSmrEvents(tbody) {
-  const activeRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
+  const activeRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
   tbody.querySelectorAll('input, select').forEach(inp => {
     inp.addEventListener('input', e => {
       const i = +e.target.dataset.i;
@@ -551,7 +546,7 @@ function _bindSmrEvents(tbody) {
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         _updateTotals();
       }
-      if (f === 'name' && activeRows[i].isSection && _smrMode === 'client') {
+      if (f === 'name' && activeRows[i].isSection && appState.smrMode === 'client') {
         _syncSectionsToGantt();
       }
     });
@@ -563,7 +558,7 @@ function _bindSmrEvents(tbody) {
       activeRows.splice(i, 1);
       _renderSmrTable();
       _updateTotals();
-      if (wasSection && _smrMode === 'client') _syncSectionsToGantt();
+      if (wasSection && appState.smrMode === 'client') _syncSectionsToGantt();
     });
   });
 }
@@ -572,16 +567,16 @@ export function addSmrRow(isSection = false) {
   const newRow = isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  if (_smrMode === 'masters') {
-    _smrRowsMasters.push(newRow);
+  if (appState.smrMode === 'masters') {
+    appState.smrRowsMasters.push(newRow);
   } else {
-    _smrRows.push(newRow);
+    appState.smrRows.push(newRow);
     // Один и тот же объект — изменения видны в обоих массивах
-    _smrRowsMasters.push(newRow);
+    appState.smrRowsMasters.push(newRow);
   }
   _renderSmrTable();
   _updateTotals();
-  if (isSection && _smrMode === 'client') _syncSectionsToGantt();
+  if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
   setTimeout(() => {
     const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
     inputs[inputs.length - 1]?.focus();
@@ -593,16 +588,16 @@ export function insertSmrRow(afterIdx, isSection = false) {
   const newRow = isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  if (_smrMode === 'masters') {
-    _smrRowsMasters.splice(afterIdx + 1, 0, newRow);
+  if (appState.smrMode === 'masters') {
+    appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
   } else {
-    _smrRows.splice(afterIdx + 1, 0, newRow);
+    appState.smrRows.splice(afterIdx + 1, 0, newRow);
     // Один объект — изменения видны в обоих массивах
-    _smrRowsMasters.splice(afterIdx + 1, 0, newRow);
+    appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
   }
   _renderSmrTable();
   _updateTotals();
-  if (isSection && _smrMode === 'client') _syncSectionsToGantt();
+  if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
   setTimeout(() => {
     const tbody = document.getElementById('smrTbody');
     if (!tbody) return;
@@ -618,21 +613,21 @@ export function insertSmrRow(afterIdx, isSection = false) {
 }
 
 export function clearSmr() {
-  if (_smrMode === 'masters') {
-    _smrRowsMasters = [];
+  if (appState.smrMode === 'masters') {
+    appState.smrRowsMasters = [];
   } else {
-    _smrRows = [];
+    appState.smrRows = [];
   }
   _renderSmrTable();
   _updateTotals();
 }
 
 export function setSmrMode(mode) {
-  if (mode === _smrMode) return;
-  _smrMode = mode;
+  if (mode === appState.smrMode) return;
+  appState.smrMode = mode;
   // Если переключаемся на мастеров и их массив пустой — копируем те же объекты (не клоны)
-  if (mode === 'masters' && _smrRowsMasters.length === 0 && _smrRows.length > 0) {
-    _smrRowsMasters = [..._smrRows];
+  if (mode === 'masters' && appState.smrRowsMasters.length === 0 && appState.smrRows.length > 0) {
+    appState.smrRowsMasters = [...appState.smrRows];
   }
   const btnClient  = document.getElementById('smrBtnClient');
   const btnMasters = document.getElementById('smrBtnMasters');
@@ -643,12 +638,12 @@ export function setSmrMode(mode) {
 }
 
 // Collect for KP/PDF
-export function collectSmrRows() { return _smrRows; }
+export function collectSmrRows() { return appState.smrRows; }
 export function getSmrTotal() {
-  return _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  return appState.smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 export function getMastersSmrTotal() {
-  return _smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  return appState.smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 
 // ── MATERIALS TABLE ───────────────────────────────────────────────
@@ -658,16 +653,16 @@ export function handleMat(e) {
   parseFile(f, (json, err) => {
     if (err) { alert('Ошибка чтения файла'); return; }
     const rows = smartParse(json);
-    _matRows = rows;
+    appState.matRows = rows;
     _renderMatTable();
     _updateTotals();
   });
 }
 
 export function initMatManual() {
-  _matRows = [];
-  _matRows.push({ name: '', isSection: true });
-  _matRows.push({ name: '', unit: 'шт', qty: '', price: '', total: 0, note: '', isSection: false });
+  appState.matRows = [];
+  appState.matRows.push({ name: '', isSection: true });
+  appState.matRows.push({ name: '', unit: 'шт', qty: '', price: '', total: 0, note: '', isSection: false });
   _renderMatTable();
   _updateTotals();
 }
@@ -677,7 +672,7 @@ function _renderMatTable() {
   if (!tbody) return;
   tbody.innerHTML = '';
   let idx = 0;
-  _matRows.forEach((r, i) => {
+  appState.matRows.forEach((r, i) => {
     const insZone = document.createElement('tr');
     insZone.className = 'tr-insert-zone';
     insZone.innerHTML = `<td colspan="9">
@@ -727,13 +722,13 @@ function _renderMatTable() {
   insLast.className = 'tr-insert-zone';
   insLast.innerHTML = `<td colspan="9">
     <div class="tr-insert-btn">
-      <div class="tr-insert-plus-wrap" data-i="${_matRows.length}" data-table="mat">
+      <div class="tr-insert-plus-wrap" data-i="${appState.matRows.length}" data-table="mat">
         <button class="tr-insert-plus" title="Вставить">+</button>
         <div class="tr-insert-dropdown">
-          <div class="tr-insert-dd-item dd-row" data-i="${_matRows.length}" data-table="mat" data-section="0">
+          <div class="tr-insert-dd-item dd-row" data-i="${appState.matRows.length}" data-table="mat" data-section="0">
             <span class="dd-dot"></span>Строка
           </div>
-          <div class="tr-insert-dd-item dd-sec" data-i="${_matRows.length}" data-table="mat" data-section="1">
+          <div class="tr-insert-dd-item dd-sec" data-i="${appState.matRows.length}" data-table="mat" data-section="1">
             <span class="dd-dot"></span>Раздел
           </div>
         </div>
@@ -745,7 +740,7 @@ function _renderMatTable() {
 
   _bindMatEvents(tbody);
   _initInsertZones(tbody, 'mat');
-  _initRowDnd(tbody, _matRows, () => { _renderMatTable(); _updateTotals(); });
+  _initRowDnd(tbody, appState.matRows, () => { _renderMatTable(); _updateTotals(); });
 }
 
 function _bindMatEvents(tbody) {
@@ -753,9 +748,9 @@ function _bindMatEvents(tbody) {
     inp.addEventListener('input', e => {
       const i = +e.target.dataset.i;
       const f = e.target.dataset.f;
-      _matRows[i][f] = e.target.value;
+      appState.matRows[i][f] = e.target.value;
       if (f === 'qty' || f === 'price') {
-        const r = _matRows[i];
+        const r = appState.matRows[i];
         const q = parseFloat(r.qty) || 0;
         const p = parseFloat(r.price) || 0;
         r.total = q * p;
@@ -768,7 +763,7 @@ function _bindMatEvents(tbody) {
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
     btn.addEventListener('click', e => {
       const i = +e.target.dataset.i;
-      _matRows.splice(i, 1);
+      appState.matRows.splice(i, 1);
       _renderMatTable();
       _updateTotals();
     });
@@ -776,7 +771,7 @@ function _bindMatEvents(tbody) {
 }
 
 export function addMatRow(isSection = false) {
-  _matRows.push(isSection
+  appState.matRows.push(isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
   );
@@ -789,7 +784,7 @@ export function addMatRow(isSection = false) {
 }
 
 export function clearMat() {
-  _matRows = [];
+  appState.matRows = [];
   _updateTotals();
 }
 
@@ -797,7 +792,7 @@ export function insertMatRow(afterIdx, isSection = false) {
   const newRow = isSection
     ? { name: '', isSection: true }
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  _matRows.splice(afterIdx + 1, 0, newRow);
+  appState.matRows.splice(afterIdx + 1, 0, newRow);
   _renderMatTable();
   _updateTotals();
   setTimeout(() => {
@@ -814,30 +809,30 @@ export function insertMatRow(afterIdx, isSection = false) {
   }, 30);
 }
 
-export function collectMatRows() { return _matRows; }
+export function collectMatRows() { return appState.matRows; }
 export function getMatTotal() {
-  return _matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+  return appState.matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 
 // ── SECTION → GANTT SYNC ──────────────────────────────────────────
 // When sections in SMR change, sync them as Gantt stages
 function _syncSectionsToGantt() {
-  const sections = _smrRows.filter(r => r.isSection && r.name && r.name.trim());
+  const sections = appState.smrRows.filter(r => r.isSection && r.name && r.name.trim());
   const sectionNames = new Set(sections.map(s => s.name.trim()));
 
   // Remove stages that no longer have a matching section
-  _stages = _stages.filter(s => sectionNames.has(s.name));
+  appState.stages = appState.stages.filter(s => sectionNames.has(s.name));
 
   // Add new stages for sections not yet in gantt
   sections.forEach(sec => {
     const name = sec.name.trim();
     if (!name) return;
-    const existing = _stages.find(s => s.name === name);
+    const existing = appState.stages.find(s => s.name === name);
     if (!existing) {
       const id    = _newStageId();
       const color = _nextColor();
-      const lastEnd = _stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
-      _stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
+      const lastEnd = appState.stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
+      appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
     }
   });
 
@@ -847,22 +842,22 @@ function _syncSectionsToGantt() {
 
 // ── GANTT ─────────────────────────────────────────────────────────
 
-let _totalDays = 60;
+// appState.totalDays — хранится в state.js (по умолчанию 60)
 let _dragging  = null; // { idx, type:'bar'|'left'|'right', startX, origPct, origW, trackW }
 
 function _renderGantt() {
   const wrap = document.getElementById('ganttBars');
   if (!wrap) return;
 
-  if (!_stages.length) {
+  if (!appState.stages.length) {
     wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Этапы появятся когда вы добавите строки в смету и укажете им этапы</div>';
     _renderGanttRuler();
     return;
   }
 
   wrap.innerHTML = '';
-  _stages.forEach((s, idx) => {
-    const days = Math.max(1, Math.round(_totalDays * s.w / 100));
+  appState.stages.forEach((s, idx) => {
+    const days = Math.max(1, Math.round(appState.totalDays * s.w / 100));
     const row  = document.createElement('div');
     row.className = 'gantt-row';
 
@@ -893,7 +888,7 @@ function _renderGantt() {
     // Editable name
     const nameEl = row.querySelector('.gantt-stage-name');
     nameEl.addEventListener('blur', () => {
-      _stages[idx].name = nameEl.textContent.trim();
+      appState.stages[idx].name = nameEl.textContent.trim();
       _renderPayments();
     });
 
@@ -926,12 +921,12 @@ function _renderGantt() {
 }
 
 function _updateGanttBarDOM(idx) {
-  const s = _stages[idx];
+  const s = appState.stages[idx];
   const bar = document.querySelector(`.gantt-bar[data-idx="${idx}"]`);
   if (!bar) return;
   bar.style.left  = s.pct + '%';
   bar.style.width = s.w   + '%';
-  const days = Math.max(1, Math.round(_totalDays * s.w / 100));
+  const days = Math.max(1, Math.round(appState.totalDays * s.w / 100));
   const lbl = bar.querySelector('.gantt-bar-label');
   if (lbl) lbl.textContent = days + ' дн.';
   // update tick marks
@@ -952,11 +947,11 @@ function _renderGanttRuler() {
   const ruler = document.getElementById('ganttRuler');
   if (!ruler) return;
   ruler.innerHTML = '';
-  const ticks = Math.min(_totalDays, 12);
+  const ticks = Math.min(appState.totalDays, 12);
   for (let i = 0; i <= ticks; i++) {
     const t = document.createElement('span');
     t.className = 'gantt-tick';
-    t.textContent = Math.round(_totalDays * i / ticks);
+    t.textContent = Math.round(appState.totalDays * i / ticks);
     t.style.left = (i / ticks * 100) + '%';
     ruler.appendChild(t);
   }
@@ -969,7 +964,7 @@ function _initGanttDrag() {
     if (!trackW) return;
     const dx   = e.clientX - startX;
     const dpct = dx / trackW * 100;
-    const s    = _stages[idx];
+    const s    = appState.stages[idx];
 
     if (type === 'bar') {
       s.pct = Math.max(0, Math.min(origPct + dpct, 100 - origW));
@@ -994,13 +989,13 @@ function _initGanttDrag() {
 
 // Public: add a new stage (called from stage select in smr table)
 export function ensureStage(name) {
-  const existing = _stages.find(s => s.name === name);
+  const existing = appState.stages.find(s => s.name === name);
   if (existing) return existing.id;
   const id    = _newStageId();
   const color = _nextColor();
   // place after last stage, width 10%
-  const lastEnd = _stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
-  _stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
+  const lastEnd = appState.stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
+  appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
   _renderGantt();
   _renderPayments();
   return id;
@@ -1011,7 +1006,7 @@ export function ensureStage(name) {
 function _getStageAmount(stageName) {
   let total = 0;
   let inSection = false;
-  for (const r of _smrRows) {
+  for (const r of appState.smrRows) {
     if (r.isSection) {
       inSection = (r.name && r.name.trim() === stageName);
       continue;
@@ -1023,14 +1018,13 @@ function _getStageAmount(stageName) {
 
 // Sum of all stages that have a matching section
 function _getStagesTotalReal() {
-  return _stages.reduce((s, st) => s + _getStageAmount(st.name), 0);
+  return appState.stages.reduce((s, st) => s + _getStageAmount(st.name), 0);
 }
 
 // ── PAYMENTS ─────────────────────────────────────────────────────
 
 // Payment groups: array of { id, name, stageIds[] }
-let _payments = [];
-let _payCounter = 0;
+// appState.payments и appState.payCounter объявлены в state.js
 
 function _renderPayments() {
   const wrap = document.getElementById('paymentsWrap');
@@ -1047,10 +1041,10 @@ function _renderPayments() {
   const leftCol = document.createElement('div');
   leftCol.className = 'pay-left';
 
-  _payments.forEach((p, pi) => {
+  appState.payments.forEach((p, pi) => {
     // Sum real amounts of assigned stages
     const amount = p.stageIds.reduce((s, id) => {
-      const st = _stages.find(x => x.id === id);
+      const st = appState.stages.find(x => x.id === id);
       return s + (st ? _getStageAmount(st.name) : 0);
     }, 0);
     const totalReal = _getStagesTotalReal() || grandTotal || 1;
@@ -1061,7 +1055,7 @@ function _renderPayments() {
     card.dataset.pi = pi;
 
     const tagsHtml = p.stageIds.map(id => {
-      const st = _stages.find(x => x.id === id);
+      const st = appState.stages.find(x => x.id === id);
       if (!st) return '';
       return `<span class="pay-tag" style="border-color:${st.color};color:${st.color}" data-sid="${id}" data-pi="${pi}">
         ${esc(st.name)}
@@ -1097,7 +1091,7 @@ function _renderPayments() {
   addBtn.className = 'pay-add-slot-btn';
   addBtn.textContent = '+ Добавить этап оплаты';
   addBtn.addEventListener('click', () => {
-    _payments.push({ id: 'p' + (++_payCounter), name: 'Платёж ' + _payments.length, stageIds: [] });
+    appState.payments.push({ id: 'p' + (++appState.payCounter), name: 'Платёж ' + appState.payments.length, stageIds: [] });
     _renderPayments();
   });
   leftCol.appendChild(addBtn);
@@ -1110,14 +1104,14 @@ function _renderPayments() {
   rightHead.textContent = 'Этапы работ';
   rightCol.appendChild(rightHead);
 
-  if (!_stages.length) {
+  if (!appState.stages.length) {
     const empty = document.createElement('div');
     empty.className = 'pay-right-empty';
     empty.textContent = 'Добавьте этапы в Ганtt';
     rightCol.appendChild(empty);
   } else {
-    _stages.forEach(s => {
-      const stageDays  = Math.max(1, Math.round(_totalDays * s.w / 100));
+    appState.stages.forEach(s => {
+      const stageDays  = Math.max(1, Math.round(appState.totalDays * s.w / 100));
       const stageAmt   = _getStageAmount(s.name);
 
       const pill = document.createElement('div');
@@ -1142,17 +1136,17 @@ function _renderPayments() {
 
   // Bind events
   wrap.querySelectorAll('.pay-slot-name').forEach(inp => {
-    inp.addEventListener('input', e => { _payments[+e.target.dataset.pi].name = e.target.value; });
+    inp.addEventListener('input', e => { appState.payments[+e.target.dataset.pi].name = e.target.value; });
   });
   wrap.querySelectorAll('.pay-slot-del').forEach(btn => {
-    btn.addEventListener('click', e => { _payments.splice(+e.target.dataset.pi, 1); _renderPayments(); });
+    btn.addEventListener('click', e => { appState.payments.splice(+e.target.dataset.pi, 1); _renderPayments(); });
   });
   wrap.querySelectorAll('.pay-tag-x').forEach(x => {
     x.addEventListener('click', e => {
       e.stopPropagation();
       const pi  = +e.target.dataset.pi;
       const sid = e.target.dataset.sid;
-      _payments[pi].stageIds = _payments[pi].stageIds.filter(id => id !== sid);
+      appState.payments[pi].stageIds = appState.payments[pi].stageIds.filter(id => id !== sid);
       _renderPayments();
     });
   });
@@ -1195,9 +1189,12 @@ function _initDaysSlider() {
   const slider = document.getElementById('totalDaysSlider');
   const output = document.getElementById('totalDaysVal');
   if (!slider || !output) return;
+  // Восстанавливаем значение из appState (если проект был загружен)
+  slider.value = appState.totalDays;
+  output.textContent = appState.totalDays;
   slider.addEventListener('input', () => {
-    _totalDays = +slider.value;
-    output.textContent = _totalDays;
+    appState.totalDays = +slider.value;
+    output.textContent = appState.totalDays;
     _renderGantt();
     _renderPayments();
     _updateHeaderDates();
@@ -1265,9 +1262,18 @@ export function initSmeta() {
   _initDaysSlider();
   _initGanttDrag();
   _renderExpl();
-  // Init tables with empty section + row
-  initSmrManual();
-  initMatManual();
+  // Если данные уже загружены из проекта — только отрисовываем их,
+  // не создаём дефолтные пустые строки
+  if (appState.smrRows.length === 0 && appState.smrRowsMasters.length === 0) {
+    initSmrManual();
+  } else {
+    _renderSmrTable();
+  }
+  if (appState.matRows.length === 0) {
+    initMatManual();
+  } else {
+    _renderMatTable();
+  }
   _renderGantt();
   _renderPayments();
   _updateTotals();
