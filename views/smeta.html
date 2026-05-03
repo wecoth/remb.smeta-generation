@@ -302,10 +302,9 @@
   table.smeta-tbl tr:hover td { background:var(--bg-soft); }
   table.smeta-tbl tr[draggable] { cursor:default; }
   table.smeta-tbl tr[draggable] .td-drag { cursor:grab; }
-  /* Live drag-and-drop */
-  table.smeta-tbl tr.dnd-placeholder td { background:transparent !important; border:none !important; }
-  table.smeta-tbl tr.row-active-top td    { border-top:2px solid var(--accent) !important; }
-  table.smeta-tbl tr.row-active-bottom td { border-bottom:2px solid var(--accent) !important; }
+  table.smeta-tbl tr.row-dragging td { opacity:.35; background:var(--accent-soft); }
+  table.smeta-tbl tr.row-drop-before td { border-top:2px solid var(--accent) !important; box-shadow:inset 0 2px 0 0 var(--accent-soft); }
+  table.smeta-tbl tr.row-drop-after td  { border-bottom:2px solid var(--accent) !important; box-shadow:inset 0 -2px 0 0 var(--accent-soft); }
   table.smeta-tbl td input,
   table.smeta-tbl td select {
     width:100%;padding:8px 10px;
