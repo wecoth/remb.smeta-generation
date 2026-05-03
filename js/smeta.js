@@ -214,16 +214,13 @@ function _updateTotals() {
   if (el('hdrSmr'))   el('hdrSmr').textContent   = fmtInt(smrT) + ' ₽';
   if (el('hdrMat'))   el('hdrMat').textContent   = fmtInt(matT) + ' ₽';
   if (el('hdrTotal')) el('hdrTotal').textContent = fmtInt(smrT + matT) + ' ₽';
-  // Footer total shows active mode
   const activeSmrT = _smrMode === 'masters' ? mastersSmrT : smrT;
   if (el('smrFootTotal')) el('smrFootTotal').textContent = fmt(activeSmrT);
   if (el('matFootTotal')) el('matFootTotal').textContent = fmt(matT);
-  // Count badge shows active mode
   const activeSmrRows = _smrMode === 'masters' ? _smrRowsMasters : _smrRows;
   if (el('smrCount')) el('smrCount').textContent = activeSmrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(activeSmrT) + ' ₽';
   if (el('matCount')) el('matCount').textContent = _matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
 
-  // Маржа — реальная из сметы мастеров
   const mastersT = mastersSmrT;
   const marginT  = smrT + matT - mastersT;
   const totalDays = parseInt(document.getElementById('totalDaysVal')?.textContent) || 0;
@@ -245,7 +242,6 @@ function _updateTotals() {
     el('hdrMarginDay').textContent = '—';
   }
 
-  // Сроки из Гантта
   _updateHeaderDates();
 }
 
@@ -415,11 +411,10 @@ export function handleSmr(e) {
 }
 
 export function initSmrManual() {
-  const rows = [
+  _smrRows = [
     { name: '', isSection: true },
     { name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false }
   ];
-  _smrRows = [...rows];
   _smrRowsMasters = [];
   _renderSmrTable();
   _updateTotals();
@@ -522,7 +517,6 @@ function _bindSmrEvents(tbody) {
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         _updateTotals();
       }
-      // If editing a section name, sync to gantt (only client mode drives gantt)
       if (f === 'name' && activeRows[i].isSection && _smrMode === 'client') {
         _syncSectionsToGantt();
       }
@@ -549,7 +543,6 @@ export function addSmrRow(isSection = false) {
   _renderSmrTable();
   _updateTotals();
   if (isSection && _smrMode === 'client') _syncSectionsToGantt();
-  // Focus last name input
   setTimeout(() => {
     const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
     inputs[inputs.length - 1]?.focus();
@@ -586,23 +579,22 @@ export function clearSmr() {
   } else {
     _smrRows = [];
   }
+  _renderSmrTable();
   _updateTotals();
 }
 
 export function setSmrMode(mode) {
   if (mode === _smrMode) return;
   _smrMode = mode;
-  // Update pill buttons
   const btnClient  = document.getElementById('smrBtnClient');
   const btnMasters = document.getElementById('smrBtnMasters');
   if (btnClient)  btnClient.classList.toggle('active',  mode === 'client');
   if (btnMasters) btnMasters.classList.toggle('active', mode === 'masters');
-  // Re-render the active table
   _renderSmrTable();
   _updateTotals();
 }
 
-// Collect for KP/PDF — always client rows
+// Collect for KP/PDF
 export function collectSmrRows() { return _smrRows; }
 export function getSmrTotal() {
   return _smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
@@ -1139,7 +1131,6 @@ function _initDrawer() {
 function _initCollapse() {
   document.querySelectorAll('.scard-head[data-collapse]').forEach(head => {
     head.addEventListener('click', e => {
-      // Ignore clicks on interactive elements inside the header
       if (e.target.closest('button, input, .smr-mode-toggle')) return;
       const body = head.nextElementSibling;
       const arrow = head.querySelector('.scard-arrow');
