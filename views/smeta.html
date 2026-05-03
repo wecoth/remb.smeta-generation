@@ -549,6 +549,7 @@
     padding:3px;gap:0;
     border:1px solid var(--border-1);
     flex-shrink:0;
+    margin:0 auto;
   }
   .smr-mode-btn {
     padding:4px 14px;border-radius:16px;border:none;
@@ -747,9 +748,9 @@
           <div class="scard-num">2</div>
           <div class="scard-label">Смета работ (СМР)</div>
           <div class="scard-meta" id="smrCount">0 позиций</div>
-          <div class="smr-mode-toggle" onclick="event.stopPropagation()">
-            <button class="smr-mode-btn active" id="smrBtnClient" onclick="window._smetaModule.setSmrMode('client')">Заказчику</button>
-            <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="window._smetaModule.setSmrMode('masters')">Мастерам</button>
+          <div class="smr-mode-toggle">
+            <button class="smr-mode-btn active" id="smrBtnClient" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('client')">Заказчику</button>
+            <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('masters')">Мастерам</button>
           </div>
           <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
           <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
