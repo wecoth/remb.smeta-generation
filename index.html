@@ -130,61 +130,6 @@
 
 
 
-<!-- ═══════════════════════════════════════════════════════════
-     PRINT DOC
-════════════════════════════════════════════════════════════ -->
-<div class="print-doc" id="printDoc">
-  <div class="a4 cov" id="covPage">
-    <img id="covLogoImg" alt="logo">
-    <div id="covCircle" class="cov-circle">К</div>
-    <div class="cov-name" id="covName">КОМПАНИЯ</div>
-    <div class="cov-slogan" id="covSlogan">КАЧЕСТВО ПОД КЛЮЧ</div>
-    <div class="cov-dtype" id="covDtype">Проектно-сметная документация</div>
-    <div class="cov-foot"><div class="cfc" id="covFtC">К</div><div class="cfn" id="covFtN">КОМПАНИЯ</div></div>
-  </div>
-  <div class="a4">
-    <div class="pg">
-      <div class="pg-title">Планирование работ:</div>
-      <div class="plan-grid">
-        <div>
-          <div class="plan-img-box" id="docPlanBox">
-            <img id="docPlanImg" alt="" style="display:none">
-            <div class="plan-img-ph" id="docPlanPh">⬚</div>
-          </div>
-        </div>
-        <div>
-          <div class="obj-info" id="docObjInfo"></div>
-          <div class="obj-note">На основании осмотра объекта подготовлены следующие документы:<br>– Обмерный план.<br>– Смета строительно-монтажных работ (СМР).<br>– Смета на строительные и отделочные материалы.<br>– Календарный график производства работ.</div>
-          <div class="exp-ttl">Экспликация помещений</div>
-          <table class="exp-t">
-            <thead><tr><th>Помещение</th><th>Пол м²</th><th>Стены м²</th><th>Периметр</th></tr></thead>
-            <tbody id="docRoomsBody"></tbody>
-            <tfoot><tr><td style="text-align:right;font-weight:600">ИТОГО:</td><td id="dTotF">—</td><td id="dTotW">—</td><td id="dTotP">—</td></tr></tfoot>
-          </table>
-        </div>
-      </div>
-      <div class="pg-foot"><div class="pfc" id="pfC1">К</div><div class="pfn" id="pfN1">КОМПАНИЯ</div></div>
-    </div>
-  </div>
-  <div id="smrDocPages"></div>
-  <div id="matDocPages"></div>
-  <div class="a4">
-    <div class="pg">
-      <table class="fin-t" id="finTable">
-        <thead><tr><th>№</th><th>Разделы</th><th>Ед.изм.</th><th>Кол-во</th><th>За ед. ₽</th><th>Всего ₽</th><th>Примечание</th></tr></thead>
-        <tbody id="finBody"></tbody>
-      </table>
-      <div class="fin-total"><span>Итого по разделам:</span><strong id="finTotal">0 ₽</strong></div>
-      <div class="pg-foot"><div class="pfc" id="pfC2">К</div><div class="pfn" id="pfN2">КОМПАНИЯ</div></div>
-    </div>
-  </div>
-  <!-- Страница обмерного плана — полный чертёж со всеми размерами -->
-  <div class="preview-page" id="fullPlanPage" style="display:none;padding:0;overflow:hidden">
-    <div style="position:absolute;top:14px;left:20px;font:700 13px/1.4 Georgia,serif;letter-spacing:0.05em;z-index:2;background:rgba(255,255,255,0.85);padding:2px 6px;border-radius:3px">Обмерный план:</div>
-    <img id="fullPlanImg" alt="" style="display:block;width:100%;height:auto;border:0;vertical-align:top">
-  </div>
-</div><!-- /print-doc -->
-
 
 <script>
 // Контекстное переключение панели инструментов
@@ -508,19 +453,27 @@ async function mountView(viewName) {
   // Инициализация логики модуля
   if (viewName === 'planner') {
     try {
-      const { appState } = await import('./js/state.js');
-      window._appState = appState;
+      // Грузим все модули параллельно
+      const [
+        { appState },
+        up,
+        { updateExpl },
+        { loadFromLocalStorage },
+        { clearHistory },
+      ] = await Promise.all([
+        import('./js/state.js'),
+        import('./js/ui-planner.js'),
+        import('./js/room.js'),
+        import('./js/storage.js'),
+        import('./js/commands/CommandHistory.js'),
+      ]);
 
-      const up = await import('./js/ui-planner.js');
+      window._appState = appState;
       const { initPlanner, forceRedraw, getViewport } = up;
 
       if (getViewport) {
         Object.defineProperty(window, '_plannerViewport', { get: () => getViewport(), configurable: true });
       }
-
-      const { updateExpl } = await import('./js/room.js');
-      const { loadFromLocalStorage } = await import('./js/storage.js');
-      const { clearHistory } = await import('./js/commands/CommandHistory.js');
 
       const canvas     = wrapper.querySelector('#planCanvas');
       const canvasWrap = wrapper.querySelector('#canvasWrap');
@@ -696,6 +649,19 @@ try { await document.fonts.load('16px Merriweather'); } catch(e) {}
 // ── Initial load: active tab ──────────────────────────────────────
 const activeBtn = document.querySelector('.pill-btn.active');
 if (activeBtn) await loadView(activeBtn.dataset.view);
+
+// ── Фоновый preload модулей планировщика ──────────────────────────
+// Запускаем сразу после первой вьюшки — браузер закачает и закэширует
+// модули пока пользователь смотрит на смету, и при клике «Чертёж»
+// import() вернётся мгновенно из кэша.
+setTimeout(() => {
+  import('./js/ui-planner.js').catch(() => {});
+  import('./js/state.js').catch(() => {});
+  import('./js/room.js').catch(() => {});
+  import('./js/storage.js').catch(() => {});
+  import('./js/commands/CommandHistory.js').catch(() => {});
+  fetch('/views/planner.html').catch(() => {});
+}, 800); // небольшая задержка чтобы не конкурировать с текущей вьюшкой
 
 // ── KP scroll reset (smeta.js calls liveUpdate which populates KP) ─
 function resetSppScroll() {
