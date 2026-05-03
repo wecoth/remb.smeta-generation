@@ -554,6 +554,20 @@ async function mountView(viewName) {
       window._renderModule = { renderToImage };
 
       initSmeta();
+
+      // Автозаполнение поля "Смета сформирована" = сегодня
+      (function fillSmetaDate() {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        function tryFill() {
+          const el = document.getElementById('smetaDate');
+          if (el && !el._userEdited) {
+            el.value = todayIso;
+            el.addEventListener('change', function() { el._userEdited = true; }, { once: true });
+          }
+        }
+        tryFill();
+        [100, 300, 600, 1200].forEach(ms => setTimeout(tryFill, ms));
+      })();
     } catch(e) { console.error('Smeta init error:', e); }
 
   } else if (viewName === 'kp') {
