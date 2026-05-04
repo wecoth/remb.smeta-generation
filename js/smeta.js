@@ -1164,6 +1164,11 @@ function _renderGanttWorks(wrap) {
       const pct  = totalDays > 0 ? (barStart / totalDays * 100) : 0;
       const wPct = totalDays > 0 ? (days     / totalDays * 100) : 0;
 
+      const ticksHtml = days > 0 ? Array.from({length: days + 1}, (_, ti) => {
+        const leftPct = (ti / days * 100).toFixed(2);
+        return `<div class="gantt-tick-mark" style="left:${leftPct}%"></div>`;
+      }).join('') : '';
+
       const row = document.createElement('div');
       row.className = 'gantt-row gantt-works-row';
       row.innerHTML = `
@@ -1171,20 +1176,22 @@ function _renderGanttWorks(wrap) {
           ${ri > 0
             ? `<button class="gantt-parallel-btn${isParallel ? ' active' : ''}" data-uid="${uid}" title="Параллельно с предыдущей работой">⇉</button>`
             : '<span style="width:22px;display:inline-block"></span>'}
-          <span class="gantt-stage-name" style="cursor:default;border:none;font-size:11px" title="${esc(r.name)}">${esc(r.name.length > 26 ? r.name.slice(0, 24) + '…' : r.name)}</span>
+          <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>
           <input type="number" min="0" max="999" value="${days || ''}"
             placeholder="0"
             data-uid="${uid}"
-            style="width:42px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);
+            style="width:42px;flex-shrink:0;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);
                    font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
                    font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;"
             class="gantt-work-days-inp">
-          <span style="font-size:10px;color:var(--text-3);min-width:16px">дн.</span>
+          <span style="font-size:10px;color:var(--text-3);min-width:16px;flex-shrink:0">дн.</span>
         </div>
         <div class="gantt-track-wrap">
           <div class="gantt-track">
-            ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${Math.max(wPct, 0.5).toFixed(2)}%;background:${g.color};pointer-events:none;opacity:${isParallel ? '0.72' : '1'}">
+            ${days > 0 ? `<div class="gantt-bar gantt-work-bar" data-uid="${uid}" style="left:${pct.toFixed(2)}%;width:${Math.max(wPct, 0.5).toFixed(2)}%;background:${g.color};opacity:${isParallel ? '0.72' : '1'}">
+              <div class="gantt-ticks">${ticksHtml}</div>
               <span class="gantt-bar-label">${days} дн.</span>
+              <div class="gantt-handle gantt-handle-r gantt-work-handle" data-uid="${uid}" data-edge="right"></div>
             </div>` : ''}
           </div>
         </div>`;
@@ -1214,6 +1221,57 @@ function _renderGanttWorks(wrap) {
       _recalcAllStageDaysAuto();
       _renderGanttWorks(wrap);
       _renderGanttRuler();
+    });
+  });
+
+  // Drag правого хэндла для изменения дней работы
+  wrap.querySelectorAll('.gantt-work-handle').forEach(h => {
+    h.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const uid = h.dataset.uid;
+      const bar = h.closest('.gantt-bar');
+      const track = h.closest('.gantt-track');
+      const trackW = track.getBoundingClientRect().width;
+      const startX = e.clientX;
+      const startDays = appState.workDays[uid] || 0;
+      const tDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 1;
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(ev) {
+        const dx = ev.clientX - startX;
+        const daysDelta = Math.round(dx / trackW * tDays);
+        const newDays = Math.max(0, startDays + daysDelta);
+        appState.workDays[uid] = newDays;
+        // Обновляем инпут без полного ре-рендера
+        const inp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
+        if (inp) inp.value = newDays || '';
+        // Обновляем ширину бара и тики
+        const wPct = tDays > 0 ? (newDays / tDays * 100) : 0;
+        if (bar) bar.style.width = Math.max(wPct, 0.5).toFixed(2) + '%';
+        const lbl = bar?.querySelector('.gantt-bar-label');
+        if (lbl) lbl.textContent = newDays + ' дн.';
+        const ticks = bar?.querySelector('.gantt-ticks');
+        if (ticks && newDays > 0) {
+          ticks.innerHTML = Array.from({length: newDays + 1}, (_, ti) =>
+            `<div class="gantt-tick-mark" style="left:${(ti / newDays * 100).toFixed(2)}%"></div>`
+          ).join('');
+        }
+      }
+
+      function onUp() {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        _recalcAllStageDaysAuto();
+        _renderGanttWorks(wrap);
+        _renderGanttRuler();
+        _updateTotals();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     });
   });
 }
