@@ -863,6 +863,10 @@
         <div class="scard-head" data-collapse="1">
           <div class="scard-num">4</div>
           <div class="scard-label">График производства работ</div>
+          <div class="smr-mode-toggle">
+            <button class="smr-mode-btn active" id="ganttBtnStages" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('stages')">По этапам</button>
+            <button class="smr-mode-btn" id="ganttBtnWorks" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('works')">По работам</button>
+          </div>
           <div class="scard-arrow">▾</div>
         </div>
         <div class="scard-body">
@@ -871,12 +875,6 @@
               <span class="gantt-days-lbl">Общий срок:</span>
               <input type="number" id="totalDaysSlider" min="1" max="999" placeholder="0" style="width:72px;padding:5px 12px;border-radius:6px;border:1px solid var(--border-1);font-size:13px;font-weight:600;font-family:Onest,Inter,sans-serif;color:var(--text-1);text-align:center;background:var(--bg-card);outline:none;-moz-appearance:textfield;appearance:textfield;" oninput="window._calcFinish && window._calcFinish()">
               <span class="gantt-days-lbl">рабочих дней</span>
-              <div style="flex:1"></div>
-              <!-- Переключатель режима графика -->
-              <div class="smr-mode-toggle" style="margin-left:auto">
-                <button class="smr-mode-btn active" id="ganttBtnStages" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('stages')">По этапам</button>
-                <button class="smr-mode-btn" id="ganttBtnWorks" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('works')">По работам</button>
-              </div>
             </div>
             <div class="gantt-rows" id="ganttBars"></div>
             <div class="gantt-ruler" id="ganttRuler"></div>
