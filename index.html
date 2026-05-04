@@ -455,18 +455,17 @@ async function mountView(viewName) {
     try {
       // Грузим все модули параллельно
       const [
-        { appState },
-        up,
-        { loadFromLocalStorage },
-        { clearHistory },
-      ] = await Promise.all([
-        import('./js/state.js'),
-        import('./js/ui-planner.js'),
-        import('./js/room.js'),
-        import('./js/storage.js'),
-        import('./js/commands/CommandHistory.js'),
-      ]);
-
+  { appState },
+  up,
+  { loadFromLocalStorage },
+  { clearHistory },
+] = await Promise.all([
+  import('./js/state.js'),
+  import('./js/ui-planner.js'),
+  import('./js/storage.js'),                  // ← правильный модуль
+  import('./js/commands/CommandHistory.js'),
+]);
+      
       window._appState = appState;
       const { initPlanner, forceRedraw, getViewport } = up;
 
