@@ -18,8 +18,8 @@ let _dragging = null; // { idx, type:'bar'|'left'|'right', startX, origPct, orig
 export function initGantt({ onDurationChanged, onStageRenamed }) {
   _onDurationChanged = onDurationChanged || (() => {});
   _onStageRenamed    = onStageRenamed    || (() => {});
-  // Дефолт — 7 рабочих дней если ещё не задан
-  if (!appState.totalDays || appState.totalDays < 1) {
+  // Дефолт 7 дней — если пользователь не задавал вручную через слайдер
+  if (!appState.totalDaysSet) {
     appState.totalDays = 7;
     const sliderEl = document.getElementById('totalDaysSlider');
     const valEl    = document.getElementById('totalDaysVal');
@@ -361,10 +361,8 @@ function _renderGanttWorks(wrap) {
   allWorkRows.forEach(r => {
     autoTotal = Math.max(autoTotal, (appState.workStart[r._uid] || 0) + (appState.workDays[r._uid] || 0));
   });
-  // Если работы есть но дни не назначены (autoTotal=0) — дефолт 7.
-  // Если бары уже расставлены и занимают больше 7 — берём autoTotal.
-  // Старый appState.totalDays не тащим — он мог быть 60 от предыдущего состояния.
-  const totalDays = autoTotal > 0 ? Math.max(autoTotal, 7) : 7;
+  // Не схлопываем шкалу: берём максимум из авто, текущего значения и минимума 7
+  const totalDays = Math.max(autoTotal, appState.totalDays || 0, 7);
   appState.totalDays = totalDays;
   const sliderEl = document.getElementById('totalDaysSlider');
   if (sliderEl) sliderEl.value = totalDays;
@@ -482,9 +480,26 @@ function _renderGanttWorks(wrap) {
         document.body.style.userSelect = '';
         wrap.querySelectorAll('.gantt-track[data-uid]').forEach(t => { t.style.outline = ''; t.style.outlineOffset = ''; });
 
-        ghost.style.display = 'none';
+        // Ищем трек под курсором — сначала прямо под точкой, потом по ближайшей строке
         const el2  = document.elementFromPoint(ev.clientX, ev.clientY);
-        const trk  = el2 && (el2.classList.contains('gantt-track') ? el2 : el2.closest('.gantt-track[data-uid]'));
+        let trk = el2 && (el2.classList.contains('gantt-track') ? el2 : el2.closest('.gantt-track[data-uid]'));
+        // Если курсор над лейблом или другим элементом строки — берём трек той же строки
+        if (!trk) {
+          const ganttRow = el2 && el2.closest('.gantt-works-row');
+          if (ganttRow) trk = ganttRow.querySelector('.gantt-track[data-uid]');
+        }
+        // Если вообще мимо — ищем ближайший трек по Y-позиции
+        if (!trk) {
+          let bestTrk = null, bestDist = Infinity;
+          wrap.querySelectorAll('.gantt-track[data-uid]').forEach(t => {
+            const r = t.getBoundingClientRect();
+            const centerY = (r.top + r.bottom) / 2;
+            const dist = Math.abs(ev.clientY - centerY);
+            if (dist < bestDist && dist < 40) { bestDist = dist; bestTrk = t; }
+          });
+          trk = bestTrk;
+        }
+
         if (trk && trk.dataset.uid) {
           const rect   = trk.getBoundingClientRect();
           const dayPos = Math.max(0, Math.floor((ev.clientX - rect.left) / rect.width * (appState.totalDays || 1)));
