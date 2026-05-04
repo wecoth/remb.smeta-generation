@@ -357,15 +357,20 @@ function _renderGanttWorks(wrap) {
     });
   }
 
-  let autoTotal = 0;
+  // realEnd — реальный конец последнего расставленного бара (только работы с days > 0)
+  let realEnd = 0;
   allWorkRows.forEach(r => {
-    autoTotal = Math.max(autoTotal, (appState.workStart[r._uid] || 0) + (appState.workDays[r._uid] || 0));
+    const d = appState.workDays[r._uid] || 0;
+    if (d > 0) realEnd = Math.max(realEnd, (appState.workStart[r._uid] || 0) + d);
   });
-  // Не схлопываем шкалу: берём максимум из авто, текущего значения и минимума 7
-  const totalDays = Math.max(autoTotal, appState.totalDays || 0, 7);
+  // Шкала — минимум 7, чтобы было визуальное пространство для drag
+  const totalDays = Math.max(realEnd, 7);
   appState.totalDays = totalDays;
   const sliderEl = document.getElementById('totalDaysSlider');
   if (sliderEl) sliderEl.value = totalDays;
+  // Поле «Общий срок» — реальный конец, без минимума 7
+  const valEl = document.getElementById('totalDaysVal');
+  if (valEl) valEl.textContent = realEnd > 0 ? realEnd : 0;
 
   wrap.innerHTML = '';
   const uidToColor = {};
