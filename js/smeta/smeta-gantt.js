@@ -422,9 +422,9 @@ function _renderGanttWorks(wrap) {
           <span class="gantt-bar-days-badge" data-uid="${uid}" title="Нажмите чтобы изменить"
             style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
                    font-size:11px;font-weight:600;color:#fff;white-space:nowrap;
-                   background:transparent;border-radius:4px;padding:1px 6px;
-                   border:1px dashed rgba(255,255,255,0.8);cursor:text;
-                   user-select:none;z-index:2;">${days} дн.</span>
+                   background:transparent;border-radius:4px;padding:2px 8px;
+                   border:none;cursor:text;user-select:none;z-index:2;
+                   outline:2px dashed rgba(255,255,255,0.85);outline-offset:0px;">${days} дн.</span>
           <div class="gantt-handle gantt-handle-r gantt-work-handle" data-uid="${uid}" data-edge="right"></div>`;
         track.appendChild(bar);
       }
