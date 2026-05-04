@@ -529,11 +529,13 @@ function _renderGanttWorks(wrap) {
           if (!appState.workMovedManually) appState.workMovedManually = {};
           appState.workMovedManually[uid] = true;
           console.log('[gantt drop] ✅ placed uid:', uid, '| start day:', dayPos, '| days:', appState.workDays[uid]);
+          console.log('[gantt drop] trk.uid vs label.uid:', trk.dataset.uid, '===', uid, trk.dataset.uid === uid);
         } else {
           console.warn('[gantt drop] ❌ track not found — drop ignored');
         }
         recalcAllStageDaysAuto();
         _renderGanttWorks(wrap);
+        console.log('[gantt drop] after render workDays[uid]:', appState.workDays[uid], '| workStart[uid]:', appState.workStart[uid], '| movedManually:', appState.workMovedManually[uid]);
         _renderGanttRuler();
         _onDurationChanged();
         document.removeEventListener('mousemove', onMove);
