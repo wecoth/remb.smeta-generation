@@ -401,7 +401,15 @@ function _renderGanttWorks(wrap) {
       labelDiv.innerHTML = `
         <span class="gantt-work-drag-handle" title="Перетащите на шкалу">⠿</span>
         <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>
-        ${days > 0 ? `<span class="gantt-works-auto-days" data-uid-days="${uid}">${days} дн.</span>` : ''}`;
+        <input type="number" min="1" max="999"
+          class="gantt-works-days-inp"
+          data-uid="${uid}"
+          value="${days > 0 ? days : ''}"
+          placeholder="0"
+          style="width:38px;padding:1px 3px;border-radius:4px;border:1px solid var(--border-1);
+                 font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
+                 font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;">
+        <span style="font-size:11px;color:var(--text-3)">дн.</span>`;
 
       const trackWrap = document.createElement('div');
       trackWrap.className = 'gantt-track-wrap';
@@ -429,6 +437,22 @@ function _renderGanttWorks(wrap) {
       row.appendChild(labelDiv);
       row.appendChild(trackWrap);
       wrap.appendChild(row);
+    });
+  });
+
+  // ── Редактируемые дни работы ─────────────────────────────────────────
+  wrap.querySelectorAll('.gantt-works-days-inp').forEach(inp => {
+    inp.addEventListener('mousedown', e => e.stopPropagation()); // не триггерить drag лейбла
+    inp.addEventListener('change', e => {
+      const uid = inp.dataset.uid;
+      const val = Math.max(1, parseInt(inp.value) || 1);
+      inp.value = val;
+      appState.workDays[uid] = val;
+      if (!appState.workMovedManually) appState.workMovedManually = {};
+      recalcAllStageDaysAuto();
+      _renderGanttWorks(wrap);
+      _renderGanttRuler();
+      _onDurationChanged();
     });
   });
 
