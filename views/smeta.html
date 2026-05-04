@@ -470,7 +470,8 @@
   .gantt-handle::after { content: ''; width: 2px; height: 10px; background: rgba(255,255,255,.7); border-radius: 1px; }
   .gantt-handle-l { left: 0; border-radius: 4px 0 0 4px; }
   .gantt-handle-r { right: 0; border-radius: 0 4px 4px 0; }
-  .gantt-ruler { position: relative; height: 18px; margin-top: 10px; }
+  .gantt-ruler { position: relative; height: 18px; margin-top: 10px; margin-left: calc(230px + 14px); }
+  .gantt-rows:has(.gantt-works-row) ~ .gantt-ruler { margin-left: calc(280px + 14px); }
   .gantt-tick {
     position: absolute; font-size: 10px; color: var(--text-3);
     transform: translateX(-50%); font-variant-numeric: tabular-nums;
