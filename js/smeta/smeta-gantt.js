@@ -361,8 +361,10 @@ function _renderGanttWorks(wrap) {
   allWorkRows.forEach(r => {
     autoTotal = Math.max(autoTotal, (appState.workStart[r._uid] || 0) + (appState.workDays[r._uid] || 0));
   });
-  // Не схлопываем шкалу: берём максимум из авто, текущего значения и минимума 7
-  const totalDays = Math.max(autoTotal, appState.totalDays || 0, 7);
+  // Если работы есть но дни не назначены (autoTotal=0) — дефолт 7.
+  // Если бары уже расставлены и занимают больше 7 — берём autoTotal.
+  // Старый appState.totalDays не тащим — он мог быть 60 от предыдущего состояния.
+  const totalDays = autoTotal > 0 ? Math.max(autoTotal, 7) : 7;
   appState.totalDays = totalDays;
   const sliderEl = document.getElementById('totalDaysSlider');
   if (sliderEl) sliderEl.value = totalDays;
