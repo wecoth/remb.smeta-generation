@@ -1101,9 +1101,8 @@ function _recalcTotalDaysAuto() {
 }
 
 function _renderGanttWorks(wrap) {
-  if (!appState.workDays)    appState.workDays    = {};
-  if (!appState.workParallel) appState.workParallel = {};
-  if (!appState.workStart)   appState.workStart   = {};
+  if (!appState.workDays)  appState.workDays  = {};
+  if (!appState.workStart) appState.workStart = {};
 
   // Собираем группы по разделам
   const groups = [];
@@ -1130,32 +1129,18 @@ function _renderGanttWorks(wrap) {
     return;
   }
 
-  _recalcAllStageDaysAuto();
-
-  // Авторасчёт totalDays: считаем последний нужный день всех работ
+  // totalDays = max(startDay + duration) по всем работам
   let autoTotal = 0;
-  groups.forEach(g => {
-    let cursor = 0;
-    g.rows.forEach((r, ri) => {
-      const uid = r._uid;
-      const days = appState.workDays[uid] || 0;
-      const startOffset = appState.workStart[uid] || 0;
-      const isParallel = ri > 0 && (appState.workParallel[uid] || false);
-      const prevUid = ri > 0 ? g.rows[ri - 1]._uid : null;
-      const prevDays = prevUid ? (appState.workDays[prevUid] || 0) : 0;
-      const baseStart = isParallel ? Math.max(0, cursor - prevDays) : cursor;
-      const barStart = baseStart + startOffset;
-      autoTotal = Math.max(autoTotal, barStart + days);
-      if (!isParallel) cursor += days;
-      else cursor = Math.max(cursor, baseStart + Math.max(prevDays, days));
-    });
+  allWorkRows.forEach(r => {
+    const start = appState.workStart[r._uid] || 0;
+    const days  = appState.workDays[r._uid]  || 0;
+    autoTotal = Math.max(autoTotal, start + days);
   });
 
-  // Берём max(ручной, авто) — никогда не позволяем барам вылезти за границу
   const manualTotal = parseInt(document.getElementById('totalDaysSlider')?.value) || 0;
   let totalDays = Math.max(manualTotal, autoTotal) || 1;
 
-  // Обновляем поле общего срока автоматически
+  // Обновляем поле общего срока
   const sliderEl = document.getElementById('totalDaysSlider');
   if (sliderEl && String(totalDays) !== sliderEl.value) {
     sliderEl.value = totalDays;
@@ -1167,28 +1152,20 @@ function _renderGanttWorks(wrap) {
   groups.forEach(g => {
     if (!g.rows.length) return;
 
-    const daysAuto = g.stage ? (g.stage.daysAuto || 0) : 0;
     const groupHead = document.createElement('div');
     groupHead.className = 'gantt-works-group-head';
     groupHead.innerHTML = `
       <span class="gantt-stage-dot" style="background:${g.color}"></span>
-      <span style="font-size:11px;font-weight:600;color:var(--text-1);flex:1">${esc(g.stageName || 'Без этапа')}</span>
-      ${g.stage ? `<span class="gantt-works-auto-days">${daysAuto} дн. авто</span>` : ''}`;
+      <span style="font-size:11px;font-weight:600;color:var(--text-1);flex:1">${esc(g.stageName || 'Без этапа')}</span>`;
     wrap.appendChild(groupHead);
 
-    let cursorInGroup = 0;
-    g.rows.forEach((r, ri) => {
-      const uid = r._uid;
-      const days = appState.workDays[uid] || 0;
-      const startOffset = appState.workStart[uid] || 0;
-      const isParallel = ri > 0 && (appState.workParallel[uid] || false);
-      const prevUid = ri > 0 ? g.rows[ri - 1]._uid : null;
-      const prevDays = prevUid ? (appState.workDays[prevUid] || 0) : 0;
+    g.rows.forEach(r => {
+      const uid   = r._uid;
+      const days  = appState.workDays[uid]  || 0;
+      const start = appState.workStart[uid] || 0;
 
-      const baseStart = isParallel ? Math.max(0, cursorInGroup - prevDays) : cursorInGroup;
-      const barStart = Math.max(0, baseStart + startOffset);
-      const pct  = totalDays > 0 ? (barStart / totalDays * 100) : 0;
-      const wPct = totalDays > 0 ? (days     / totalDays * 100) : 0;
+      const pct  = totalDays > 0 ? (start / totalDays * 100) : 0;
+      const wPct = totalDays > 0 ? (days  / totalDays * 100) : 0;
 
       const ticksHtml = days > 0 ? Array.from({length: days + 1}, (_, ti) => {
         const leftPct = (ti / days * 100).toFixed(2);
@@ -1198,7 +1175,7 @@ function _renderGanttWorks(wrap) {
       const row = document.createElement('div');
       row.className = 'gantt-row gantt-works-row';
       row.innerHTML = `
-        <div class="gantt-row-label" style="gap:5px;padding-left:20px">
+        <div class="gantt-row-label" style="gap:5px;padding-left:8px">
           <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>
           <input type="number" min="0" max="999" value="${days || ''}"
             placeholder="0"
@@ -1211,7 +1188,8 @@ function _renderGanttWorks(wrap) {
         </div>
         <div class="gantt-track-wrap">
           <div class="gantt-track">
-            ${days > 0 ? `<div class="gantt-bar gantt-work-bar" data-uid="${uid}" style="left:${pct.toFixed(2)}%;width:${Math.max(wPct, 0.5).toFixed(2)}%;background:${g.color};opacity:${isParallel ? '0.72' : '1'};cursor:grab;">
+            ${days > 0 ? `<div class="gantt-bar gantt-work-bar" data-uid="${uid}"
+              style="left:${pct.toFixed(2)}%;width:${Math.max(wPct, 0.5).toFixed(2)}%;background:${g.color};cursor:grab;">
               <div class="gantt-handle gantt-handle-l gantt-work-handle" data-uid="${uid}" data-edge="left"></div>
               <div class="gantt-ticks">${ticksHtml}</div>
               <span class="gantt-bar-label">${days} дн.</span>
@@ -1220,19 +1198,15 @@ function _renderGanttWorks(wrap) {
           </div>
         </div>`;
       wrap.appendChild(row);
-
-      if (!isParallel) cursorInGroup += days;
-      else cursorInGroup = Math.max(0, cursorInGroup - prevDays) + Math.max(prevDays, days);
     });
   });
 
+  // Инпуты — обновляют state при вводе, ре-рендер при blur/Enter
   wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
-    // Обновляем state при вводе, но НЕ ре-рендерим (чтобы не терять фокус)
     inp.addEventListener('input', () => {
       if (!appState.workDays) appState.workDays = {};
       appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
     });
-    // Полный ре-рендер только когда ушли из поля или нажали Enter
     const commit = () => {
       _recalcAllStageDaysAuto();
       _renderGanttWorks(wrap);
@@ -1240,21 +1214,20 @@ function _renderGanttWorks(wrap) {
       _updateTotals();
     };
     inp.addEventListener('blur', commit);
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
   });
 
-  // Drag хэндлов и бара для работ
+  // Drag бара (перемещение) и хэндлов (изменение размера)
   wrap.querySelectorAll('.gantt-work-bar').forEach(bar => {
     const uid = bar.dataset.uid;
 
-    // Drag по центру бара — перемещение (startOffset)
     bar.addEventListener('mousedown', e => {
       if (e.target.classList.contains('gantt-handle')) return;
       e.preventDefault(); e.stopPropagation();
-      const track = bar.closest('.gantt-track');
+      const track  = bar.closest('.gantt-track');
       const trackW = track.getBoundingClientRect().width;
       const startX = e.clientX;
-      const origOffset = appState.workStart[uid] || 0;
+      const origStart = appState.workStart[uid] || 0;
       const tDays = appState.totalDays || 1;
       document.body.style.cursor = 'grabbing';
       document.body.style.userSelect = 'none';
@@ -1262,7 +1235,7 @@ function _renderGanttWorks(wrap) {
       function onMove(ev) {
         const dx = ev.clientX - startX;
         const delta = Math.round(dx / trackW * tDays);
-        appState.workStart[uid] = origOffset + delta;
+        appState.workStart[uid] = Math.max(0, origStart + delta);
         _renderGanttWorks(wrap);
         _renderGanttRuler();
       }
@@ -1271,9 +1244,6 @@ function _renderGanttWorks(wrap) {
         document.body.style.userSelect = '';
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        _recalcAllStageDaysAuto();
-        _renderGanttWorks(wrap);
-        _renderGanttRuler();
       }
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
@@ -1283,50 +1253,42 @@ function _renderGanttWorks(wrap) {
   wrap.querySelectorAll('.gantt-work-handle').forEach(h => {
     h.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
-      const uid = h.dataset.uid;
-      const bar = h.closest('.gantt-bar');
-      const track = h.closest('.gantt-track');
+      const uid  = h.dataset.uid;
+      const edge = h.dataset.edge;
+      const bar  = h.closest('.gantt-bar');
+      const track  = h.closest('.gantt-track');
       const trackW = track.getBoundingClientRect().width;
-      const startX = e.clientX;
-      const startDays = appState.workDays[uid] || 0;
-      const startOffset = appState.workStart[uid] || 0;
-      const edge = h.dataset.edge; // 'left' | 'right'
+      const startX     = e.clientX;
+      const origDays   = appState.workDays[uid]  || 0;
+      const origStart  = appState.workStart[uid] || 0;
       const tDays = appState.totalDays || 1;
       document.body.style.cursor = 'ew-resize';
       document.body.style.userSelect = 'none';
 
       function onMove(ev) {
-        const dx = ev.clientX - startX;
-        const daysDelta = Math.round(dx / trackW * tDays);
+        const dx    = ev.clientX - startX;
+        const delta = Math.round(dx / trackW * tDays);
         if (edge === 'right') {
-          const newDays = Math.max(1, startDays + daysDelta);
-          appState.workDays[uid] = newDays;
-          const inp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
-          if (inp) inp.value = newDays;
+          appState.workDays[uid] = Math.max(1, origDays + delta);
         } else {
-          // left handle — двигаем начало, уменьшаем/увеличиваем длину
-          const newOffset = startOffset + daysDelta;
-          const newDays = Math.max(1, startDays - daysDelta);
-          appState.workStart[uid] = newOffset;
-          appState.workDays[uid] = newDays;
-          const inp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
-          if (inp) inp.value = newDays;
+          const newStart = Math.max(0, origStart + delta);
+          const newDays  = Math.max(1, origDays  - delta);
+          appState.workStart[uid] = newStart;
+          appState.workDays[uid]  = newDays;
         }
+        const inp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
+        if (inp) inp.value = appState.workDays[uid];
         _renderGanttWorks(wrap);
         _renderGanttRuler();
       }
-
       function onUp() {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         _recalcAllStageDaysAuto();
-        _renderGanttWorks(wrap);
-        _renderGanttRuler();
         _updateTotals();
       }
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
