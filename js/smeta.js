@@ -1130,7 +1130,14 @@ function _renderGanttWorks(wrap) {
   }
 
   _recalcAllStageDaysAuto();
-  const totalDays = appState.totalDays || 1;
+
+  // Считаем totalDays: берём из поля ИЛИ суммируем все проставленные дни
+  let totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 0;
+  if (!totalDays) {
+    // Нет totalDays — считаем сумму всех проставленных дней как базу для баров
+    totalDays = allWorkRows.reduce((s, r) => s + (appState.workDays[r._uid] || 0), 0) || 1;
+  }
+
   wrap.innerHTML = '';
 
   groups.forEach(g => {
@@ -1176,7 +1183,7 @@ function _renderGanttWorks(wrap) {
         </div>
         <div class="gantt-track-wrap">
           <div class="gantt-track">
-            ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${g.color};pointer-events:none;opacity:${isParallel ? '0.72' : '1'}">
+            ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${Math.max(wPct, 0.5).toFixed(2)}%;background:${g.color};pointer-events:none;opacity:${isParallel ? '0.72' : '1'}">
               <span class="gantt-bar-label">${days} дн.</span>
             </div>` : ''}
           </div>
@@ -1249,11 +1256,13 @@ function _renderGanttRuler() {
   const ruler = document.getElementById('ganttRuler');
   if (!ruler) return;
   ruler.innerHTML = '';
-  const ticks = Math.min(appState.totalDays, 12);
+  const totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 0;
+  if (!totalDays) return;
+  const ticks = Math.min(totalDays, 12);
   for (let i = 0; i <= ticks; i++) {
     const t = document.createElement('span');
     t.className = 'gantt-tick';
-    t.textContent = Math.round(appState.totalDays * i / ticks);
+    t.textContent = Math.round(totalDays * i / ticks);
     t.style.left = (i / ticks * 100) + '%';
     ruler.appendChild(t);
   }
