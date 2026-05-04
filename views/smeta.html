@@ -470,12 +470,21 @@
   .gantt-handle::after { content: ''; width: 2px; height: 10px; background: rgba(255,255,255,.7); border-radius: 1px; }
   .gantt-handle-l { left: 0; border-radius: 4px 0 0 4px; }
   .gantt-handle-r { right: 0; border-radius: 0 4px 4px 0; }
-  .gantt-ruler { position: relative; height: 18px; margin-top: 10px; margin-left: calc(230px + 14px); }
-  .gantt-rows:has(.gantt-works-row) ~ .gantt-ruler { margin-left: calc(280px + 14px); }
+  .gantt-ruler-top-wrap {
+    display: flex; align-items: flex-end;
+    margin-bottom: 6px;
+  }
+  .gantt-ruler-spacer {
+    width: calc(230px + 14px); flex-shrink: 0;
+  }
+  .gantt-rows:has(.gantt-works-row) ~ * .gantt-ruler-spacer,
+  .gantt-ruler-top-wrap.works-mode .gantt-ruler-spacer { width: calc(280px + 14px); }
+  .gantt-ruler { position: relative; height: 18px; flex: 1; }
+  .gantt-ruler-top { border-bottom: 1px solid var(--border-2); }
   .gantt-tick {
     position: absolute; font-size: 10px; color: var(--text-3);
     transform: translateX(-50%); font-variant-numeric: tabular-nums;
-    font-family: var(--font-mono);
+    font-family: var(--font-mono); bottom: 2px;
   }
   .gantt-tick:first-child { transform: none; }
   .gantt-tick:last-child { transform: translateX(-100%); }
@@ -879,8 +888,11 @@
               <input type="number" id="totalDaysSlider" min="1" max="999" placeholder="0" style="width:72px;padding:5px 12px;border-radius:6px;border:1px solid var(--border-1);font-size:13px;font-weight:600;font-family:Onest,Inter,sans-serif;color:var(--text-1);text-align:center;background:var(--bg-card);outline:none;-moz-appearance:textfield;appearance:textfield;" oninput="window._calcFinish && window._calcFinish()">
               <span class="gantt-days-lbl">рабочих дней</span>
             </div>
+            <div class="gantt-ruler-top-wrap">
+              <div class="gantt-ruler-spacer" id="ganttRulerSpacer"></div>
+              <div class="gantt-ruler gantt-ruler-top" id="ganttRuler"></div>
+            </div>
             <div class="gantt-rows" id="ganttBars"></div>
-            <div class="gantt-ruler" id="ganttRuler"></div>
           </div>
         </div>
       </div>
