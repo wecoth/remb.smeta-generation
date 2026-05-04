@@ -1129,20 +1129,21 @@ function _renderGanttWorks(wrap) {
     return;
   }
 
-  // Новым работам проставляем workStart последовательно: каждая начинается после предыдущей.
-  // Для уже расставленных вручную — не трогаем, но учитываем их конец для следующих новых.
+  // workStart: работы без ручного сдвига (не в workMovedManually) пересчитываются
+  // последовательно при каждом рендере. Вручную сдвинутые — не трогаем.
+  if (!appState.workMovedManually) appState.workMovedManually = {};
   {
     let seqCursor = 0;
     allWorkRows.forEach(r => {
-      if (appState.workStart[r._uid] === undefined) {
-        // Новая работа — ставим ровно туда где закончилась предыдущая
-        appState.workStart[r._uid] = seqCursor;
-        // Сразу двигаем курсор вперёд на её длительность
-        seqCursor += appState.workDays[r._uid] || 0;
-      } else {
-        // Уже расставленная вручную — не трогаем, но двигаем курсор если она выступает дальше
-        const end = appState.workStart[r._uid] + (appState.workDays[r._uid] || 0);
+      const uid = r._uid;
+      if (appState.workMovedManually[uid]) {
+        // Пользователь двигал бар вручную — позицию не меняем
+        const end = (appState.workStart[uid] || 0) + (appState.workDays[uid] || 0);
         if (end > seqCursor) seqCursor = end;
+      } else {
+        // Авто-позиция: ставим после предыдущей работы
+        appState.workStart[uid] = seqCursor;
+        seqCursor += appState.workDays[uid] || 0;
       }
     });
   }
@@ -1269,6 +1270,8 @@ function _renderGanttWorks(wrap) {
         const dx = ev.clientX - startX;
         const delta = Math.round(dx / trackW * tDays);
         appState.workStart[uid] = Math.max(0, origStart + delta);
+        if (!appState.workMovedManually) appState.workMovedManually = {};
+        appState.workMovedManually[uid] = true;
         _renderGanttWorks(wrap);
         _renderGanttRuler();
       }
@@ -1307,6 +1310,8 @@ function _renderGanttWorks(wrap) {
           const newStart = Math.max(0, origStart + delta);
           const newDays  = Math.max(1, origDays  - delta);
           appState.workStart[uid] = newStart;
+          if (!appState.workMovedManually) appState.workMovedManually = {};
+          appState.workMovedManually[uid] = true;
           appState.workDays[uid]  = newDays;
         }
         const inp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
