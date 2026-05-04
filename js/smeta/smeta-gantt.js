@@ -52,7 +52,7 @@ export function ensureStage(name) {
 // Также обновляет workDays для новых строк (добавленных в СМР).
 function _cleanupOrphanWorkData() {
   const liveUids = new Set(
-    appState.smrRows.filter(r => !r.isSection && r.name).map(r => r._uid)
+    appState.smrRows.filter(r => !r.isSection && r.name).map(r => String(r._uid))
   );
   if (!appState.workDays)          appState.workDays          = {};
   if (!appState.workStart)         appState.workStart         = {};
@@ -68,7 +68,7 @@ function _cleanupOrphanWorkData() {
   }
   // Для новых строк, у которых ещё нет записи — инициализируем 0
   for (const uid of liveUids) {
-    if (!(uid in appState.workDays)) appState.workDays[uid] = 0;
+    if (!(uid in appState.workDays) && !(String(uid) in appState.workDays)) appState.workDays[String(uid)] = 0;
   }
 }
 
@@ -522,20 +522,21 @@ function _renderGanttWorks(wrap) {
         console.log('[gantt drop] workDays[uid] before:', appState.workDays[uid]);
 
         if (trk && trk.dataset.uid) {
+          const trkUid = String(trk.dataset.uid);
           const rect   = trk.getBoundingClientRect();
           const dayPos = Math.max(0, Math.floor((ev.clientX - rect.left) / rect.width * (appState.totalDays || 1)));
-          if (!appState.workDays[uid] || appState.workDays[uid] === 0) appState.workDays[uid] = 1;
-          appState.workStart[uid] = dayPos;
+          if (!appState.workDays[trkUid] || appState.workDays[trkUid] === 0) appState.workDays[trkUid] = 1;
+          appState.workStart[trkUid] = dayPos;
           if (!appState.workMovedManually) appState.workMovedManually = {};
-          appState.workMovedManually[uid] = true;
-          console.log('[gantt drop] ✅ placed uid:', uid, '| start day:', dayPos, '| days:', appState.workDays[uid]);
-          console.log('[gantt drop] trk.uid vs label.uid:', trk.dataset.uid, '===', uid, trk.dataset.uid === uid);
+          appState.workMovedManually[trkUid] = true;
+          console.log('[gantt drop] ✅ placed uid:', trkUid, '| start day:', dayPos, '| days:', appState.workDays[trkUid]);
+          console.log('[gantt drop] trk.uid vs label.uid:', trkUid, '===', uid, trkUid === String(uid));
         } else {
           console.warn('[gantt drop] ❌ track not found — drop ignored');
         }
         recalcAllStageDaysAuto();
         _renderGanttWorks(wrap);
-        console.log('[gantt drop] after render workDays[uid]:', appState.workDays[uid], '| workStart[uid]:', appState.workStart[uid], '| movedManually:', appState.workMovedManually[uid]);
+        console.log('[gantt drop] after render workDays[uid]:', appState.workDays[String(uid)], '| workStart[uid]:', appState.workStart[String(uid)], '| movedManually:', appState.workMovedManually?.[String(uid)]);
         _renderGanttRuler();
         _onDurationChanged();
         document.removeEventListener('mousemove', onMove);
