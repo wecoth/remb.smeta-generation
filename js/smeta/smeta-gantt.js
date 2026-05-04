@@ -482,23 +482,44 @@ function _renderGanttWorks(wrap) {
 
         // Ищем трек под курсором — сначала прямо под точкой, потом по ближайшей строке
         const el2  = document.elementFromPoint(ev.clientX, ev.clientY);
-        let trk = el2 && (el2.classList.contains('gantt-track') ? el2 : el2.closest('.gantt-track[data-uid]'));
-        // Если курсор над лейблом или другим элементом строки — берём трек той же строки
-        if (!trk) {
-          const ganttRow = el2 && el2.closest('.gantt-works-row');
-          if (ganttRow) trk = ganttRow.querySelector('.gantt-track[data-uid]');
+        console.log('[gantt drop] uid:', uid, '| el2:', el2, '| el2.className:', el2?.className);
+
+        // el2 может быть: gantt-track, gantt-work-bar, gantt-bar-label, gantt-ticks,
+        //   gantt-track-wrap, gantt-works-row, gantt-row-label — обрабатываем все варианты
+        let trk = null;
+        if (el2) {
+          if (el2.classList.contains('gantt-track') && el2.dataset.uid) {
+            // Прямо трек
+            trk = el2;
+          } else {
+            // Пробуем подняться к треку (работает если el2 — дочерний бара)
+            trk = el2.closest('.gantt-track[data-uid]');
+          }
+          if (!trk) {
+            // el2 может быть gantt-track-wrap (родитель трека) — ищем вниз
+            const wrap2 = el2.classList.contains('gantt-track-wrap') ? el2 : el2.closest('.gantt-track-wrap');
+            if (wrap2) trk = wrap2.querySelector('.gantt-track[data-uid]');
+          }
+          if (!trk) {
+            // Курсор над лейблом или любым элементом строки — берём трек той же строки
+            const ganttRow = el2.closest('.gantt-works-row');
+            if (ganttRow) trk = ganttRow.querySelector('.gantt-track[data-uid]');
+          }
         }
-        // Если вообще мимо — ищем ближайший трек по Y-позиции
+        // Если вообще мимо — ищем ближайший трек по Y-позиции (увеличен радиус до 80px)
         if (!trk) {
           let bestTrk = null, bestDist = Infinity;
           wrap.querySelectorAll('.gantt-track[data-uid]').forEach(t => {
             const r = t.getBoundingClientRect();
             const centerY = (r.top + r.bottom) / 2;
             const dist = Math.abs(ev.clientY - centerY);
-            if (dist < bestDist && dist < 40) { bestDist = dist; bestTrk = t; }
+            if (dist < bestDist && dist < 80) { bestDist = dist; bestTrk = t; }
           });
           trk = bestTrk;
         }
+
+        console.log('[gantt drop] trk found:', trk, '| trk.dataset.uid:', trk?.dataset?.uid);
+        console.log('[gantt drop] workDays[uid] before:', appState.workDays[uid]);
 
         if (trk && trk.dataset.uid) {
           const rect   = trk.getBoundingClientRect();
@@ -507,6 +528,9 @@ function _renderGanttWorks(wrap) {
           appState.workStart[uid] = dayPos;
           if (!appState.workMovedManually) appState.workMovedManually = {};
           appState.workMovedManually[uid] = true;
+          console.log('[gantt drop] ✅ placed uid:', uid, '| start day:', dayPos, '| days:', appState.workDays[uid]);
+        } else {
+          console.warn('[gantt drop] ❌ track not found — drop ignored');
         }
         recalcAllStageDaysAuto();
         _renderGanttWorks(wrap);
