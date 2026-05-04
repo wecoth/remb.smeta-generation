@@ -860,7 +860,7 @@ function _syncSectionsToGantt() {
       const id    = _newStageId();
       const color = _nextColor();
       const lastEnd = appState.stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
-      appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
+      appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10, daysAuto: 0, daysOverride: null, parallelWithPrev: false });
     }
   });
 
@@ -892,144 +892,321 @@ function _renderGantt() {
     return;
   }
 
+  // Убеждаемся что daysAuto посчитан
+  _recalcAllStageDaysAuto();
+
+  const totalDays = appState.totalDays || 1;
+
+  // Позиционируем этапы с учётом parallelWithPrev
+  let cursor = 0;
+  appState.stages.forEach((s, i) => {
+    const dur = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
+    const start = (s.parallelWithPrev && i > 0)
+      ? (appState.stages[i - 1]._startDay || 0)
+      : cursor;
+    s._startDay = start;
+    if (!s.parallelWithPrev) cursor = start + dur;
+  });
+
   wrap.innerHTML = '';
   appState.stages.forEach((s, idx) => {
-    const days = Math.max(1, Math.round(appState.totalDays * s.w / 100));
+    const hasAuto = (s.daysAuto || 0) > 0;
+    const dur = s.daysOverride != null ? s.daysOverride : (s.daysAuto || 0);
+    const startDay = s._startDay || 0;
+    const pct  = totalDays > 0 ? (startDay / totalDays * 100) : s.pct;
+    const wPct = totalDays > 0 && dur > 0 ? (dur / totalDays * 100) : s.w;
+    const isOverride = s.daysOverride != null;
+    const isParallel = s.parallelWithPrev && idx > 0;
+
     const row  = document.createElement('div');
     row.className = 'gantt-row';
 
-    // Tick marks inside bar
-    const ticksHtml = Array.from({length: days + 1}, (_, ti) => {
-      const leftPct = (ti / days * 100).toFixed(2);
+    const ticksHtml = dur > 0 ? Array.from({length: dur + 1}, (_, ti) => {
+      const leftPct = (ti / dur * 100).toFixed(2);
       return `<div class="gantt-tick-mark" style="left:${leftPct}%"></div>`;
-    }).join('');
+    }).join('') : '';
 
     row.innerHTML = `
       <div class="gantt-row-label">
+        ${idx > 0
+          ? `<button class="gantt-parallel-btn${isParallel ? ' active' : ''}" data-sidx="${idx}" title="Параллельно с предыдущим этапом" style="font-size:13px">⇉</button>`
+          : '<span style="width:22px;display:inline-block"></span>'}
         <span class="gantt-stage-dot" style="background:${s.color}"></span>
         <span class="gantt-stage-name" contenteditable="true" data-idx="${idx}">${esc(s.name)}</span>
-        <span class="gantt-stage-days">${days} дн.</span>
+        ${hasAuto && !isOverride
+          ? `<span class="gantt-stage-days" title="Автоматически из работ">🔒 ${dur} дн.</span>
+             <button class="gantt-unlock-btn" data-sidx="${idx}" title="Задать вручную">✏️</button>`
+          : `<input type="number" min="1" max="999" class="gantt-stage-days-inp" data-sidx="${idx}" value="${dur || ''}" placeholder="0"
+               style="width:42px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);font-size:11px;
+                      text-align:center;background:var(--bg-card);color:var(--text-1);font-family:var(--font-mono);
+                      -moz-appearance:textfield;appearance:textfield;outline:none;">
+             <span style="font-size:10px;color:var(--text-3)">дн.</span>
+             ${hasAuto ? `<button class="gantt-lock-btn" data-sidx="${idx}" title="Вернуть авторасчёт">🔓</button>` : ''}`
+        }
       </div>
       <div class="gantt-track-wrap">
         <div class="gantt-track">
-          <div class="gantt-bar" data-idx="${idx}" style="left:${s.pct}%;width:${s.w}%;background:${s.color}">
-            <div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>
+          ${wPct > 0 ? `<div class="gantt-bar" data-idx="${idx}" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${s.color};${!isOverride && hasAuto ? 'opacity:0.85;' : ''}">
+            ${!isOverride && hasAuto ? '' : `<div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>`}
             <div class="gantt-ticks">${ticksHtml}</div>
-            <span class="gantt-bar-label">${days} дн.</span>
+            <span class="gantt-bar-label">${dur} дн.</span>
+            ${!isOverride && hasAuto ? '' : `<div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>`}
+          </div>` : `<div class="gantt-bar" data-idx="${idx}" style="left:${s.pct}%;width:${s.w}%;background:${s.color}">
+            <div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>
+            <div class="gantt-ticks"></div>
+            <span class="gantt-bar-label">${Math.max(1, Math.round(totalDays * s.w / 100))} дн.</span>
             <div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>
-          </div>
+          </div>`}
         </div>
       </div>`;
     wrap.appendChild(row);
 
-    // Editable name
+    // Редактирование названия
     const nameEl = row.querySelector('.gantt-stage-name');
     nameEl.addEventListener('blur', () => {
       appState.stages[idx].name = nameEl.textContent.trim();
       _renderPayments();
     });
 
-    // Left/right handles
-    row.querySelectorAll('.gantt-handle').forEach(h => {
-      h.addEventListener('mousedown', e => {
-        e.preventDefault(); e.stopPropagation();
-        const track  = h.closest('.gantt-track');
-        const trackW = track.getBoundingClientRect().width;
-        _dragging = { idx, type: h.dataset.edge, startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
-        document.body.style.cursor = 'ew-resize';
-        document.body.style.userSelect = 'none';
+    // Кнопка параллельности этапа
+    const parBtn = row.querySelector('.gantt-parallel-btn[data-sidx]');
+    if (parBtn) {
+      parBtn.addEventListener('click', () => {
+        appState.stages[idx].parallelWithPrev = !appState.stages[idx].parallelWithPrev;
+        _recalcTotalDaysAuto();
+        _renderGantt();
+        _renderPayments();
       });
-    });
+    }
 
-    // Drag whole bar (mousedown on bar itself, not handles)
-    const bar = row.querySelector('.gantt-bar');
-    bar.addEventListener('mousedown', e => {
-      if (e.target.classList.contains('gantt-handle')) return;
-      e.preventDefault();
-      const track  = bar.closest('.gantt-track');
-      const trackW = track.getBoundingClientRect().width;
-      _dragging = { idx, type: 'bar', startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
-      document.body.style.cursor = 'grabbing';
-      document.body.style.userSelect = 'none';
-    });
+    // Кнопка "разблокировать" (✏️ → ручной режим)
+    const unlockBtn = row.querySelector('.gantt-unlock-btn');
+    if (unlockBtn) {
+      unlockBtn.addEventListener('click', () => {
+        appState.stages[idx].daysOverride = appState.stages[idx].daysAuto || 0;
+        _renderGantt();
+      });
+    }
+
+    // Кнопка "вернуть авто" (🔓)
+    const lockBtn = row.querySelector('.gantt-lock-btn');
+    if (lockBtn) {
+      lockBtn.addEventListener('click', () => {
+        appState.stages[idx].daysOverride = null;
+        _recalcTotalDaysAuto();
+        _renderGantt();
+      });
+    }
+
+    // Инпут ручных дней
+    const daysInp = row.querySelector('.gantt-stage-days-inp');
+    if (daysInp) {
+      daysInp.addEventListener('input', () => {
+        const val = Math.max(0, parseInt(daysInp.value) || 0);
+        appState.stages[idx].daysOverride = val > 0 ? val : null;
+        _recalcTotalDaysAuto();
+        _renderGanttRuler();
+        _renderPayments();
+      });
+    }
+
+    // Drag handles (только если нет авто-лока)
+    if (isOverride || !hasAuto) {
+      row.querySelectorAll('.gantt-handle').forEach(h => {
+        h.addEventListener('mousedown', e => {
+          e.preventDefault(); e.stopPropagation();
+          const track  = h.closest('.gantt-track');
+          const trackW = track.getBoundingClientRect().width;
+          _dragging = { idx, type: h.dataset.edge, startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
+          document.body.style.cursor = 'ew-resize';
+          document.body.style.userSelect = 'none';
+        });
+      });
+
+      const bar = row.querySelector('.gantt-bar');
+      if (bar) {
+        bar.addEventListener('mousedown', e => {
+          if (e.target.classList.contains('gantt-handle')) return;
+          e.preventDefault();
+          const track  = bar.closest('.gantt-track');
+          const trackW = track.getBoundingClientRect().width;
+          _dragging = { idx, type: 'bar', startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
+          document.body.style.cursor = 'grabbing';
+          document.body.style.userSelect = 'none';
+        });
+      }
+    }
   });
 
   _renderGanttRuler();
 }
 
 // ── Режим "По работам" ────────────────────────────────────────────
-// Каждая строка СМР (не раздел) — отдельный бар. Длительность задаётся вручную
-// через числовой инпут. Данные хранятся в appState.workDays: { [_uid]: days }
-function _renderGanttWorks(wrap) {
-  if (!appState.workDays) appState.workDays = {};
-  const rows = appState.smrRows.filter(r => !r.isSection && r.name);
+// workDays: { [_uid]: days }, workParallel: { [_uid]: bool }
+// Группировка по разделам, daysAuto этапа пересчитывается автоматически.
 
-  if (!rows.length) {
+function _calcStageDaysAuto(stageName) {
+  let inside = false;
+  let auto = 0;
+  let prevDays = 0;
+  for (const r of appState.smrRows) {
+    if (r.isSection) {
+      if (inside) break;
+      inside = (r.name && r.name.trim() === stageName);
+      continue;
+    }
+    if (!inside) continue;
+    const d = appState.workDays?.[r._uid] || 0;
+    const isParallel = appState.workParallel?.[r._uid] || false;
+    if (isParallel && prevDays > 0) {
+      auto = auto - prevDays + Math.max(prevDays, d);
+    } else {
+      auto += d;
+    }
+    prevDays = d;
+  }
+  return auto;
+}
+
+function _recalcAllStageDaysAuto() {
+  if (!appState.stages) return;
+  appState.stages.forEach(s => { s.daysAuto = _calcStageDaysAuto(s.name); });
+  _recalcTotalDaysAuto();
+}
+
+function _recalcTotalDaysAuto() {
+  if (!appState.stages || !appState.stages.length) return;
+  let cursor = 0;
+  let maxEnd = 0;
+  appState.stages.forEach((s, i) => {
+    const dur = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
+    const start = (s.parallelWithPrev && i > 0)
+      ? (appState.stages[i - 1]._startDay || 0)
+      : cursor;
+    s._startDay = start;
+    const end = start + dur;
+    if (!s.parallelWithPrev) cursor = end;
+    if (end > maxEnd) maxEnd = end;
+  });
+  if (!appState.totalDaysOverride && maxEnd > 0) {
+    const inp = document.getElementById('totalDaysSlider');
+    if (inp) {
+      inp.value = maxEnd;
+      appState.totalDays = maxEnd;
+      const valEl = document.getElementById('totalDaysVal');
+      if (valEl) valEl.textContent = maxEnd;
+      _updateHeaderDates();
+    }
+  }
+}
+
+function _renderGanttWorks(wrap) {
+  if (!appState.workDays)    appState.workDays    = {};
+  if (!appState.workParallel) appState.workParallel = {};
+
+  // Собираем группы по разделам
+  const groups = [];
+  let curGroup = null;
+  appState.smrRows.forEach(r => {
+    if (r.isSection) {
+      const stageName = r.name?.trim() || '';
+      const stage = appState.stages.find(s => s.name === stageName);
+      const color = stage ? stage.color : '#9b9b9b';
+      curGroup = { stageName, color, stage, rows: [] };
+      groups.push(curGroup);
+    } else if (r.name) {
+      if (!curGroup) {
+        curGroup = { stageName: '', color: '#9b9b9b', stage: null, rows: [] };
+        groups.push(curGroup);
+      }
+      curGroup.rows.push(r);
+    }
+  });
+
+  const allWorkRows = groups.flatMap(g => g.rows);
+  if (!allWorkRows.length) {
     wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Добавьте работы в смету — они появятся здесь</div>';
     return;
   }
 
-  // Считаем сумму проставленных дней
-  const totalSet = rows.reduce((s, r) => s + (appState.workDays[r._uid] || 0), 0);
+  _recalcAllStageDaysAuto();
   const totalDays = appState.totalDays || 1;
-
   wrap.innerHTML = '';
 
-  // Считаем позицию начала каждого бара (последовательно)
-  let cursor = 0; // в днях от начала
-  rows.forEach((r, i) => {
-    const uid  = r._uid;
-    const days = appState.workDays[uid] || 0;
-    const pct  = totalDays > 0 ? (cursor / totalDays * 100) : 0;
-    const wPct = totalDays > 0 ? (days   / totalDays * 100) : 0;
+  groups.forEach(g => {
+    if (!g.rows.length) return;
 
-    // Найдём цвет раздела этой строки
-    let color = '#9b9b9b';
-    for (let j = i - 1; j >= 0; j--) {
-      if (appState.smrRows[j]?.isSection) {
-        const stageName = appState.smrRows[j].name?.trim();
-        const stage = appState.stages.find(s => s.name === stageName);
-        if (stage) { color = stage.color; }
-        break;
-      }
-    }
+    const daysAuto = g.stage ? (g.stage.daysAuto || 0) : 0;
+    const groupHead = document.createElement('div');
+    groupHead.className = 'gantt-works-group-head';
+    groupHead.innerHTML = `
+      <span class="gantt-stage-dot" style="background:${g.color}"></span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-1);flex:1">${esc(g.stageName || 'Без этапа')}</span>
+      ${g.stage ? `<span class="gantt-works-auto-days">${daysAuto} дн. авто</span>` : ''}`;
+    wrap.appendChild(groupHead);
 
-    const row = document.createElement('div');
-    row.className = 'gantt-row';
-    row.innerHTML = `
-      <div class="gantt-row-label" style="gap:6px">
-        <span class="gantt-stage-dot" style="background:${color}"></span>
-        <span class="gantt-stage-name" style="cursor:default;border:none" title="${esc(r.name)}">${esc(r.name.length > 28 ? r.name.slice(0, 26) + '…' : r.name)}</span>
-        <input type="number" min="0" max="999" value="${days || ''}"
-          placeholder="дн."
-          data-uid="${uid}"
-          style="width:44px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);
-                 font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
-                 font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;"
-          class="gantt-work-days-inp">
-      </div>
-      <div class="gantt-track-wrap">
-        <div class="gantt-track">
-          ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${color};pointer-events:none">
-            <span class="gantt-bar-label">${days} дн.</span>
-          </div>` : ''}
+    let cursorInGroup = 0;
+    g.rows.forEach((r, ri) => {
+      const uid = r._uid;
+      const days = appState.workDays[uid] || 0;
+      const isParallel = ri > 0 && (appState.workParallel[uid] || false);
+      const prevUid = ri > 0 ? g.rows[ri - 1]._uid : null;
+      const prevDays = prevUid ? (appState.workDays[prevUid] || 0) : 0;
+
+      const barStart = isParallel ? Math.max(0, cursorInGroup - prevDays) : cursorInGroup;
+      const pct  = totalDays > 0 ? (barStart / totalDays * 100) : 0;
+      const wPct = totalDays > 0 ? (days     / totalDays * 100) : 0;
+
+      const row = document.createElement('div');
+      row.className = 'gantt-row gantt-works-row';
+      row.innerHTML = `
+        <div class="gantt-row-label" style="gap:5px;padding-left:20px">
+          ${ri > 0
+            ? `<button class="gantt-parallel-btn${isParallel ? ' active' : ''}" data-uid="${uid}" title="Параллельно с предыдущей работой">⇉</button>`
+            : '<span style="width:22px;display:inline-block"></span>'}
+          <span class="gantt-stage-name" style="cursor:default;border:none;font-size:11px" title="${esc(r.name)}">${esc(r.name.length > 26 ? r.name.slice(0, 24) + '…' : r.name)}</span>
+          <input type="number" min="0" max="999" value="${days || ''}"
+            placeholder="0"
+            data-uid="${uid}"
+            style="width:42px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);
+                   font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
+                   font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;"
+            class="gantt-work-days-inp">
+          <span style="font-size:10px;color:var(--text-3);min-width:16px">дн.</span>
         </div>
-      </div>`;
-    wrap.appendChild(row);
+        <div class="gantt-track-wrap">
+          <div class="gantt-track">
+            ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${g.color};pointer-events:none;opacity:${isParallel ? '0.72' : '1'}">
+              <span class="gantt-bar-label">${days} дн.</span>
+            </div>` : ''}
+          </div>
+        </div>`;
+      wrap.appendChild(row);
 
-    if (days > 0) cursor += days;
+      if (!isParallel) cursorInGroup += days;
+      else cursorInGroup = Math.max(0, cursorInGroup - prevDays) + Math.max(prevDays, days);
+    });
   });
 
-  // Биндим инпуты
   wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
     inp.addEventListener('input', () => {
-      const uid = inp.dataset.uid;
-      const val = Math.max(0, parseInt(inp.value) || 0);
       if (!appState.workDays) appState.workDays = {};
-      appState.workDays[uid] = val;
+      appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
+      _recalcAllStageDaysAuto();
       _renderGanttWorks(wrap);
       _renderGanttRuler();
       _updateTotals();
+    });
+  });
+
+  wrap.querySelectorAll('.gantt-parallel-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!appState.workParallel) appState.workParallel = {};
+      const uid = btn.dataset.uid;
+      appState.workParallel[uid] = !appState.workParallel[uid];
+      _recalcAllStageDaysAuto();
+      _renderGanttWorks(wrap);
+      _renderGanttRuler();
     });
   });
 }
@@ -1125,7 +1302,7 @@ export function ensureStage(name) {
   const color = _nextColor();
   // place after last stage, width 10%
   const lastEnd = appState.stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
-  appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
+  appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10, daysAuto: 0, daysOverride: null, parallelWithPrev: false });
   _renderGantt();
   _renderPayments();
   return id;
@@ -1321,7 +1498,6 @@ function _initDaysSlider() {
   if (!slider || !output) return;
 
   // Восстанавливаем значение из appState только если оно было явно задано пользователем
-  // (totalDaysSet флаг). При первом запуске поле остаётся пустым (placeholder виден).
   if (appState.totalDaysSet && appState.totalDays > 0) {
     slider.value = appState.totalDays;
     output.textContent = appState.totalDays;
@@ -1335,6 +1511,37 @@ function _initDaysSlider() {
     appState.totalDays    = v;
     appState.totalDaysSet = v > 0;
     output.textContent    = v || '';
+
+    // Если пользователь вручную ввёл значение — это override
+    // Применяем масштабирование к этапам если есть авто-значение
+    if (v > 0) {
+      // Считаем авто-сумму этапов
+      let autoTotal = 0;
+      let cursor2 = 0;
+      (appState.stages || []).forEach((s, i) => {
+        const dur = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
+        const start = (s.parallelWithPrev && i > 0) ? (appState.stages[i - 1]._startDay || 0) : cursor2;
+        s._startDay = start;
+        if (!s.parallelWithPrev) cursor2 = start + dur;
+        const end = start + dur;
+        if (end > autoTotal) autoTotal = end;
+      });
+
+      if (autoTotal > 0 && v !== autoTotal) {
+        // Масштабируем все daysOverride (или daysAuto если нет override)
+        const k = v / autoTotal;
+        (appState.stages || []).forEach(s => {
+          const base = s.daysOverride != null ? s.daysOverride : (s.daysAuto || 0);
+          if (base > 0) s.daysOverride = Math.max(1, Math.round(base * k));
+        });
+        appState.totalDaysOverride = v; // помечаем что это ручной override
+      } else {
+        appState.totalDaysOverride = null;
+      }
+    } else {
+      appState.totalDaysOverride = null;
+    }
+
     _renderGantt();
     _renderPayments();
     _updateHeaderDates();
