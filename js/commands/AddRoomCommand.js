@@ -1,7 +1,7 @@
 import { BaseCommand } from './BaseCommand.js';
 import { appState } from '../state.js';
 import { polygonArea, polygonCentroid } from '../geometry.js';
-import { roomDefaultName, computeRoomMetrics, exteriorWallIds, findAllWallsForEdge } from '../room.js';
+import { roomDefaultName, computeRoomMetrics, exteriorWallIds, findAllWallsForEdge, updateExpl } from '../room.js';
 import { EventBus } from '../eventBus.js';
 
 export class AddRoomCommand extends BaseCommand {
@@ -90,6 +90,13 @@ export class AddRoomCommand extends BaseCommand {
     this.room = room;
     appState.rooms.push(room);
     EventBus.emit('rooms:computed');
+
+    // Принудительное обновление таблицы экспликации
+    const explBody = document.getElementById('explBody');
+    const roomCount = document.getElementById('roomCount');
+    if (explBody) {
+      updateExpl(explBody, roomCount);
+    }
   }
 
   undo() {
