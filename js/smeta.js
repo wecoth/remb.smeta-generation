@@ -1129,7 +1129,8 @@ function _renderGanttWorks(wrap) {
     return;
   }
 
-  // Новым работам (uid ещё нет в workStart) ставим startDay после последней известной работы
+  // Новым работам (uid ещё нет в workStart) ставим startDay последовательно друг за другом
+  // Считаем текущий «хвост» по уже известным работам
   let knownMax = 0;
   allWorkRows.forEach(r => {
     if (appState.workStart[r._uid] !== undefined) {
@@ -1138,9 +1139,13 @@ function _renderGanttWorks(wrap) {
       knownMax = Math.max(knownMax, s + d);
     }
   });
+  // Новые работы выстраиваем последовательно начиная с knownMax
+  let cursor = knownMax;
   allWorkRows.forEach(r => {
     if (appState.workStart[r._uid] === undefined) {
-      appState.workStart[r._uid] = knownMax;
+      appState.workStart[r._uid] = cursor;
+      // Сдвигаем cursor вперёд на длительность этой работы (0 пока не введено — ставим 1 как плейсхолдер)
+      cursor += Math.max(appState.workDays[r._uid] || 0, 0);
     }
   });
 
@@ -1217,32 +1222,29 @@ function _renderGanttWorks(wrap) {
   });
 
   // Инпуты — обновляют state при вводе, ре-рендер при blur/Enter
+  // _ganttRenderPending предотвращает двойной ре-рендер при переходе между инпутами
   wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
     inp.addEventListener('input', () => {
       if (!appState.workDays) appState.workDays = {};
       appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
     });
-    const commit = () => {
-      _recalcAllStageDaysAuto();
-      _renderGanttWorks(wrap);
-      _renderGanttRuler();
-      _updateTotals();
-    };
-    // mousedown на другом инпуте не должен вызывать blur у текущего раньше времени
-    inp.addEventListener('mousedown', e => e.stopPropagation());
-    inp.addEventListener('blur', e => {
-      // Если фокус уходит на другой .gantt-work-days-inp — не рендерим сейчас,
-      // новый инпут сам получит focus и commit произойдёт при его blur
-      const next = e.relatedTarget;
-      if (next && next.classList && next.classList.contains('gantt-work-days-inp')) {
-        // Просто сохраняем значение без ре-рендера
-        if (!appState.workDays) appState.workDays = {};
-        appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
-        return;
-      }
-      commit();
+    inp.addEventListener('focus', () => {
+      inp.select();
     });
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+    inp.addEventListener('blur', () => {
+      if (!appState.workDays) appState.workDays = {};
+      appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
+      // Откладываем ре-рендер на следующий тик — если фокус перешёл на другой инпут,
+      // новый focus отменит таймер и ре-рендер произойдёт только один раз при уходе из зоны
+      if (wrap._commitTimer) clearTimeout(wrap._commitTimer);
+      wrap._commitTimer = setTimeout(() => {
+        _recalcAllStageDaysAuto();
+        _renderGanttWorks(wrap);
+        _renderGanttRuler();
+        _updateTotals();
+      }, 50);
+    });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
   });
 
   // Drag бара (перемещение) и хэндлов (изменение размера)
