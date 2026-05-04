@@ -18,6 +18,14 @@ let _dragging = null; // { idx, type:'bar'|'left'|'right', startX, origPct, orig
 export function initGantt({ onDurationChanged, onStageRenamed }) {
   _onDurationChanged = onDurationChanged || (() => {});
   _onStageRenamed    = onStageRenamed    || (() => {});
+  // Дефолт — 7 рабочих дней если ещё не задан
+  if (!appState.totalDays || appState.totalDays < 1) {
+    appState.totalDays = 7;
+    const sliderEl = document.getElementById('totalDaysSlider');
+    const valEl    = document.getElementById('totalDaysVal');
+    if (sliderEl) sliderEl.value = 7;
+    if (valEl)    valEl.textContent = 7;
+  }
   _initGanttDrag();
 }
 
@@ -39,7 +47,34 @@ export function ensureStage(name) {
 
 // ── Section → Gantt sync (вызывается из smeta-tables-smr) ──────────
 
+// Удаляет из workDays/workStart/workMovedManually записи,
+// которых больше нет в smrRows (работы удалены или переименованы).
+// Также обновляет workDays для новых строк (добавленных в СМР).
+function _cleanupOrphanWorkData() {
+  const liveUids = new Set(
+    appState.smrRows.filter(r => !r.isSection && r.name).map(r => r._uid)
+  );
+  if (!appState.workDays)          appState.workDays          = {};
+  if (!appState.workStart)         appState.workStart         = {};
+  if (!appState.workMovedManually) appState.workMovedManually = {};
+
+  // Удаляем осиротевшие ключи
+  for (const uid of Object.keys(appState.workDays)) {
+    if (!liveUids.has(uid)) {
+      delete appState.workDays[uid];
+      delete appState.workStart[uid];
+      delete appState.workMovedManually[uid];
+    }
+  }
+  // Для новых строк, у которых ещё нет записи — инициализируем 0
+  for (const uid of liveUids) {
+    if (!(uid in appState.workDays)) appState.workDays[uid] = 0;
+  }
+}
+
 export function syncSectionsToGantt() {
+  _cleanupOrphanWorkData();   // ← синхронизация работ (добавление + удаление)
+
   const sections = appState.smrRows.filter(r => r.isSection && r.name?.trim());
   const nameSet  = new Set(sections.map(s => s.name.trim()));
 
@@ -145,7 +180,7 @@ function _renderGanttStages(wrap) {
   }
 
   recalcAllStageDaysAuto();
-  const totalDays = appState.totalDays || 1;
+  const totalDays = appState.totalDays || 7;
 
   // Позиционируем с учётом parallelWithPrev
   let cursor = 0;
@@ -275,6 +310,8 @@ function _renderGanttWorks(wrap) {
   if (!appState.workDays)  appState.workDays  = {};
   if (!appState.workStart) appState.workStart = {};
 
+  _cleanupOrphanWorkData();   // ← актуализируем перед каждым рендером
+
   // Группируем по разделам
   const groups = [];
   let curGroup = null;
@@ -348,10 +385,11 @@ function _renderGanttWorks(wrap) {
       row.className = 'gantt-row gantt-works-row';
 
       const labelDiv = document.createElement('div');
-      labelDiv.className = 'gantt-row-label';
-      labelDiv.style.cssText = 'gap:4px;padding-left:4px';
+      labelDiv.className = 'gantt-row-label gantt-works-label-draggable';
+      labelDiv.style.cssText = 'gap:4px;padding-left:4px;cursor:grab';
+      labelDiv.dataset.uid = uid;
       labelDiv.innerHTML = `
-        <span class="gantt-work-drag-handle" data-uid="${uid}" title="Перетащите на шкалу">⠿</span>
+        <span class="gantt-work-drag-handle" title="Перетащите на шкалу">⠿</span>
         <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>
         ${days > 0 ? `<span class="gantt-works-auto-days" data-uid-days="${uid}">${days} дн.</span>` : ''}`;
 
@@ -384,11 +422,13 @@ function _renderGanttWorks(wrap) {
     });
   });
 
-  // ── Drag с лейбла на трек ────────────────────────────────────────
-  wrap.querySelectorAll('.gantt-work-drag-handle').forEach(handle => {
-    handle.addEventListener('mousedown', e => {
+  // ── Drag с лейбла на трек (весь лейбл — включая текст) ──────────────
+  wrap.querySelectorAll('.gantt-works-label-draggable').forEach(labelEl => {
+    labelEl.addEventListener('mousedown', e => {
+      // Не мешаем выделению текста двойным кликом
+      if (e.detail >= 2) return;
       e.preventDefault(); e.stopPropagation();
-      const uid       = handle.dataset.uid;
+      const uid       = labelEl.dataset.uid;
       const color     = uidToColor[uid] || '#9b9b9b';
       const origDays  = appState.workDays[uid] || 0;
 
@@ -524,7 +564,7 @@ function _renderGanttRuler() {
   const ruler = document.getElementById('ganttRuler');
   if (!ruler) return;
   ruler.innerHTML = '';
-  const totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 0;
+  const totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 7;
   if (!totalDays) return;
 
   const spacer = document.getElementById('ganttRulerSpacer');
