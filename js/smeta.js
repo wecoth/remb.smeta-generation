@@ -232,7 +232,7 @@ function _updateTotals() {
 
   const mastersT = mastersSmrT;
   const marginT  = smrT + matT - mastersT;
-  const totalDays = parseInt(document.getElementById('totalDaysVal')?.textContent) || 0;
+  const totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || 0;
 
   if (el('hdrMasters')) el('hdrMasters').textContent = mastersT ? fmtInt(mastersT) + ' ₽' : '— ₽';
 
