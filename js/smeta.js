@@ -1,1439 +1,913 @@
-// ─── SMETA.JS ─────────────────────────────────────────────────────
-import { appState } from './state.js';
-import { EventBus } from './eventBus.js';
-import { renderToImage, getWallsBboxWorld } from './render.js';
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap" rel="stylesheet">
 
-// ── Row UID generator ─────────────────────────────────────────────
-let _rowUid = 1;
-function _uid() { return _rowUid++; }
+<style>
+  /* ══════════════════════════════════════════════════════════
+     SMETA — REFINED UTILITARIAN REDESIGN
+     Palette: warm off-white base · slate neutrals · amber accent
+     Type: DM Sans (UI) + DM Mono (numbers)
+  ══════════════════════════════════════════════════════════ */
 
-// ── Utils ─────────────────────────────────────────────────────────
+  #smetaView {
+    /* Palette */
+    --bg-page:   #f5f4f1;
+    --bg-card:   #fefefe;
+    --bg-soft:   #f9f8f5;
+    --bg-hover:  #f2f1ed;
+    --bg-input:  #fafaf8;
 
-export function fmt(v) {
-  return (+v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
-}
-export function fmtInt(v) {
-  return (+v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-export function fmtDate(v) {
-  if (!v) return '—';
-  const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString('ru-RU');
-}
-export function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+    /* Borders */
+    --border-1:  #e3e0d9;
+    --border-2:  #ece9e3;
 
-// ── Plan capture ──────────────────────────────────────────────────
+    /* Text */
+    --text-1:    #1c1b18;
+    --text-2:    #6b6760;
+    --text-3:    #a8a39a;
 
-export function captureCanvas() {
-  const walls = window._appState?.walls ?? appState?.walls ?? [];
-  if (!walls.length) { alert('Нарисуйте план перед захватом'); return; }
-  const cleanImg = renderToImage(800, 600, false);
-  const bbox = getWallsBboxWorld();
-  const drawingW = bbox ? (bbox.maxX - bbox.minX) : 1;
-  const drawingH = bbox ? (bbox.maxY - bbox.minY) : 1;
-  const isPortrait = drawingH > drawingW;
-  appState.bpPortrait = isPortrait;
-  if (window._appState) window._appState.bpPortrait = isPortrait;
-  const fullImg = isPortrait
-    ? renderToImage(1754, 2480, true)
-    : renderToImage(2480, 1754, true);
-  if (!cleanImg) { alert('Не удалось захватить чертёж'); return; }
-  appState.planData     = cleanImg;
-  appState.planDataFull = fullImg;
-  if (window._appState) {
-    window._appState.planData     = cleanImg;
-    window._appState.planDataFull = fullImg;
-  }
-  alert('Чертёж захвачен ✓');
-}
+    /* Accent — amber */
+    --accent:      #c87533;
+    --accent-soft: #fdf3e8;
+    --accent-mid:  #e89a5a;
 
-// ── Excel parse (preserved as-is) ────────────────────────────────
+    /* Status */
+    --good:  #2e7d52;
+    --warn:  #b07323;
+    --bad:   #b83232;
 
-function parseFile(file, cb) {
-  const r = new FileReader();
-  r.onload = e => {
-    try {
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-      const sh = wb.Sheets[wb.SheetNames[0]];
-      cb(XLSX.utils.sheet_to_json(sh, { header: 1, defval: '' }), null);
-    } catch (err) { cb(null, err); }
-  };
-  r.readAsArrayBuffer(file);
-}
+    /* Typography */
+    --font-ui:   'Merriweather', serif;
+    --font-mono: 'Merriweather', serif;
 
-function smartParse(json) {
-  if (!json || json.length < 2) return [];
-  let hi = 0;
-  for (let i = 0; i < Math.min(json.length, 15); i++) {
-    if (json[i].filter(c => String(c || '').trim()).length >= 3) { hi = i; break; }
-  }
-  const mergeRows = Math.min(hi + 2, json.length);
-  const h = json[hi].map((c, ci) => {
-    let val = String(c || '').toLowerCase().trim();
-    for (let r = hi + 1; r < mergeRows; r++) {
-      const sub = String(json[r][ci] || '').toLowerCase().trim();
-      if (sub) val = val ? val + ' ' + sub : sub;
-    }
-    return val;
-  });
-  const fi = (...kw) => { for (const k of kw) { const i = h.findIndex(x => x.includes(k)); if (i >= 0) return i; } return -1; };
-  const cols = {
-    name:  fi('наименование', 'вид работ', 'позиция', 'работ', 'материал', 'смр', 'name', 'description'),
-    unit:  fi('ед. изм', 'ед.изм', 'единиц', 'ед ', 'unit', 'измер'),
-    qty:   fi('кол-во', 'количество', 'объём', 'объем', 'кол ', 'qty', 'count'),
-    price: fi('за ед', 'за единиц', 'цена за', 'расценка', 'тариф', 'rate', 'price'),
-    total: fi('всего', 'итого', 'сумма', 'стоимость работ', 'amount', 'total'),
-    note:  fi('примечание', 'коммент', 'note', 'comment', 'remarks'),
-  };
-  if (cols.name < 0) {
-    const nonEmpty = h.map((_, i) => i).filter(i => h[i]);
-    if (nonEmpty.length >= 2) {
-      cols.name  = nonEmpty[1] ?? nonEmpty[0];
-      cols.unit  = cols.unit  >= 0 ? cols.unit  : (nonEmpty[2] ?? -1);
-      cols.qty   = cols.qty   >= 0 ? cols.qty   : (nonEmpty[3] ?? -1);
-      cols.price = cols.price >= 0 ? cols.price : (nonEmpty[4] ?? -1);
-      cols.total = cols.total >= 0 ? cols.total : (nonEmpty[5] ?? -1);
-    }
-  }
-  const dataStart = mergeRows;
-  const rows = [];
-  const n = v => parseFloat(String(v || '').replace(/[^0-9.,\-]/g, '').replace(',', '.')) || 0;
-  for (let i = dataStart; i < json.length; i++) {
-    const row = json[i];
-    const name = String(row[cols.name] || '').trim();
-    if (!name) continue;
-    if (/^итого|^всего|^total/i.test(name)) continue;
-    const qty   = cols.qty   >= 0 ? n(row[cols.qty])   : 0;
-    const price = cols.price >= 0 ? n(row[cols.price]) : 0;
-    let   total = cols.total >= 0 ? n(row[cols.total]) : 0;
-    if (!total && qty && price) total = qty * price;
-    const note  = cols.note  >= 0 ? String(row[cols.note] || '').trim() : '';
-    const unit  = cols.unit  >= 0 ? String(row[cols.unit]  || '').trim() : '';
-    const isSection = !unit && !qty && !price && !total;
-    rows.push({ name, unit, qty: qty || '', price: price || '', total: total || 0, note, isSection });
-  }
-  return rows;
-}
+    /* Radii */
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
 
-// ── STATE ─────────────────────────────────────────────────────────
-
-// Все данные сметы живут в appState (state.js):
-// appState.smrRows, appState.smrRowsMasters, appState.smrMode,
-// appState.matRows, appState.stages, appState.payments,
-// appState.payCounter, appState.stageCounter, appState.totalDays
-const STAGE_COLORS = ['#e07b39','#9b6dda','#5b8dd9','#4aaa6f','#da6d8a','#6da8b8','#a8b85b','#b85b6d'];
-function _newStageId() { return 's' + (++appState.stageCounter); }
-function _nextColor()  { return STAGE_COLORS[(appState.stageCounter - 1) % STAGE_COLORS.length]; }
-
-// Rooms (from planner) — только текущая сессия, не персистируется
-let _rooms = [];
-
-// ── ROOMS ─────────────────────────────────────────────────────────
-
-export function importRoomsFromPlanner(rooms) {
-  _rooms = rooms.map(r => ({
-    name:  r.name,
-    floor: parseFloat(r.floorArea)  || 0,
-    walls: parseFloat(r.wallsArea)  || 0,
-    perim: parseFloat(r.perimeter)  || 0,
-  }));
-  _renderExpl();
-}
-
-function _syncRoomsFromState() {
-  _rooms = (appState.rooms || []).map(r => ({
-    name:  r.name,
-    floor: r.area,
-    walls: r.metrics?.wallAreaNetM2 ?? r.wallArea,
-    perim: r.metrics?.perimeterFloorM ?? r.perimeter,
-  }));
-}
-
-function _renderExpl() {
-  // Legacy drawer
-  const body = document.getElementById('explBody');
-  // New inline header table
-  const wrap = document.getElementById('objExplWrap');
-
-  if (!_rooms.length) {
-    if (body) body.innerHTML = '<div class="expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>';
-    if (wrap) wrap.innerHTML = '<div class="obj-expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>';
-    _updateHeader();
-    return;
-  }
-  let tf = 0, tw = 0, tp = 0;
-
-  // Drawer HTML (legacy)
-  let drawerHtml = _rooms.map(r => {
-    tf += r.floor; tw += r.walls; tp += r.perim;
-    return `<div class="expl-row">
-      <span class="expl-name">${esc(r.name)}</span>
-      <span class="expl-num">${r.floor.toFixed(1)}</span>
-      <span class="expl-num">${r.walls.toFixed(1)}</span>
-      <span class="expl-num">${r.perim.toFixed(1)}</span>
-    </div>`;
-  }).join('');
-  drawerHtml += `<div class="expl-row expl-total">
-    <span class="expl-name">Итого</span>
-    <span class="expl-num">${tf.toFixed(1)}</span>
-    <span class="expl-num">${tw.toFixed(1)}</span>
-    <span class="expl-num">${tp.toFixed(1)}</span>
-  </div>`;
-  if (body) body.innerHTML = drawerHtml;
-
-  // Inline header table HTML
-  tf = 0; tw = 0; tp = 0;
-  let rows = _rooms.map(r => {
-    tf += r.floor; tw += r.walls; tp += r.perim;
-    return `<tr>
-      <td>${esc(r.name)}</td>
-      <td>${r.floor.toFixed(1)}</td>
-      <td>${r.walls.toFixed(1)}</td>
-      <td>${r.perim.toFixed(1)}</td>
-    </tr>`;
-  }).join('');
-  rows += `<tr class="expl-total">
-    <td>Итого</td>
-    <td>${tf.toFixed(1)}</td>
-    <td>${tw.toFixed(1)}</td>
-    <td>${tp.toFixed(1)}</td>
-  </tr>`;
-  if (wrap) wrap.innerHTML = `<table class="obj-expl-tbl">
-    <thead><tr>
-      <th>Помещение</th><th>Пол м²</th><th>Стены м²</th><th>Пер. м</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-
-  _updateHeader();
-}
-
-// ── HEADER BLOCK ──────────────────────────────────────────────────
-
-function _updateHeader() {
-  _updateTotals();
-}
-
-function _updateTotals() {
-  const smrT = appState.smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-  const matT = appState.matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-  const mastersSmrT = appState.smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-  const el = id => document.getElementById(id);
-  if (el('hdrSmr'))   el('hdrSmr').textContent   = fmtInt(smrT) + ' ₽';
-  if (el('hdrMat'))   el('hdrMat').textContent   = fmtInt(matT) + ' ₽';
-  if (el('hdrTotal')) el('hdrTotal').textContent = fmtInt(smrT + matT) + ' ₽';
-  const activeSmrT = appState.smrMode === 'masters' ? mastersSmrT : smrT;
-  if (el('smrFootTotal')) el('smrFootTotal').textContent = fmt(activeSmrT);
-  if (el('matFootTotal')) el('matFootTotal').textContent = fmt(matT);
-  const activeSmrRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
-  if (el('smrCount')) el('smrCount').textContent = activeSmrRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(activeSmrT) + ' ₽';
-  if (el('matCount')) el('matCount').textContent = appState.matRows.filter(r => !r.isSection).length + ' поз. · ' + fmtInt(matT) + ' ₽';
-
-  const mastersT = mastersSmrT;
-  const marginT  = smrT + matT - mastersT;
-  const totalDays = parseInt(document.getElementById('totalDaysVal')?.textContent) || 0;
-
-  if (el('hdrMasters')) el('hdrMasters').textContent = mastersT ? fmtInt(mastersT) + ' ₽' : '— ₽';
-
-  if (el('hdrMargin') && (smrT + matT) > 0) {
-    const pct = Math.round(marginT / (smrT + matT) * 100);
-    el('hdrMargin').textContent = fmtInt(marginT) + ' ₽  (' + pct + '%)';
-    el('hdrMargin').className = 'obj-meta-val accent' + (pct >= 30 ? ' margin-good' : pct >= 15 ? ' margin-mid' : ' margin-low');
-  } else if (el('hdrMargin')) {
-    el('hdrMargin').textContent = '—';
-    el('hdrMargin').className = 'obj-meta-val accent';
+    font-family: var(--font-ui);
   }
 
-  if (el('hdrMarginDay') && totalDays > 0 && (smrT + matT) > 0) {
-    el('hdrMarginDay').textContent = fmtInt(marginT / totalDays) + ' ₽/день';
-  } else if (el('hdrMarginDay')) {
-    el('hdrMarginDay').textContent = '—';
+  /* ── Base layout ─────────────────────────────────────── */
+  .smeta-screen {
+    display: flex; height: 100%; overflow: hidden;
+    position: relative; background: var(--bg-page);
+  }
+  .smeta-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Top bar ─────────────────────────────────────────── */
+  .smeta-topbar {
+    height: 52px; padding: 0 24px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border-1);
+    background: var(--bg-card); flex-shrink: 0;
+  }
+  .smeta-topbar-title {
+    font-size: 13px; font-weight: 600; color: var(--text-1);
+    letter-spacing: .3px; margin-right: 4px;
+  }
+  .smeta-topbar-sep { flex: 1; }
+
+  .smeta-chip {
+    padding: 5px 13px; border-radius: 20px;
+    border: 1px solid transparent; font-size: 12px; font-weight: 500;
+    color: var(--text-2); cursor: pointer; background: transparent;
+    transition: all .15s; font-family: var(--font-ui);
+  }
+  .smeta-chip:hover { background: var(--bg-hover); color: var(--text-1); }
+  .smeta-chip.active {
+    color: var(--text-1); background: var(--bg-hover);
+    border-color: var(--border-1);
   }
 
-  _updateHeaderDates();
-}
+  .smeta-btn {
+    padding: 7px 14px; border-radius: var(--r-sm);
+    border: 1px solid var(--border-1); font-size: 12px; font-weight: 500;
+    cursor: pointer; background: var(--bg-card); color: var(--text-2);
+    font-family: var(--font-ui); transition: all .15s; letter-spacing: .1px;
+  }
+  .smeta-btn:hover { background: var(--bg-hover); color: var(--text-1); border-color: var(--border-1); }
+  .smeta-btn.primary {
+    background: var(--text-1); color: #fff; border-color: var(--text-1);
+    letter-spacing: .2px;
+  }
+  .smeta-btn.primary:hover { background: #000; }
 
-function _updateHeaderDates() {
-  const el = id => document.getElementById(id);
-  // Читаем актуальное значение напрямую из инпута слайдера (источник истины)
-  const sliderEl = el('totalDaysSlider');
-  const totalDays = sliderEl ? (parseInt(sliderEl.value) || 0) : 0;
+  /* ── Scroll area ─────────────────────────────────────── */
+  .smeta-scroll {
+    flex: 1; overflow-y: auto; padding: 20px 24px 48px;
+    display: flex; flex-direction: column; gap: 10px;
+    align-items: center; background: var(--bg-page);
+  }
+  .smeta-scroll > * { max-width: 1300px; width: 100%; }
 
-  // Обновляем строку "Срок" в шапке
-  if (el('hdrDays')) el('hdrDays').textContent = totalDays ? totalDays + ' дн.' : '—';
+  /* Custom scrollbar */
+  .smeta-scroll::-webkit-scrollbar { width: 5px; }
+  .smeta-scroll::-webkit-scrollbar-track { background: transparent; }
+  .smeta-scroll::-webkit-scrollbar-thumb { background: var(--border-1); border-radius: 3px; }
 
-  // Синхронизируем totalDaysVal (используется в _updateTotals для маржи/день)
-  const valEl = el('totalDaysVal');
-  if (valEl) valEl.textContent = totalDays || '';
-
-  // Пересчитываем финиш через HTML-функцию (она учитывает только рабочие дни)
-  if (typeof window._calcFinish === 'function') window._calcFinish();
-}
-
-// ── ROW DRAG-AND-DROP ─────────────────────────────────────────────
-// Generic: works for both SMR and MAT tables
-function _initRowDnd(tbody, rows, onReorder) {
-  let dragSrc = null;
-  let dropTarget = null;
-
-  function clearHighlights() {
-    tbody.querySelectorAll('tr').forEach(r => {
-      r.classList.remove('row-dragging', 'row-drop-before', 'row-drop-after');
-    });
+  /* ── Cards ───────────────────────────────────────────── */
+  .scard {
+    background: var(--bg-card);
+    border-radius: var(--r-lg); overflow: visible;
+    border: 1px solid var(--border-2);
+    box-shadow: 0 1px 3px rgba(28,27,24,.04);
+    transition: box-shadow .2s;
   }
 
-  tbody.addEventListener('mousedown', e => {
-    const handle = e.target.closest('.td-drag');
-    const tr = handle ? handle.closest('tr') : null;
-    if (!tr) return;
-    tr.draggable = true;
-    const reset = () => {
-      tr.draggable = false;
-      document.removeEventListener('mouseup', reset);
-    };
-    document.addEventListener('mouseup', reset);
-  });
+  /* Spinner/number inputs — no arrows */
+  table.smeta-tbl input[type=number]::-webkit-inner-spin-button,
+  table.smeta-tbl input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  table.smeta-tbl input[type=number] { -moz-appearance: textfield; }
+  #totalDaysSlider::-webkit-inner-spin-button,
+  #totalDaysSlider::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  #totalDaysSlider::placeholder { color: var(--text-3); font-weight: 400; font-size: 11px; }
 
-  tbody.addEventListener('dragstart', e => {
-    const tr = e.target.closest('tr');
-    if (!tr || !tr.draggable) { e.preventDefault(); return; }
-    dragSrc = tr;
-    setTimeout(() => tr.classList.add('row-dragging'), 0);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', tr.dataset.rowIdx);
-  });
+  /* Table column borders */
+  table.smeta-tbl td { border-right: 1px solid var(--border-2); }
+  table.smeta-tbl th { border-right: 1px solid var(--border-1); }
+  table.smeta-tbl td:last-child { border-right: none; }
+  table.smeta-tbl th:last-child { border-right: none; }
 
-  tbody.addEventListener('dragover', e => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const tr = e.target.closest('tr');
-    if (!tr || tr === dragSrc) return;
-    const rect = tr.getBoundingClientRect();
-    const pos  = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-    if (dropTarget && dropTarget.tr === tr && dropTarget.position === pos) return;
-    clearHighlights();
-    dragSrc.classList.add('row-dragging');
-    dropTarget = { tr, position: pos };
-    tr.classList.add(pos === 'before' ? 'row-drop-before' : 'row-drop-after');
-  });
+  /* ── Card header ─────────────────────────────────────── */
+  .scard-head {
+    padding: 13px 20px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border-2); cursor: pointer; user-select: none;
+    border-radius: var(--r-lg) var(--r-lg) 0 0; position: relative;
+    transition: background .12s;
+  }
+  .scard-head:hover { background: var(--bg-soft); }
 
-  tbody.addEventListener('dragleave', e => {
-    if (!tbody.contains(e.relatedTarget)) {
-      clearHighlights();
-      dropTarget = null;
-    }
-  });
+  .scard-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--bg-hover); color: var(--text-3);
+    font-size: 10px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    font-family: var(--font-mono);
+  }
+  .scard-label {
+    font-size: 13px; font-weight: 600; color: var(--text-1); flex: 1;
+    letter-spacing: .1px;
+  }
+  .scard-meta { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
+  .scard-arrow {
+    font-size: 10px; color: var(--text-3); margin-left: 4px;
+    transition: transform .2s;
+  }
+  .scard-upload-btn {
+    padding: 4px 11px; border-radius: var(--r-sm);
+    border: 1px solid var(--border-1); font-size: 11px; font-weight: 500;
+    cursor: pointer; background: var(--bg-card); color: var(--text-2);
+    font-family: var(--font-ui); margin-right: 4px;
+    transition: all .15s; letter-spacing: .1px;
+  }
+  .scard-upload-btn:hover { background: var(--bg-hover); color: var(--text-1); }
 
-  tbody.addEventListener('drop', e => {
-    e.preventDefault();
-    if (!dragSrc || !dropTarget) { clearHighlights(); return; }
-    const fromIdx = +dragSrc.dataset.rowIdx;
-    let toIdx     = +dropTarget.tr.dataset.rowIdx;
-    const pos     = dropTarget.position;
-    clearHighlights();
-    dropTarget = null;
-    if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx) return;
-    const [moved] = rows.splice(fromIdx, 1);
-    const adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx;
-    const finalTo = pos === 'after' ? adjustedTo + 1 : adjustedTo;
-    rows.splice(Math.min(finalTo, rows.length), 0, moved);
-    onReorder();
-  });
+  /* ── Block 1 — Object header ─────────────────────────── */
+  .obj-scard { overflow: visible; }
 
-  tbody.addEventListener('dragend', () => {
-    clearHighlights();
-    dragSrc = null;
-    dropTarget = null;
-  });
-}
+  table.smeta-tbl td input::placeholder { color: var(--text-3); font-style: normal; }
 
+  /* Address row */
+  .obj-addr-row {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 18px 24px 16px;
+    border-bottom: 1px solid var(--border-2);
+  }
+  .obj-addr-field { display: flex; flex-direction: column; gap: 4px; }
+  .obj-addr-lbl {
+    font-size: 9px; color: var(--text-3);
+    letter-spacing: .6px; text-transform: uppercase; font-weight: 500;
+  }
+  .obj-addr-inp {
+    background: none; border: none; border-bottom: 1.5px solid var(--border-2);
+    outline: none; font-size: 13px; font-weight: 500;
+    color: var(--text-1); font-family: var(--font-ui);
+    padding: 3px 0 6px; transition: border-color .15s;
+  }
+  .obj-addr-inp:focus { border-bottom-color: var(--accent); }
+  .obj-addr-inp::placeholder { color: var(--text-3); font-style: normal; font-weight: 400; }
+  .obj-addr-inp.wide { width: 220px; }
+  .obj-addr-inp.mid  { width: 76px; }
+  .obj-addr-inp.sm   { width: 56px; }
+  .obj-addr-sep { width: 1px; height: 24px; background: var(--border-2); margin: 0 4px; }
 
+  /* Body row */
+  .obj-body-row { display: flex; align-items: stretch; min-height: 0; }
 
-// ── INSERT ZONES ──────────────────────────────────────────────────
-function _initInsertZones(tbody, table) {
-  // Close all open dropdowns
-  function _closeAll() {
-    tbody.querySelectorAll('.tr-insert-plus-wrap.open').forEach(w => {
-      w.classList.remove('open');
-      w.querySelector('.tr-insert-plus')?.classList.remove('active');
-      w.closest('.tr-insert-btn')?.classList.remove('open');
-    });
+  /* Explication */
+  .obj-expl-inline {
+    width: 390px; flex-shrink: 0; padding: 16px 20px 18px; overflow: hidden;
+  }
+  .obj-expl-scroll { max-height: 170px; overflow-y: auto; }
+  .obj-expl-title {
+    font-size: 9px; color: var(--text-3);
+    letter-spacing: .6px; text-transform: uppercase; font-weight: 500;
+    margin-bottom: 10px;
+  }
+  .obj-expl-tbl {
+    width: 100%; border-collapse: collapse; font-size: 11.5px;
+  }
+  .obj-expl-tbl th {
+    font-size: 10px; font-weight: 500; color: var(--text-3);
+    text-align: right; padding: 0 5px 7px; white-space: nowrap;
+    font-family: var(--font-mono);
+  }
+  .obj-expl-tbl th:first-child { text-align: left; padding-left: 0; }
+  .obj-expl-tbl td {
+    padding: 5px 5px; color: var(--text-1);
+    border-top: 1px solid var(--border-2); text-align: right; white-space: nowrap;
+    font-size: 11.5px; font-family: var(--font-mono);
+  }
+  .obj-expl-tbl td:first-child { text-align: left; color: var(--text-1); padding-left: 0; font-family: var(--font-ui); }
+  .obj-expl-tbl tr.expl-total td {
+    font-weight: 600; border-top: 1px solid var(--border-1);
+    padding-top: 7px; color: var(--text-1);
+  }
+  .obj-expl-empty { font-size: 11px; color: var(--text-3); padding: 8px 0; }
+
+  /* Meta right */
+  .obj-meta-right {
+    flex-shrink: 0; width: 268px;
+    display: flex; flex-direction: column; gap: 0;
+    border-left: 1px solid var(--border-2);
+  }
+  .obj-meta-group {
+    display: flex; flex-direction: column; gap: 0;
+    padding: 12px 20px; border-bottom: 1px solid var(--border-2);
+  }
+  .obj-meta-group:last-child { border-bottom: none; }
+  .obj-meta-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    padding: 3.5px 0;
+  }
+  .obj-meta-lbl { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+  .obj-meta-val {
+    font-size: 12px; font-weight: 500; color: var(--text-1);
+    white-space: nowrap; text-align: right;
+    font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+  }
+  .obj-meta-val.grand { font-size: 14px; font-weight: 600; }
+  .obj-meta-val.accent { font-size: 13px; font-weight: 600; }
+  .obj-meta-lbl.accent-lbl { font-size: 11px; font-weight: 600; color: var(--text-1); }
+  .obj-meta-val.margin-good { color: var(--good); }
+  .obj-meta-val.margin-mid  { color: var(--warn); }
+  .obj-meta-val.margin-low  { color: var(--bad); }
+  .obj-meta-inp-inline {
+    background: none; border: none; outline: none;
+    font-size: 12px; font-weight: 500; color: var(--text-1);
+    font-family: var(--font-mono); width: 114px; text-align: right; padding: 0;
   }
 
-  // Toggle dropdown on plus click
-  tbody.querySelectorAll('.tr-insert-plus').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const wrap = btn.closest('.tr-insert-plus-wrap');
-      const isOpen = wrap.classList.contains('open');
-      _closeAll();
-      if (!isOpen) {
-        wrap.classList.add('open');
-        btn.classList.add('active');
-        wrap.closest('.tr-insert-btn').classList.add('open');
-      }
-    });
-  });
+  /* ── Drop zone ───────────────────────────────────────── */
+  .drop-zone {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 32px 20px; margin: 14px 18px;
+    border: 1.5px dashed var(--border-1); border-radius: var(--r-md);
+    cursor: pointer; transition: all .15s;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop-zone-icon { font-size: 24px; color: var(--text-3); }
+  .drop-zone-text { font-size: 12px; color: var(--text-2); text-align: center; line-height: 1.6; }
+  .drop-zone-text strong { color: var(--accent); font-weight: 600; }
+  .drop-zone-actions { display: flex; gap: 8px; margin-top: 6px; }
+  .drop-zone-btn {
+    padding: 6px 16px; border-radius: var(--r-sm);
+    border: 1px solid var(--border-1); font-size: 12px;
+    cursor: pointer; background: var(--bg-card); color: var(--text-1);
+    font-family: var(--font-ui); transition: background .15s;
+  }
+  .drop-zone-btn:hover { background: var(--bg-hover); }
 
-  // Dropdown item click
-  tbody.querySelectorAll('.tr-insert-dd-item').forEach(item => {
-    item.addEventListener('click', e => {
-      e.stopPropagation();
-      const beforeIdx = +item.dataset.i;
-      const isSection = item.dataset.section === '1';
-      _closeAll();
+  /* ── Tables ──────────────────────────────────────────── */
+  .smeta-table-wrap { overflow-x: visible; }
+  table.smeta-tbl {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    table-layout: fixed;
+  }
+  table.smeta-tbl th {
+    padding: 9px 12px; text-align: left;
+    background: var(--bg-soft); color: var(--text-3); font-weight: 500;
+    border-bottom: 1px solid var(--border-1); white-space: nowrap;
+    font-size: 10.5px; letter-spacing: .3px; text-transform: uppercase;
+  }
+  table.smeta-tbl td {
+    padding: 0; border-bottom: 1px solid var(--border-2);
+    vertical-align: middle;
+  }
+  table.smeta-tbl tr:last-child td { border-bottom: none; }
+  table.smeta-tbl tr:hover td { background: var(--bg-soft); }
+  table.smeta-tbl tr[draggable] { cursor: default; }
+  table.smeta-tbl tr[draggable] .td-drag { cursor: grab; }
+  table.smeta-tbl tr.row-dragging td { opacity: .3; background: var(--accent-soft); }
+  table.smeta-tbl tr.row-drop-before td { border-top: 2px solid var(--accent) !important; }
+  table.smeta-tbl tr.row-drop-after td  { border-bottom: 2px solid var(--accent) !important; }
+  table.smeta-tbl td input,
+  table.smeta-tbl td select {
+    width: 100%; padding: 9px 12px;
+    background: none; border: none; outline: none;
+    font-size: 12px; color: var(--text-1);
+    font-family: var(--font-ui);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  table.smeta-tbl td input:focus {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1.5px var(--accent-mid);
+  }
+  table.smeta-tbl .inp-num {
+    text-align: right; font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  table.smeta-tbl .td-drag {
+    width: 20px; padding: 5px 6px; color: var(--text-3);
+    cursor: grab; text-align: center; opacity: 0; transition: opacity .15s;
+  }
+  table.smeta-tbl tr:hover .td-drag { opacity: .6; }
+  table.smeta-tbl .td-num {
+    width: 32px; padding: 5px 8px; color: var(--text-3);
+    text-align: center; font-size: 10.5px; font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  table.smeta-tbl .td-total {
+    padding: 9px 12px; text-align: right; font-weight: 600;
+    color: var(--text-1); white-space: nowrap;
+    font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+  }
+  table.smeta-tbl .inp-stage { font-size: 11px; color: var(--text-2); padding: 6px 8px; }
+  table.smeta-tbl .btn-row-del {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-3); font-size: 14px; padding: 4px 8px;
+    transition: color .15s; opacity: 0;
+  }
+  table.smeta-tbl tr:hover .btn-row-del { opacity: .6; }
+  table.smeta-tbl .btn-row-del:hover { color: var(--bad); opacity: 1; }
 
-      if (table === 'smr') {
-        const newRow = isSection
-          ? { name: '', isSection: true, _uid: _uid() }
-          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
-        if (appState.smrMode === 'masters') {
-          appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
-        } else {
-          appState.smrRows.splice(beforeIdx, 0, newRow);
-          appState.smrRowsMasters.splice(beforeIdx, 0, structuredClone(newRow));
-        }
-        _renderSmrTable();
-        _updateTotals();
-        if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
-        setTimeout(() => {
-          const tbody2 = document.getElementById('smrTbody');
-          for (const tr of tbody2.querySelectorAll('tr')) {
-            if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
-          }
-        }, 30);
-      } else {
-        const newRow = isSection
-          ? { name: '', isSection: true }
-          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-        appState.matRows.splice(beforeIdx, 0, newRow);
-        _renderMatTable();
-        _updateTotals();
-        setTimeout(() => {
-          const tbody2 = document.getElementById('matTbody');
-          for (const tr of tbody2.querySelectorAll('tr')) {
-            if (tr.classList.contains('tr-insert-zone')) continue;
-            if (+tr.dataset.rowIdx === beforeIdx) { tr.querySelector('input')?.focus(); break; }
-          }
-        }, 30);
-      }
-    });
-  });
+  /* Section rows */
+  table.smeta-tbl tr.row-section td { background: var(--bg-hover); }
+  table.smeta-tbl tr.row-section input.inp-section {
+    font-weight: 600; font-size: 11px; color: var(--text-1); letter-spacing: .2px;
+    text-transform: uppercase;
+  }
+  table.smeta-tbl tr.row-section input.inp-section::placeholder {
+    font-weight: 400; font-style: normal; color: var(--text-3);
+    letter-spacing: 0; text-transform: none;
+  }
 
-  // Close on outside click
-  document.addEventListener('click', _closeAll, { capture: true, once: false });
-}
+  /* Table footer */
+  .tbl-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 11px 18px; border-top: 1px solid var(--border-2);
+    background: var(--bg-soft); border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+  .tbl-footer-actions { display: flex; gap: 6px; }
+  .tbl-add-btn {
+    padding: 5px 13px; border-radius: var(--r-sm);
+    border: 1px dashed var(--border-1); background: none;
+    font-size: 11px; color: var(--text-2); cursor: pointer;
+    font-family: var(--font-ui); transition: all .15s; font-weight: 500;
+  }
+  .tbl-add-btn:hover { border-style: solid; border-color: var(--border-1); color: var(--text-1); background: var(--bg-card); }
+  .tbl-footer-total {
+    font-size: 13px; font-weight: 600; color: var(--text-1);
+    font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+  }
+  .tbl-footer-total-lbl { font-size: 11px; color: var(--text-3); margin-right: 8px; }
 
-export function handleSmr(e) {
-  const f = e.target.files[0]; if (!f) return;
-  parseFile(f, (json, err) => {
-    if (err) { alert('Ошибка чтения файла'); return; }
-    const rows = smartParse(json);
-    if (appState.smrMode === 'masters') {
-      rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
-      appState.smrRowsMasters = rows;
-    } else {
-      // Клиентский режим: проставляем UID и создаём независимые копии для мастеров
-      rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
-      appState.smrRows = rows;
-      appState.smrRowsMasters = rows.map(r => structuredClone(r));
-    }
-    _renderSmrTable();
-    _updateTotals();
-  });
-}
+  /* ── Insert row/section ──────────────────────────────── */
+  .tr-insert-zone { position: relative; height: 0; overflow: visible; }
+  .tr-insert-zone td {
+    padding: 0 !important; border: none !important; background: transparent !important;
+    height: 0; overflow: visible;
+  }
+  .tr-insert-plus-wrap {
+    position: absolute; left: 20px; top: 50%; transform: translateY(-50%); flex-shrink: 0;
+  }
+  .tr-insert-btn {
+    position: absolute; left: 0; right: 0;
+    display: flex; align-items: center;
+    z-index: 10; opacity: 0; transition: opacity .12s;
+    pointer-events: none; height: 16px; top: -8px;
+  }
+  tr.tr-insert-zone:hover .tr-insert-btn,
+  .tr-insert-btn:hover,
+  .tr-insert-btn.open { opacity: 1; pointer-events: auto; }
+  table.smeta-tbl tr:hover + tr.tr-insert-zone .tr-insert-btn,
+  table.smeta-tbl tr.tr-insert-zone:hover .tr-insert-btn { opacity: 1; pointer-events: auto; }
+  .tr-insert-line { flex: 1; height: 1px; background: var(--border-1); }
+  .tr-insert-plus {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--bg-card); border: 1px solid var(--border-1);
+    color: var(--text-2); font-size: 13px; line-height: 14px;
+    cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-ui); flex-shrink: 0;
+    transition: all .12s;
+    box-shadow: 0 1px 3px rgba(28,27,24,.06);
+  }
+  .tr-insert-plus:hover,
+  .tr-insert-plus.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .tr-insert-dropdown {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0;
+    background: var(--bg-card); border: 1px solid var(--border-1);
+    border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(28,27,24,.08);
+    z-index: 200; min-width: 130px; overflow: hidden;
+  }
+  .tr-insert-plus-wrap.open .tr-insert-dropdown { display: block; }
+  .tr-insert-dd-item {
+    display: flex; align-items: center; gap: 8px; padding: 9px 14px;
+    font-size: 11.5px; color: var(--text-1); cursor: pointer;
+    white-space: nowrap; font-family: var(--font-ui); transition: background .1s;
+  }
+  .tr-insert-dd-item:hover { background: var(--bg-hover); }
+  .tr-insert-dd-item .dd-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .tr-insert-dd-item.dd-row .dd-dot { background: var(--accent); }
+  .tr-insert-dd-item.dd-sec .dd-dot { background: #7c5cbf; }
 
-export function initSmrManual() {
-  appState.smrRows = [
-    { name: '', isSection: true },
-    { name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false }
-  ];
-  appState.smrRowsMasters = [];
-  _renderSmrTable();
-  _updateTotals();
-}
+  /* ── Gantt ───────────────────────────────────────────── */
+  .gantt-wrap { padding: 18px 20px; }
+  .gantt-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .gantt-days-lbl { font-size: 12px; color: var(--text-2); }
+  .gantt-days-lbl strong { color: var(--text-1); font-size: 13px; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+  .gantt-days-input {
+    width: 60px; padding: 5px 10px; border-radius: var(--r-sm);
+    border: 1px solid var(--border-1); font-size: 13px; text-align: center;
+    font-family: var(--font-mono); color: var(--text-1); background: var(--bg-input);
+    outline: none; transition: border-color .15s;
+  }
+  .gantt-days-input:focus { border-color: var(--accent); }
+  .gantt-rows { display: flex; flex-direction: column; gap: 7px; }
+  .gantt-row { display: grid; grid-template-columns: 230px 1fr; align-items: center; gap: 14px; }
+  .gantt-row-label { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .gantt-stage-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .gantt-stage-name {
+    font-size: 12px; color: var(--text-1); flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    outline: none; cursor: text; border-bottom: 1px dashed transparent;
+  }
+  .gantt-stage-name:hover, .gantt-stage-name:focus { border-bottom-color: var(--border-1); }
+  .gantt-stage-days {
+    font-size: 10.5px; color: var(--text-3); flex-shrink: 0;
+    white-space: nowrap; font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+  }
+  .gantt-track-wrap { position: relative; }
+  .gantt-track {
+    position: relative; height: 30px;
+    background: var(--bg-soft); border-radius: var(--r-sm);
+    border: 1px solid var(--border-2); overflow: visible;
+  }
+  .gantt-bar {
+    position: absolute; top: 3px; height: 22px;
+    border-radius: 4px; display: flex; align-items: center;
+    justify-content: center; cursor: default; user-select: none; min-width: 24px;
+  }
+  .gantt-bar-label { font-size: 10px; color: rgba(255,255,255,.95); pointer-events: none; font-family: var(--font-mono); }
+  .gantt-handle {
+    position: absolute; top: 0; bottom: 0; width: 8px;
+    cursor: ew-resize; opacity: 0; transition: opacity .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .gantt-bar:hover .gantt-handle, .gantt-handle:hover { opacity: 1; }
+  .gantt-handle::after { content: ''; width: 2px; height: 10px; background: rgba(255,255,255,.7); border-radius: 1px; }
+  .gantt-handle-l { left: 0; border-radius: 4px 0 0 4px; }
+  .gantt-handle-r { right: 0; border-radius: 0 4px 4px 0; }
+  .gantt-ruler { position: relative; height: 18px; margin-top: 10px; }
+  .gantt-tick {
+    position: absolute; font-size: 10px; color: var(--text-3);
+    transform: translateX(-50%); font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  .gantt-tick:first-child { transform: none; }
+  .gantt-tick:last-child { transform: translateX(-100%); }
 
-function _renderSmrTable() {
-  const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
-  const tbody = document.getElementById('smrTbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  let idx = 0;
-  rows.forEach((r, i) => {
-    // Insert zone BEFORE each row (for inserting above)
-    const insZone = document.createElement('tr');
-    insZone.className = 'tr-insert-zone';
-    const insColspan = 9;
-    insZone.innerHTML = `<td colspan="${insColspan}">
-      <div class="tr-insert-btn">
-        <div class="tr-insert-plus-wrap" data-i="${i}" data-table="smr">
-          <button class="tr-insert-plus" title="Вставить">+</button>
-          <div class="tr-insert-dropdown">
-            <div class="tr-insert-dd-item dd-row" data-i="${i}" data-table="smr" data-section="0">
-              <span class="dd-dot"></span>Строка
-            </div>
-            <div class="tr-insert-dd-item dd-sec" data-i="${i}" data-table="smr" data-section="1">
-              <span class="dd-dot"></span>Раздел
-            </div>
-          </div>
-        </div>
-        <div class="tr-insert-line"></div>
-      </div>
-    </td>`;
-    tbody.appendChild(insZone);
+  /* ── Payments ────────────────────────────────────────── */
+  .payments-wrap { padding: 0; }
+  .gantt-ticks { position: absolute; inset: 0; pointer-events: none; border-radius: 4px; overflow: hidden; }
+  .gantt-tick-mark {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background: rgba(255,255,255,.2);
+  }
+  .gantt-tick-mark:first-child { display: none; }
 
-    const tr = document.createElement('tr');
-    tr.draggable = false;
-    tr.dataset.rowIdx = i;
-    if (r.isSection) {
-      tr.className = 'row-section';
-      tr.innerHTML = `
-        <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
-        <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
-    } else {
-      idx++;
+  .pay-layout { display: grid; grid-template-columns: 1fr 290px; min-height: 190px; }
+  .pay-left { padding: 16px 20px; display: flex; flex-direction: column; gap: 9px; border-right: 1px solid var(--border-2); }
+  .pay-right { padding: 16px 18px; background: var(--bg-soft); display: flex; flex-direction: column; gap: 7px; border-radius: 0 0 var(--r-lg) 0; }
+  .pay-right-head {
+    font-size: 9px; font-weight: 600; color: var(--text-3);
+    letter-spacing: .6px; text-transform: uppercase; margin-bottom: 2px;
+  }
+  .pay-right-empty { font-size: 11px; color: var(--text-3); text-align: center; padding: 16px 0; }
 
-      tr.innerHTML = `
-        <td class="td-drag" title="Перетащить">⠿</td>
-        <td class="td-num">${idx}</td>
-        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
-        <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="м²" data-i="${i}" data-f="unit"></td>
-        <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
-        <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
-        <td class="td-total">${r.total ? fmtInt(r.total) : ''}</td>
+  .pay-slot {
+    border: 1px dashed var(--border-1); border-radius: var(--r-md); padding: 11px 14px;
+    transition: all .15s; background: var(--bg-card);
+  }
+  .pay-slot.drag-over { border-color: var(--accent); background: var(--accent-soft); border-style: solid; }
+  .pay-slot-head { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+  .pay-slot-name {
+    flex: 1; background: none; border: none; outline: none;
+    font-size: 12px; font-weight: 600; color: var(--text-1);
+    font-family: var(--font-ui);
+  }
+  .pay-slot-del { background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 14px; padding: 0 2px; opacity: 0; transition: opacity .15s; }
+  .pay-slot:hover .pay-slot-del { opacity: .6; }
+  .pay-slot-del:hover { color: var(--bad); opacity: 1; }
+  .pay-slot-tags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; margin-bottom: 9px; }
+  .pay-slot-empty { font-size: 11px; color: var(--text-3); line-height: 24px; }
+  .pay-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px; border-radius: 10px; border: 1px solid;
+    font-size: 10px; font-weight: 500;
+  }
+  .pay-tag-x { cursor: pointer; opacity: .5; margin-left: 2px; transition: opacity .12s; }
+  .pay-tag-x:hover { opacity: 1; }
+  .pay-slot-total {
+    font-size: 13px; font-weight: 600; color: var(--text-1);
+    font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+  }
+  .pay-slot-pct { font-size: 11px; color: var(--text-3); font-weight: 400; margin-left: 5px; }
+  .pay-add-slot-btn {
+    padding: 9px 15px; border-radius: var(--r-md);
+    border: 1px dashed var(--border-1); background: none;
+    font-size: 12px; color: var(--text-2); cursor: pointer;
+    font-family: var(--font-ui); transition: all .15s; text-align: left; font-weight: 500;
+  }
+  .pay-add-slot-btn:hover { border-style: solid; color: var(--text-1); background: var(--bg-card); }
 
-        <td><input class="inp-note" value="${esc(r.note || '')}" placeholder="Примечание" data-i="${i}" data-f="note"></td>
-        <td><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
-    }
-    tbody.appendChild(tr);
-  });
-  // Insert zone after last row
-  const insLast = document.createElement('tr');
-  insLast.className = 'tr-insert-zone';
-  insLast.innerHTML = `<td colspan="9">
-    <div class="tr-insert-btn">
-      <div class="tr-insert-plus-wrap" data-i="${rows.length}" data-table="smr">
-        <button class="tr-insert-plus" title="Вставить">+</button>
-        <div class="tr-insert-dropdown">
-          <div class="tr-insert-dd-item dd-row" data-i="${rows.length}" data-table="smr" data-section="0">
-            <span class="dd-dot"></span>Строка
-          </div>
-          <div class="tr-insert-dd-item dd-sec" data-i="${rows.length}" data-table="smr" data-section="1">
-            <span class="dd-dot"></span>Раздел
-          </div>
-        </div>
-      </div>
-      <div class="tr-insert-line"></div>
+  .pay-stage-pill {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 11px; border-radius: var(--r-md);
+    background: var(--bg-card); border: 1px solid var(--border-1);
+    cursor: grab; transition: all .15s; user-select: none;
+  }
+  .pay-stage-pill:hover { box-shadow: 0 3px 10px rgba(28,27,24,.08); transform: translateY(-1px); }
+  .pay-stage-pill.dragging { opacity: .35; }
+  .pay-stage-pill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+  .pay-stage-pill-name { font-size: 12px; color: var(--text-1); flex: 1; line-height: 1.35; }
+  .pay-stage-pill-info { font-size: 10px; color: var(--text-3); white-space: nowrap; padding-top: 1px; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+  /* ── Misc ────────────────────────────────────────────── */
+  .btn-preview { display: none !important; }
+
+  /* SMR Mode Toggle */
+  .smr-mode-toggle {
+    display: flex; align-items: center;
+    background: var(--bg-hover); border-radius: 20px;
+    padding: 3px; gap: 0;
+    border: 1px solid var(--border-1); flex-shrink: 0;
+    position: absolute; left: 50%; transform: translateX(-50%);
+  }
+  .smr-mode-btn {
+    padding: 4px 15px; border-radius: 16px; border: none;
+    font-size: 11px; font-weight: 500; cursor: pointer;
+    font-family: var(--font-ui); background: transparent; color: var(--text-2);
+    transition: all .18s; white-space: nowrap;
+  }
+  .smr-mode-btn.active {
+    background: var(--bg-card); color: var(--text-1);
+    box-shadow: 0 1px 4px rgba(28,27,24,.10);
+  }
+  .smr-mode-btn.active.masters { color: var(--warn); }
+
+  /* Photo block */
+  .obj-photo-block {
+    flex-shrink: 0; width: 220px;
+    border-left: 1px solid var(--border-2);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 14px; gap: 8px; cursor: pointer; position: relative;
+    transition: background .15s;
+  }
+  .obj-photo-block:hover { background: var(--bg-soft); }
+  .obj-photo-block input[type=file] { display: none; }
+  .obj-photo-preview {
+    width: 100%; flex: 1; min-height: 0;
+    border-radius: var(--r-sm); overflow: hidden;
+    background: var(--bg-soft);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .obj-photo-preview img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: var(--r-sm); }
+  .obj-photo-placeholder {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: var(--text-3); font-size: 11px; text-align: center; line-height: 1.5; padding: 16px 8px;
+  }
+  .obj-photo-placeholder-icon { font-size: 26px; line-height: 1; }
+  .obj-photo-hint { font-size: 10px; color: var(--text-3); text-align: center; }
+</style>
+
+<div id="smetaView" style="height:100%;overflow:hidden">
+<div class="smeta-screen">
+
+  <!-- MAIN -->
+  <div class="smeta-main" id="smetaMain">
+
+    <!-- Top bar -->
+    <div class="smeta-topbar">
+      <div class="smeta-topbar-title">Смета</div>
+      <div class="smeta-chip active" id="chipGeneral">Общий список</div>
+      <div class="smeta-topbar-sep"></div>
+      <button class="smeta-btn" onclick="window._smetaModule.captureCanvas()">⊕ Захватить чертёж</button>
+      <button class="smeta-btn">Экспорт Excel</button>
+      <button class="smeta-btn primary" onclick="window._smetaModule.generatePDF()">Сформировать КП →</button>
     </div>
-  </td>`;
-  tbody.appendChild(insLast);
 
-  _bindSmrEvents(tbody);
-  _initInsertZones(tbody, 'smr');
-  _initRowDnd(tbody, rows, () => { _renderSmrTable(); _updateTotals(); });
-}
+    <!-- Scroll area with 5 blocks -->
+    <div class="smeta-scroll">
 
-function _bindSmrEvents(tbody) {
-  const activeRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
-  tbody.querySelectorAll('input, select').forEach(inp => {
-    inp.addEventListener('input', e => {
-      const i = +e.target.dataset.i;
-      const f = e.target.dataset.f;
-      activeRows[i][f] = e.target.value;
-      if (f === 'qty' || f === 'price') {
-        const r = activeRows[i];
-        const q = parseFloat(r.qty) || 0;
-        const p = parseFloat(r.price) || 0;
-        r.total = q * p;
-        const td = e.target.closest('tr').querySelector('.td-total');
-        if (td) td.textContent = r.total ? fmtInt(r.total) : '';
-        _updateTotals();
-      }
-      if (f === 'name' && activeRows[i].isSection && appState.smrMode === 'client') {
-        _syncSectionsToGantt();
-      }
-      // Синхронизируем изменения поля в копию мастеров (только в клиентском режиме)
-      if (appState.smrMode === 'client' && activeRows[i]?._uid !== undefined) {
-        const masterRow = appState.smrRowsMasters.find(r => r._uid === activeRows[i]._uid);
-        if (masterRow) {
-          masterRow[f] = activeRows[i][f];
-          if (f === 'qty' || f === 'price') masterRow.total = activeRows[i].total;
-        }
-      }
-    });
-  });
-  tbody.querySelectorAll('.btn-row-del').forEach(btn => {
-    btn.addEventListener('click', e => {
-      const i = +e.target.dataset.i;
-      const isClientMode = appState.smrMode === 'client';
-      const activeRows = isClientMode ? appState.smrRows : appState.smrRowsMasters;
-      const row = activeRows[i];
-      const wasSection = row?.isSection;
+      <!-- BLOCK 1: Объект -->
+      <div class="scard obj-scard">
 
-      if (isClientMode) {
-        // Удаляем из клиентского списка и синхронно из мастеров по _uid
-        appState.smrRows.splice(i, 1);
-        if (row?._uid !== undefined) {
-          const masterIdx = appState.smrRowsMasters.findIndex(r => r._uid === row._uid);
-          if (masterIdx !== -1) appState.smrRowsMasters.splice(masterIdx, 1);
-        }
-      } else {
-        // Удаляем только из мастеров — клиентский список не трогаем
-        appState.smrRowsMasters.splice(i, 1);
-      }
-      _renderSmrTable();
-      _updateTotals();
-      if (wasSection && appState.smrMode === 'client') _syncSectionsToGantt();
-    });
-  });
-}
+        <!-- Row 1: Адрес по центру -->
+        <div class="obj-addr-row">
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Улица / ЖК</div>
+            <input class="obj-addr-inp wide" id="hdrStreet" placeholder="ул. Ленина или ЖК Любимого">
+          </div>
+          <div class="obj-addr-sep"></div>
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Дом</div>
+            <input class="obj-addr-inp mid" id="hdrHouse" placeholder="16 или 5/1">
+          </div>
+          <div class="obj-addr-sep"></div>
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Кв.</div>
+            <input class="obj-addr-inp sm" id="hdrFlat" placeholder="48">
+          </div>
+          <div class="obj-addr-sep"></div>
+          <div class="obj-addr-field">
+            <div class="obj-addr-lbl">Этаж</div>
+            <input class="obj-addr-inp sm" id="hdrFloor" placeholder="12">
+          </div>
+        </div>
 
-export function addSmrRow(isSection = false) {
-  const newRow = isSection
-    ? { name: '', isSection: true, _uid: _uid() }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
-  if (appState.smrMode === 'masters') {
-    appState.smrRowsMasters.push(newRow);
-  } else {
-    appState.smrRows.push(newRow);
-    appState.smrRowsMasters.push(structuredClone(newRow));
-  }
-  _renderSmrTable();
-  _updateTotals();
-  if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
-  setTimeout(() => {
-    const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
-    inputs[inputs.length - 1]?.focus();
-  }, 30);
-}
+        <!-- Row 2: мета слева + пустое место + экспликация справа -->
+        <div class="obj-body-row">
 
-// Insert a row/section at a specific index
-export function insertSmrRow(afterIdx, isSection = false) {
-  const newRow = isSection
-    ? { name: '', isSection: true, _uid: _uid() }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
-  if (appState.smrMode === 'masters') {
-    appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
-  } else {
-    appState.smrRows.splice(afterIdx + 1, 0, newRow);
-    appState.smrRowsMasters.splice(afterIdx + 1, 0, structuredClone(newRow));
-  }
-  _renderSmrTable();
-  _updateTotals();
-  if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
-  setTimeout(() => {
-    const tbody = document.getElementById('smrTbody');
-    if (!tbody) return;
-    for (const tr of tbody.querySelectorAll('tr')) {
-      if (tr.classList.contains('tr-insert-zone')) continue;
-      if (+tr.dataset.rowIdx === afterIdx + 1) {
-        const inp = tr.querySelector('input.inp-name, input.inp-section');
-        if (inp) inp.focus();
-        break;
-      }
-    }
-  }, 30);
-}
-
-export function clearSmr() {
-  if (appState.smrMode === 'masters') {
-    appState.smrRowsMasters = [];
-  } else {
-    appState.smrRows = [];
-    appState.smrRowsMasters = [];
-  }
-  _renderSmrTable();
-  _updateTotals();
-}
-
-export function setSmrMode(mode) {
-  if (mode === appState.smrMode) return;
-  appState.smrMode = mode;
-  // Если переключаемся на мастеров и их массив пустой — создаём независимые копии
-  if (mode === 'masters' && appState.smrRowsMasters.length === 0 && appState.smrRows.length > 0) {
-    appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
-    appState.smrRowsMasters = appState.smrRows.map(r => structuredClone(r));
-  }
-  const btnClient  = document.getElementById('smrBtnClient');
-  const btnMasters = document.getElementById('smrBtnMasters');
-  if (btnClient)  btnClient.classList.toggle('active',  mode === 'client');
-  if (btnMasters) btnMasters.classList.toggle('active', mode === 'masters');
-  _renderSmrTable();
-  _updateTotals();
-}
-
-// Collect for KP/PDF
-export function collectSmrRows() { return appState.smrRows; }
-export function getSmrTotal() {
-  return appState.smrRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-}
-export function getMastersSmrTotal() {
-  return appState.smrRowsMasters.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-}
-
-// ── MATERIALS TABLE ───────────────────────────────────────────────
-
-export function handleMat(e) {
-  const f = e.target.files[0]; if (!f) return;
-  parseFile(f, (json, err) => {
-    if (err) { alert('Ошибка чтения файла'); return; }
-    const rows = smartParse(json);
-    appState.matRows = rows;
-    _renderMatTable();
-    _updateTotals();
-  });
-}
-
-export function initMatManual() {
-  appState.matRows = [];
-  appState.matRows.push({ name: '', isSection: true });
-  appState.matRows.push({ name: '', unit: 'шт', qty: '', price: '', total: 0, note: '', isSection: false });
-  _renderMatTable();
-  _updateTotals();
-}
-
-function _renderMatTable() {
-  const tbody = document.getElementById('matTbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  let idx = 0;
-  appState.matRows.forEach((r, i) => {
-    const insZone = document.createElement('tr');
-    insZone.className = 'tr-insert-zone';
-    insZone.innerHTML = `<td colspan="9">
-      <div class="tr-insert-btn">
-        <div class="tr-insert-plus-wrap" data-i="${i}" data-table="mat">
-          <button class="tr-insert-plus" title="Вставить">+</button>
-          <div class="tr-insert-dropdown">
-            <div class="tr-insert-dd-item dd-row" data-i="${i}" data-table="mat" data-section="0">
-              <span class="dd-dot"></span>Строка
+          <!-- Левая: экспликация помещений -->
+          <div class="obj-expl-inline" style="border-right:0.5px solid var(--color-border-tertiary,#ececec)">
+            <div class="obj-expl-title">Экспликация помещений</div>
+            <div class="obj-expl-scroll">
+              <div id="objExplWrap">
+                <div class="obj-expl-empty">Нет данных. Создайте план на вкладке Чертёж.</div>
+              </div>
             </div>
-            <div class="tr-insert-dd-item dd-sec" data-i="${i}" data-table="mat" data-section="1">
-              <span class="dd-dot"></span>Раздел
+          </div>
+
+          <!-- Пустое пространство -->
+          <div style="flex:1"></div>
+
+          <!-- Правая: мета-данные -->
+          <div class="obj-meta-right">
+
+            <!-- Группа 1: даты -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Дата осмотра</span>
+                <input class="obj-meta-inp-inline" type="date" id="inspDate">
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Смета сформирована</span>
+                <input class="obj-meta-inp-inline" type="date" id="smetaDate">
+              </div>
+            </div>
+
+            <!-- Группа 2: финансы клиент -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Работы</span>
+                <span class="obj-meta-val" id="hdrSmr">0 ₽</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Материалы</span>
+                <span class="obj-meta-val" id="hdrMat">0 ₽</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Итого клиенту</span>
+                <span class="obj-meta-val grand" id="hdrTotal">0 ₽</span>
+              </div>
+            </div>
+
+            <!-- Группа 3: маржа -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Мастерам</span>
+                <span class="obj-meta-val" id="hdrMasters">— ₽</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl accent-lbl">Маржа</span>
+                <span class="obj-meta-val accent" id="hdrMargin">—</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Маржа в день</span>
+                <span class="obj-meta-val" id="hdrMarginDay">—</span>
+              </div>
+            </div>
+
+            <!-- Группа 4: сроки -->
+            <div class="obj-meta-group">
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Срок</span>
+                <span class="obj-meta-val" id="hdrDays">— дн.</span>
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Старт</span>
+                <input class="obj-meta-inp-inline" type="date" id="hdrStart" onchange="window._calcFinish()">
+              </div>
+              <div class="obj-meta-row">
+                <span class="obj-meta-lbl">Финиш</span>
+                <input class="obj-meta-inp-inline" type="date" id="hdrFinish">
+              </div>
+            </div>
+
+          </div><!-- /obj-meta-right -->
+
+        </div><!-- /obj-body-row -->
+      </div>
+
+      <!-- BLOCK 2: Смета работ (СМР) -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">2</div>
+          <div class="scard-label">Смета работ (СМР)</div>
+          <div class="scard-meta" id="smrCount">0 позиций</div>
+          <div class="smr-mode-toggle">
+            <button class="smr-mode-btn active" id="smrBtnClient" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('client')">Заказчику</button>
+            <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('masters')">Мастерам</button>
+          </div>
+          <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
+          <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div id="smrTableWrap">
+            <div class="smeta-table-wrap">
+              <table class="smeta-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:30px"></th>
+                    <th style="width:32px">№</th>
+                    <th>Наименование работы</th>
+                    <th style="width:74px">Ед.</th>
+                    <th style="width:74px;text-align:right">Кол-во</th>
+                    <th style="width:74px;text-align:right">Цена ₽</th>
+                    <th style="width:74px;text-align:right">Сумма ₽</th>
+                    <th style="width:120px">Примечание</th>
+                    <th style="width:30px"></th>
+                  </tr>
+                </thead>
+                <tbody id="smrTbody"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer">
+              <div class="tbl-footer-actions">
+                <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(false)">+ Строка</button>
+                <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(true)">+ Раздел</button>
+                <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearSmr()">Очистить</button>
+              </div>
+              <div>
+                <span class="tbl-footer-total-lbl">Итого СМР:</span>
+                <span class="tbl-footer-total" id="smrFootTotal">0 ₽</span>
+              </div>
             </div>
           </div>
         </div>
-        <div class="tr-insert-line"></div>
       </div>
-    </td>`;
-    tbody.appendChild(insZone);
 
-    const tr = document.createElement('tr');
-    tr.draggable = false;
-    tr.dataset.rowIdx = i;
-    if (r.isSection) {
-      tr.className = 'row-section';
-      tr.innerHTML = `
-        <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
-        <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button></td>`;
-    } else {
-      idx++;
-      tr.innerHTML = `
-        <td class="td-drag" title="Перетащить">⠿</td>
-        <td class="td-num">${idx}</td>
-        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование материала" data-i="${i}" data-f="name"></td>
-        <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="шт" data-i="${i}" data-f="unit"></td>
-        <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
-        <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
-        <td class="td-total">${r.total ? fmtInt(r.total) : ''}</td>
-        <td><input class="inp-note" value="${esc(r.note || '')}" placeholder="Примечание" data-i="${i}" data-f="note"></td>
-        <td><button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button></td>`;
-    }
-    tbody.appendChild(tr);
-  });
-  // Insert zone after last row
-  const insLast = document.createElement('tr');
-  insLast.className = 'tr-insert-zone';
-  insLast.innerHTML = `<td colspan="9">
-    <div class="tr-insert-btn">
-      <div class="tr-insert-plus-wrap" data-i="${appState.matRows.length}" data-table="mat">
-        <button class="tr-insert-plus" title="Вставить">+</button>
-        <div class="tr-insert-dropdown">
-          <div class="tr-insert-dd-item dd-row" data-i="${appState.matRows.length}" data-table="mat" data-section="0">
-            <span class="dd-dot"></span>Строка
-          </div>
-          <div class="tr-insert-dd-item dd-sec" data-i="${appState.matRows.length}" data-table="mat" data-section="1">
-            <span class="dd-dot"></span>Раздел
-          </div>
+      <!-- BLOCK 3: Смета материалов -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">3</div>
+          <div class="scard-label">Смета материалов</div>
+          <div class="scard-meta" id="matCount">0 позиций</div>
+          <input type="file" id="matFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleMat(event)">
+          <button class="scard-upload-btn" onclick="document.getElementById('matFileInput').click()">↑ Загрузить</button>
+          <div class="scard-arrow">▾</div>
         </div>
-      </div>
-      <div class="tr-insert-line"></div>
-    </div>
-  </td>`;
-  tbody.appendChild(insLast);
-
-  _bindMatEvents(tbody);
-  _initInsertZones(tbody, 'mat');
-  _initRowDnd(tbody, appState.matRows, () => { _renderMatTable(); _updateTotals(); });
-}
-
-function _bindMatEvents(tbody) {
-  tbody.querySelectorAll('input, select').forEach(inp => {
-    inp.addEventListener('input', e => {
-      const i = +e.target.dataset.i;
-      const f = e.target.dataset.f;
-      appState.matRows[i][f] = e.target.value;
-      if (f === 'qty' || f === 'price') {
-        const r = appState.matRows[i];
-        const q = parseFloat(r.qty) || 0;
-        const p = parseFloat(r.price) || 0;
-        r.total = q * p;
-        const td = e.target.closest('tr').querySelector('.td-total');
-        if (td) td.textContent = r.total ? fmtInt(r.total) : '';
-        _updateTotals();
-      }
-    });
-  });
-  tbody.querySelectorAll('.btn-row-del').forEach(btn => {
-    btn.addEventListener('click', e => {
-      const i = +e.target.dataset.i;
-      appState.matRows.splice(i, 1);
-      _renderMatTable();
-      _updateTotals();
-    });
-  });
-}
-
-export function addMatRow(isSection = false) {
-  appState.matRows.push(isSection
-    ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false }
-  );
-  _renderMatTable();
-  _updateTotals();
-  setTimeout(() => {
-    const inputs = document.querySelectorAll('#matTbody input.inp-name, #matTbody input.inp-section');
-    inputs[inputs.length - 1]?.focus();
-  }, 30);
-}
-
-export function clearMat() {
-  appState.matRows = [];
-  _updateTotals();
-}
-
-export function insertMatRow(afterIdx, isSection = false) {
-  const newRow = isSection
-    ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
-  appState.matRows.splice(afterIdx + 1, 0, newRow);
-  _renderMatTable();
-  _updateTotals();
-  setTimeout(() => {
-    const tbody = document.getElementById('matTbody');
-    if (!tbody) return;
-    for (const tr of tbody.querySelectorAll('tr')) {
-      if (tr.classList.contains('tr-insert-zone')) continue;
-      if (+tr.dataset.rowIdx === afterIdx + 1) {
-        const inp = tr.querySelector('input.inp-name, input.inp-section');
-        if (inp) inp.focus();
-        break;
-      }
-    }
-  }, 30);
-}
-
-export function collectMatRows() { return appState.matRows; }
-export function getMatTotal() {
-  return appState.matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
-}
-
-// ── SECTION → GANTT SYNC ──────────────────────────────────────────
-// When sections in SMR change, sync them as Gantt stages
-function _syncSectionsToGantt() {
-  const sections = appState.smrRows.filter(r => r.isSection && r.name && r.name.trim());
-  const sectionNames = new Set(sections.map(s => s.name.trim()));
-
-  // Remove stages that no longer have a matching section
-  appState.stages = appState.stages.filter(s => sectionNames.has(s.name));
-
-  // Add new stages for sections not yet in gantt
-  sections.forEach(sec => {
-    const name = sec.name.trim();
-    if (!name) return;
-    const existing = appState.stages.find(s => s.name === name);
-    if (!existing) {
-      const id    = _newStageId();
-      const color = _nextColor();
-      const lastEnd = appState.stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
-      appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
-    }
-  });
-
-  _renderGantt();
-  _renderPayments();
-}
-
-// ── GANTT ─────────────────────────────────────────────────────────
-
-// appState.totalDays — хранится в state.js (по умолчанию 60)
-// appState.ganttMode — 'stages' | 'works'
-let _dragging  = null; // { idx, type:'bar'|'left'|'right', startX, origPct, origW, trackW }
-
-function _renderGantt() {
-  const wrap = document.getElementById('ganttBars');
-  if (!wrap) return;
-  const mode = appState.ganttMode || 'stages';
-
-  if (mode === 'works') {
-    _renderGanttWorks(wrap);
-    _renderGanttRuler();
-    return;
-  }
-
-  // ── Режим "По этапам" (дефолт) ──────────────────────────────────
-  if (!appState.stages.length) {
-    wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Этапы появятся когда вы добавите строки в смету и укажете им этапы</div>';
-    _renderGanttRuler();
-    return;
-  }
-
-  wrap.innerHTML = '';
-  appState.stages.forEach((s, idx) => {
-    const days = Math.max(1, Math.round(appState.totalDays * s.w / 100));
-    const row  = document.createElement('div');
-    row.className = 'gantt-row';
-
-    // Tick marks inside bar
-    const ticksHtml = Array.from({length: days + 1}, (_, ti) => {
-      const leftPct = (ti / days * 100).toFixed(2);
-      return `<div class="gantt-tick-mark" style="left:${leftPct}%"></div>`;
-    }).join('');
-
-    row.innerHTML = `
-      <div class="gantt-row-label">
-        <span class="gantt-stage-dot" style="background:${s.color}"></span>
-        <span class="gantt-stage-name" contenteditable="true" data-idx="${idx}">${esc(s.name)}</span>
-        <span class="gantt-stage-days">${days} дн.</span>
-      </div>
-      <div class="gantt-track-wrap">
-        <div class="gantt-track">
-          <div class="gantt-bar" data-idx="${idx}" style="left:${s.pct}%;width:${s.w}%;background:${s.color}">
-            <div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>
-            <div class="gantt-ticks">${ticksHtml}</div>
-            <span class="gantt-bar-label">${days} дн.</span>
-            <div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>
+        <div class="scard-body">
+          <div id="matTableWrap">
+            <div class="smeta-table-wrap">
+              <table class="smeta-tbl">
+                <thead>
+                  <tr>
+                    <th style="width:30px"></th>
+                    <th style="width:32px">№</th>
+                    <th>Наименование материала</th>
+                    <th style="width:74px">Ед.</th>
+                    <th style="width:74px;text-align:right">Кол-во</th>
+                    <th style="width:74px;text-align:right">Цена ₽</th>
+                    <th style="width:74px;text-align:right">Сумма ₽</th>
+                    <th style="width:120px">Примечание</th>
+                    <th style="width:30px"></th>
+                  </tr>
+                </thead>
+                <tbody id="matTbody"></tbody>
+              </table>
+            </div>
+            <div class="tbl-footer">
+              <div class="tbl-footer-actions">
+                <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(false)">+ Строка</button>
+                <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(true)">+ Раздел</button>
+                <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearMat()">Очистить</button>
+              </div>
+              <div>
+                <span class="tbl-footer-total-lbl">Итого материалы:</span>
+                <span class="tbl-footer-total" id="matFootTotal">0 ₽</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>`;
-    wrap.appendChild(row);
-
-    // Editable name
-    const nameEl = row.querySelector('.gantt-stage-name');
-    nameEl.addEventListener('blur', () => {
-      appState.stages[idx].name = nameEl.textContent.trim();
-      _renderPayments();
-    });
-
-    // Left/right handles
-    row.querySelectorAll('.gantt-handle').forEach(h => {
-      h.addEventListener('mousedown', e => {
-        e.preventDefault(); e.stopPropagation();
-        const track  = h.closest('.gantt-track');
-        const trackW = track.getBoundingClientRect().width;
-        _dragging = { idx, type: h.dataset.edge, startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
-        document.body.style.cursor = 'ew-resize';
-        document.body.style.userSelect = 'none';
-      });
-    });
-
-    // Drag whole bar (mousedown on bar itself, not handles)
-    const bar = row.querySelector('.gantt-bar');
-    bar.addEventListener('mousedown', e => {
-      if (e.target.classList.contains('gantt-handle')) return;
-      e.preventDefault();
-      const track  = bar.closest('.gantt-track');
-      const trackW = track.getBoundingClientRect().width;
-      _dragging = { idx, type: 'bar', startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
-      document.body.style.cursor = 'grabbing';
-      document.body.style.userSelect = 'none';
-    });
-  });
-
-  _renderGanttRuler();
-}
-
-// ── Режим "По работам" ────────────────────────────────────────────
-// Каждая строка СМР (не раздел) — отдельный бар. Длительность задаётся вручную
-// через числовой инпут. Данные хранятся в appState.workDays: { [_uid]: days }
-function _renderGanttWorks(wrap) {
-  if (!appState.workDays) appState.workDays = {};
-  const rows = appState.smrRows.filter(r => !r.isSection && r.name);
-
-  if (!rows.length) {
-    wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Добавьте работы в смету — они появятся здесь</div>';
-    return;
-  }
-
-  // Считаем сумму проставленных дней
-  const totalSet = rows.reduce((s, r) => s + (appState.workDays[r._uid] || 0), 0);
-  const totalDays = appState.totalDays || 1;
-
-  wrap.innerHTML = '';
-
-  // Считаем позицию начала каждого бара (последовательно)
-  let cursor = 0; // в днях от начала
-  rows.forEach((r, i) => {
-    const uid  = r._uid;
-    const days = appState.workDays[uid] || 0;
-    const pct  = totalDays > 0 ? (cursor / totalDays * 100) : 0;
-    const wPct = totalDays > 0 ? (days   / totalDays * 100) : 0;
-
-    // Найдём цвет раздела этой строки
-    let color = '#9b9b9b';
-    for (let j = i - 1; j >= 0; j--) {
-      if (appState.smrRows[j]?.isSection) {
-        const stageName = appState.smrRows[j].name?.trim();
-        const stage = appState.stages.find(s => s.name === stageName);
-        if (stage) { color = stage.color; }
-        break;
-      }
-    }
-
-    const row = document.createElement('div');
-    row.className = 'gantt-row';
-    row.innerHTML = `
-      <div class="gantt-row-label" style="gap:6px">
-        <span class="gantt-stage-dot" style="background:${color}"></span>
-        <span class="gantt-stage-name" style="cursor:default;border:none" title="${esc(r.name)}">${esc(r.name.length > 28 ? r.name.slice(0, 26) + '…' : r.name)}</span>
-        <input type="number" min="0" max="999" value="${days || ''}"
-          placeholder="дн."
-          data-uid="${uid}"
-          style="width:44px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);
-                 font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
-                 font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;"
-          class="gantt-work-days-inp">
       </div>
-      <div class="gantt-track-wrap">
-        <div class="gantt-track">
-          ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${color};pointer-events:none">
-            <span class="gantt-bar-label">${days} дн.</span>
-          </div>` : ''}
+
+      <!-- BLOCK 4: График производства работ (Ганtt) -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">4</div>
+          <div class="scard-label">График производства работ</div>
+          <div class="scard-arrow">▾</div>
         </div>
-      </div>`;
-    wrap.appendChild(row);
-
-    if (days > 0) cursor += days;
-  });
-
-  // Биндим инпуты
-  wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const uid = inp.dataset.uid;
-      const val = Math.max(0, parseInt(inp.value) || 0);
-      if (!appState.workDays) appState.workDays = {};
-      appState.workDays[uid] = val;
-      _renderGanttWorks(wrap);
-      _renderGanttRuler();
-      _updateTotals();
-    });
-  });
-}
-
-// Публичная функция переключения режима Ганта
-export function setGanttMode(mode) {
-  appState.ganttMode = mode; // 'stages' | 'works'
-  // Обновляем кнопки-переключатели
-  const btnStages = document.getElementById('ganttBtnStages');
-  const btnWorks  = document.getElementById('ganttBtnWorks');
-  if (btnStages) btnStages.classList.toggle('active', mode === 'stages');
-  if (btnWorks)  btnWorks.classList.toggle('active',  mode === 'works');
-  _renderGantt();
-}
-
-function _updateGanttBarDOM(idx) {
-  const s = appState.stages[idx];
-  const bar = document.querySelector(`.gantt-bar[data-idx="${idx}"]`);
-  if (!bar) return;
-  bar.style.left  = s.pct + '%';
-  bar.style.width = s.w   + '%';
-  const days = Math.max(1, Math.round(appState.totalDays * s.w / 100));
-  const lbl = bar.querySelector('.gantt-bar-label');
-  if (lbl) lbl.textContent = days + ' дн.';
-  // update tick marks
-  const ticks = bar.querySelector('.gantt-ticks');
-  if (ticks) {
-    ticks.innerHTML = Array.from({length: days + 1}, (_, ti) =>
-      `<div class="gantt-tick-mark" style="left:${(ti / days * 100).toFixed(2)}%"></div>`
-    ).join('');
-  }
-  const rows = document.querySelectorAll('.gantt-row');
-  if (rows[idx]) {
-    const dEl = rows[idx].querySelector('.gantt-stage-days');
-    if (dEl) dEl.textContent = days + ' дн.';
-  }
-}
-
-function _renderGanttRuler() {
-  const ruler = document.getElementById('ganttRuler');
-  if (!ruler) return;
-  ruler.innerHTML = '';
-  const ticks = Math.min(appState.totalDays, 12);
-  for (let i = 0; i <= ticks; i++) {
-    const t = document.createElement('span');
-    t.className = 'gantt-tick';
-    t.textContent = Math.round(appState.totalDays * i / ticks);
-    t.style.left = (i / ticks * 100) + '%';
-    ruler.appendChild(t);
-  }
-}
-
-function _initGanttDrag() {
-  document.addEventListener('mousemove', e => {
-    if (!_dragging) return;
-    const { idx, type, startX, origPct, origW, trackW } = _dragging;
-    if (!trackW) return;
-    const dx   = e.clientX - startX;
-    const dpct = dx / trackW * 100;
-    const s    = appState.stages[idx];
-    // Шаг снэппинга = 1 рабочий день в процентах
-    const snap = appState.totalDays > 0 ? (100 / appState.totalDays) : 1;
-
-    if (type === 'bar') {
-      let rawPct = Math.max(0, Math.min(origPct + dpct, 100 - origW));
-      s.pct = Math.round(rawPct / snap) * snap;
-    } else if (type === 'left') {
-      let rawPct = Math.max(0, Math.min(origPct + dpct, origPct + origW - snap));
-      rawPct = Math.round(rawPct / snap) * snap;
-      s.w   = origW - (rawPct - origPct);
-      s.pct = rawPct;
-    } else {
-      let rawW = Math.max(snap, Math.min(origW + dpct, 100 - origPct));
-      s.w = Math.round(rawW / snap) * snap;
-    }
-    _updateGanttBarDOM(idx);
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (!_dragging) return;
-    _dragging = null;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    _renderPayments();
-  });
-}
-
-// Public: add a new stage (called from stage select in smr table)
-export function ensureStage(name) {
-  const existing = appState.stages.find(s => s.name === name);
-  if (existing) return existing.id;
-  const id    = _newStageId();
-  const color = _nextColor();
-  // place after last stage, width 10%
-  const lastEnd = appState.stages.reduce((m, s) => Math.max(m, s.pct + s.w), 0);
-  appState.stages.push({ id, name, color, pct: Math.min(lastEnd, 90), w: 10 });
-  _renderGantt();
-  _renderPayments();
-  return id;
-}
-
-// ── STAGE REAL AMOUNTS ────────────────────────────────────────────
-// Sum SMR rows belonging to a section whose name matches the stage name
-function _getStageAmount(stageName) {
-  let total = 0;
-  let inSection = false;
-  for (const r of appState.smrRows) {
-    if (r.isSection) {
-      inSection = (r.name && r.name.trim() === stageName);
-      continue;
-    }
-    if (inSection) total += r.total || 0;
-  }
-  return total;
-}
-
-// Sum of all stages that have a matching section
-function _getStagesTotalReal() {
-  return appState.stages.reduce((s, st) => s + _getStageAmount(st.name), 0);
-}
-
-// ── PAYMENTS ─────────────────────────────────────────────────────
-
-// Payment groups: array of { id, name, stageIds[] }
-// appState.payments и appState.payCounter объявлены в state.js
-
-function _renderPayments() {
-  const wrap = document.getElementById('paymentsWrap');
-  if (!wrap) return;
-  const grandTotal = getSmrTotal() + getMatTotal();
-
-  wrap.innerHTML = '';
-
-  // Two-column layout: left = payment slots, right = stage pool
-  const layout = document.createElement('div');
-  layout.className = 'pay-layout';
-
-  // LEFT: payment slots
-  const leftCol = document.createElement('div');
-  leftCol.className = 'pay-left';
-
-  appState.payments.forEach((p, pi) => {
-    // Sum real amounts of assigned stages
-    const amount = p.stageIds.reduce((s, id) => {
-      const st = appState.stages.find(x => x.id === id);
-      return s + (st ? _getStageAmount(st.name) : 0);
-    }, 0);
-    const totalReal = _getStagesTotalReal() || grandTotal || 1;
-    const pct = totalReal > 0 ? Math.round(amount / totalReal * 100) : 0;
-
-    const card = document.createElement('div');
-    card.className = 'pay-slot';
-    card.dataset.pi = pi;
-
-    const tagsHtml = p.stageIds.map(id => {
-      const st = appState.stages.find(x => x.id === id);
-      if (!st) return '';
-      return `<span class="pay-tag" style="border-color:${st.color};color:${st.color}" data-sid="${id}" data-pi="${pi}">
-        ${esc(st.name)}
-        <span class="pay-tag-x" data-sid="${id}" data-pi="${pi}">×</span>
-      </span>`;
-    }).join('');
-
-    card.innerHTML = `
-      <div class="pay-slot-head">
-        <input class="pay-slot-name" value="${esc(p.name)}" data-pi="${pi}">
-        <button class="pay-slot-del" data-pi="${pi}">×</button>
+        <div class="scard-body">
+          <div class="gantt-wrap">
+            <div class="gantt-controls">
+              <span class="gantt-days-lbl">Общий срок:</span>
+              <input type="number" id="totalDaysSlider" min="1" max="999" placeholder="н-р 30" style="width:72px;padding:5px 12px;border-radius:6px;border:1px solid var(--border-1);font-size:13px;font-weight:600;font-family:Onest,Inter,sans-serif;color:var(--text-1);text-align:center;background:var(--bg-card);outline:none;-moz-appearance:textfield;appearance:textfield;" oninput="document.getElementById('totalDaysVal').textContent=this.value">
+              <span class="gantt-days-lbl">рабочих дней</span>
+              <div style="flex:1"></div>
+              <!-- Переключатель режима графика -->
+              <div class="smr-mode-toggle" style="margin-left:auto">
+                <button class="smr-mode-btn active" id="ganttBtnStages" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('stages')">По этапам</button>
+                <button class="smr-mode-btn" id="ganttBtnWorks" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('works')">По работам</button>
+              </div>
+            </div>
+            <div class="gantt-rows" id="ganttBars"></div>
+            <div class="gantt-ruler" id="ganttRuler"></div>
+          </div>
+        </div>
       </div>
-      <div class="pay-slot-tags" data-pi="${pi}">${tagsHtml || '<span class="pay-slot-empty">Перетащите этапы сюда</span>'}</div>
-      <div class="pay-slot-total">${fmtInt(amount)} ₽ <span class="pay-slot-pct">${pct}%</span></div>`;
 
-    // Drop target
-    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
-    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
-    card.addEventListener('drop', e => {
-      e.preventDefault();
-      card.classList.remove('drag-over');
-      const sid = e.dataTransfer.getData('stageId');
-      if (sid && !p.stageIds.includes(sid)) {
-        p.stageIds.push(sid);
-        _renderPayments();
-      }
-    });
-    leftCol.appendChild(card);
-  });
+      <!-- BLOCK 5: График платежей -->
+      <div class="scard">
+        <div class="scard-head" data-collapse="1">
+          <div class="scard-num">5</div>
+          <div class="scard-label">График платежей</div>
+          <div class="scard-arrow">▾</div>
+        </div>
+        <div class="scard-body">
+          <div id="paymentsWrap" class="payments-wrap"></div>
+        </div>
+      </div>
 
-  // Add payment button
-  const addBtn = document.createElement('button');
-  addBtn.className = 'pay-add-slot-btn';
-  addBtn.textContent = '+ Добавить этап оплаты';
-  addBtn.addEventListener('click', () => {
-    appState.payments.push({ id: 'p' + (++appState.payCounter), name: 'Платёж ' + appState.payments.length, stageIds: [] });
-    _renderPayments();
-  });
-  leftCol.appendChild(addBtn);
+      <div style="height:20px"></div>
+    </div><!-- /smeta-scroll -->
 
-  // RIGHT: stage pool
-  const rightCol = document.createElement('div');
-  rightCol.className = 'pay-right';
-  const rightHead = document.createElement('div');
-  rightHead.className = 'pay-right-head';
-  rightHead.textContent = 'Этапы работ';
-  rightCol.appendChild(rightHead);
+  </div><!-- /smeta-main -->
+</div><!-- /smeta-screen -->
 
-  if (!appState.stages.length) {
-    const empty = document.createElement('div');
-    empty.className = 'pay-right-empty';
-    empty.textContent = 'Добавьте этапы в Ганtt';
-    rightCol.appendChild(empty);
-  } else {
-    appState.stages.forEach(s => {
-      const stageDays  = Math.max(1, Math.round(appState.totalDays * s.w / 100));
-      const stageAmt   = _getStageAmount(s.name);
+<script>
+(function() {
+  function toInputDate(d) { return d.toISOString().slice(0, 10); }
 
-      const pill = document.createElement('div');
-      pill.className = 'pay-stage-pill';
-      pill.draggable = true;
-      pill.dataset.sid = s.id;
-      pill.innerHTML = `<span class="pay-stage-pill-dot" style="background:${s.color}"></span>
-        <span class="pay-stage-pill-name">${esc(s.name)}</span>
-        <span class="pay-stage-pill-info">${stageDays} дн. · ${fmtInt(stageAmt)} ₽</span>`;
-      pill.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('stageId', s.id);
-        pill.classList.add('dragging');
-      });
-      pill.addEventListener('dragend', () => pill.classList.remove('dragging'));
-      rightCol.appendChild(pill);
-    });
-  }
-
-  layout.appendChild(leftCol);
-  layout.appendChild(rightCol);
-  wrap.appendChild(layout);
-
-  // Bind events
-  wrap.querySelectorAll('.pay-slot-name').forEach(inp => {
-    inp.addEventListener('input', e => { appState.payments[+e.target.dataset.pi].name = e.target.value; });
-  });
-  wrap.querySelectorAll('.pay-slot-del').forEach(btn => {
-    btn.addEventListener('click', e => { appState.payments.splice(+e.target.dataset.pi, 1); _renderPayments(); });
-  });
-  wrap.querySelectorAll('.pay-tag-x').forEach(x => {
-    x.addEventListener('click', e => {
-      e.stopPropagation();
-      const pi  = +e.target.dataset.pi;
-      const sid = e.target.dataset.sid;
-      appState.payments[pi].stageIds = appState.payments[pi].stageIds.filter(id => id !== sid);
-      _renderPayments();
-    });
-  });
-}
-
-// ── DRAWER (Экспликация) ──────────────────────────────────────────
-
-function _initDrawer() {
-  const drawer = document.getElementById('explDrawer');
-  const tab    = document.getElementById('explTab');
-  const main   = document.getElementById('smetaMain');
-  if (!drawer || !tab || !main) return;
-  let open = false;
-  tab.addEventListener('click', () => {
-    open = !open;
-    drawer.classList.toggle('open', open);
-    main.classList.toggle('drawer-open', open);
-    tab.querySelector('.tab-arrow').textContent = open ? '◀' : '▶';
-  });
-}
-
-// ── SECTION COLLAPSE ──────────────────────────────────────────────
-
-function _initCollapse() {
-  document.querySelectorAll('.scard-head[data-collapse]').forEach(head => {
-    head.addEventListener('click', e => {
-      if (e.target.closest('button, input, .smr-mode-toggle')) return;
-      const body = head.nextElementSibling;
-      const arrow = head.querySelector('.scard-arrow');
-      const collapsed = body.style.display === 'none';
-      body.style.display = collapsed ? '' : 'none';
-      if (arrow) arrow.textContent = collapsed ? '▾' : '▸';
-    });
-  });
-}
-
-// ── DAYS SLIDER ───────────────────────────────────────────────────
-
-function _initDaysSlider() {
-  const slider = document.getElementById('totalDaysSlider');
-  const output = document.getElementById('totalDaysVal');
-  if (!slider || !output) return;
-
-  // Восстанавливаем значение из appState только если оно было явно задано пользователем
-  // (totalDaysSet флаг). При первом запуске поле остаётся пустым (placeholder виден).
-  if (appState.totalDaysSet && appState.totalDays > 0) {
-    slider.value = appState.totalDays;
-    output.textContent = appState.totalDays;
-  } else {
-    slider.value = '';
-    output.textContent = '';
-  }
-
-  slider.addEventListener('input', () => {
-    const v = +slider.value || 0;
-    appState.totalDays    = v;
-    appState.totalDaysSet = v > 0;
-    output.textContent    = v || '';
-    _renderGantt();
-    _renderPayments();
-    _updateHeaderDates();
-    _updateTotals();
-  });
-
-  // При инициализации пересчитываем финиш (если уже есть дата старта из сохранённого проекта)
-  if (typeof window._calcFinish === 'function') window._calcFinish();
-}
-
-// ── PDF ───────────────────────────────────────────────────────────
-
-export async function generatePDF() {
-  const street = document.getElementById('hdrStreet')?.value || '';
-  const house  = document.getElementById('hdrHouse')?.value || '';
-  const flat   = document.getElementById('hdrFlat')?.value || '';
-  const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
-  const pageHtmlArr = [];
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
-    const clone = page.cloneNode(true);
-    clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
-    clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
-    clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
-    clone.style.transform = 'none';
-    clone.style.width  = '1123px';
-    clone.style.height = '794px';
-    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
-  });
-  const pdfHtml = pageHtmlArr.join('\n');
-  const sheetCss = Array.from(document.styleSheets).map(s => {
-    try { return Array.from(s.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; }
-  }).join('\n');
-  const pdfCss = `
-    @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
-    @font-face {
-      font-family: 'Merriweather';
-      src: url('https://raw.githubusercontent.com/MishkinIN/Font_GOST_2.304/master/gost_2.304.ttf') format('truetype');
+  // Добавить N рабочих дней (пн-пт) к дате
+  function addWorkingDays(date, days) {
+    var d = new Date(date);
+    var added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      var dow = d.getDay();
+      if (dow !== 0 && dow !== 6) added++;
     }
-    @page { size: 297mm 210mm; margin: 0; }
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: hidden; position: relative; }
-    .pdf-a4-page:last-child { page-break-after: auto; }
-    .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); }
-    .spp-a4 * { font-family: 'Merriweather', serif !important; }
-    .be-margin-guide { display: none !important; }
-    ${sheetCss}`;
-  const btns = document.querySelectorAll('.btn-generate');
-  btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
-  try {
-    const resp = await fetch('https://assistcloudai.xyz/webhook/generate-pdf', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: pdfHtml, css: pdfCss }),
+    return d;
+  }
+
+  // Пересчитать финиш при изменении старта
+  window._calcFinish = function() {
+    var startEl  = document.getElementById('hdrStart');
+    var finishEl = document.getElementById('hdrFinish');
+    var daysEl   = document.getElementById('totalDaysSlider');
+    if (!startEl || !startEl.value) return;
+    var days = parseInt(daysEl ? daysEl.value : '') || 0;
+    if (!days) {
+      // Нет данных — сбрасываем финиш
+      finishEl.value = '';
+      return;
+    }
+    var finish = addWorkingDays(new Date(startEl.value), days);
+    finishEl.value = toInputDate(finish);
+    var hdrDays = document.getElementById('hdrDays');
+    if (hdrDays) hdrDays.textContent = days + ' дн.';
+  };
+
+  // При изменении слайдера дней — пересчитать финиш
+  function hookDaysInput() {
+    var daysEl = document.getElementById('totalDaysSlider');
+    if (!daysEl) return;
+    daysEl.addEventListener('input', function() {
+      var val = document.getElementById('totalDaysVal');
+      if (val) val.textContent = this.value;
+      window._calcFinish();
     });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const blob = await resp.blob();
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Смета_${on}.pdf`; a.click();
-  } catch (e2) { alert('Ошибка генерации PDF: ' + e2.message); }
-  finally { btns.forEach(b => { b.textContent = 'Сформировать PDF →'; b.disabled = false; }); }
-}
-
-// ── INIT ──────────────────────────────────────────────────────────
-
-export function initSmeta() {
-  _initDrawer();
-  _initCollapse();
-  _initDaysSlider();
-  _initGanttDrag();
-  _renderExpl();
-  // Если данные уже загружены из проекта — только отрисовываем их,
-  // не создаём дефолтные пустые строки
-  if (appState.smrRows.length === 0 && appState.smrRowsMasters.length === 0) {
-    initSmrManual();
-  } else {
-    // Проставляем UID строкам, загруженным из localStorage (могут не иметь _uid)
-    appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
-    appState.smrRowsMasters.forEach(r => { if (!r._uid) r._uid = _uid(); });
-    _renderSmrTable();
   }
-  if (appState.matRows.length === 0) {
-    initMatManual();
-  } else {
-    _renderMatTable();
-  }
-  _renderGantt();
-  _renderPayments();
-  _updateTotals();
 
-  // Автоматическая синхронизация экспликации с планировщиком
-  EventBus.on('rooms:computed', () => {
-    _syncRoomsFromState();
-    _renderExpl();
-    _updateTotals();
-  });
+  hookDaysInput();
+})();
+</script>
 
-  // Если комнаты уже загружены (например, из localStorage), сразу показать
-  if (appState.rooms && appState.rooms.length) {
-    _syncRoomsFromState();
-    _renderExpl();
-  }
-}
+</div>
