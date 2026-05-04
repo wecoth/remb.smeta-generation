@@ -405,9 +405,9 @@ export function setTool(t) {
   if (dom.lblTool) dom.lblTool.textContent = labels[t] || t;
   
   canvas.style.cursor = activeTool ? activeTool.getCursor() : 'default';
-  document.getElementById('windowParams')?.classList.toggle('active', t === 'window');
-  document.getElementById('doorParams')?.classList.toggle('active', t === 'door');
-  
+if (window._syncCtxPanel) window._syncCtxPanel(t);
+document.getElementById('windowParams')?.classList.toggle('active', t === 'window');
+document.getElementById('doorParams')?.classList.toggle('active', t === 'door');
   if (t !== 'select') clearSelection();
   doRedraw();
 }
