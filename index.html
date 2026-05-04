@@ -538,7 +538,7 @@ async function mountView(viewName) {
         handleMat, initMatManual, addMatRow, clearMat,
         generatePDF, importRoomsFromPlanner, captureCanvas,
         collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
-        setSmrMode,
+        setSmrMode, setGanttMode,
       } = sm;
 
       window._smetaModule = {
@@ -546,7 +546,7 @@ async function mountView(viewName) {
         handleMat, initMatManual, addMatRow, clearMat,
         generatePDF, importRoomsFromPlanner, captureCanvas,
         collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
-        setSmrMode,
+        setSmrMode, setGanttMode,
       };
 
       const { renderToImage } = await import('./js/render.js');
