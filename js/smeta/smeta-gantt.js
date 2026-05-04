@@ -363,14 +363,12 @@ function _renderGanttWorks(wrap) {
     const d = appState.workDays[r._uid] || 0;
     if (d > 0) realEnd = Math.max(realEnd, (appState.workStart[r._uid] || 0) + d);
   });
-  // Шкала — минимум 7, чтобы было визуальное пространство для drag
+  // Для рендера баров шкала минимум 7 — визуальное пространство для drag
   const totalDays = Math.max(realEnd, 7);
   appState.totalDays = totalDays;
+  // В поле «Общий срок» показываем реальный конец (без минимума 7)
   const sliderEl = document.getElementById('totalDaysSlider');
-  if (sliderEl) sliderEl.value = totalDays;
-  // Поле «Общий срок» — реальный конец, без минимума 7
-  const valEl = document.getElementById('totalDaysVal');
-  if (valEl) valEl.textContent = realEnd > 0 ? realEnd : 0;
+  if (sliderEl) sliderEl.value = realEnd > 0 ? realEnd : '';
 
   wrap.innerHTML = '';
   const uidToColor = {};
