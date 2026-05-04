@@ -592,6 +592,47 @@
   }
   .obj-photo-placeholder-icon { font-size: 26px; line-height: 1; }
   .obj-photo-hint { font-size: 10px; color: var(--text-3); text-align: center; }
+
+  /* ── Gantt Works mode — new elements ───────────────────── */
+  .gantt-works-group-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px 4px; margin-top: 4px;
+    border-top: 1px solid var(--border-2);
+  }
+  .gantt-works-group-head:first-child { border-top: none; margin-top: 0; }
+  .gantt-works-auto-days {
+    font-size: 10px; color: var(--text-3); font-family: var(--font-mono);
+    background: var(--bg-soft); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--border-2);
+  }
+  .gantt-works-row .gantt-row-label { min-width: 0; }
+
+  /* Параллельность кнопка */
+  .gantt-parallel-btn {
+    width: 22px; height: 22px; border-radius: 4px;
+    border: 1px solid var(--border-1); background: var(--bg-card);
+    color: var(--text-3); font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all .15s; padding: 0;
+  }
+  .gantt-parallel-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+  .gantt-parallel-btn.active {
+    background: var(--accent-soft); color: var(--accent);
+    border-color: var(--accent-mid);
+  }
+
+  /* Замок / разблокировать кнопки */
+  .gantt-unlock-btn, .gantt-lock-btn {
+    width: 20px; height: 20px; border-radius: 4px;
+    border: 1px solid var(--border-2); background: transparent;
+    color: var(--text-3); font-size: 11px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all .15s; padding: 0;
+    margin-left: 2px;
+  }
+  .gantt-unlock-btn:hover, .gantt-lock-btn:hover {
+    background: var(--bg-hover); color: var(--text-1);
+  }
 </style>
 
 <div id="smetaView" style="height:100%;overflow:hidden">
@@ -828,7 +869,7 @@
           <div class="gantt-wrap">
             <div class="gantt-controls">
               <span class="gantt-days-lbl">Общий срок:</span>
-              <input type="number" id="totalDaysSlider" min="1" max="999" placeholder="н-р 30" style="width:72px;padding:5px 12px;border-radius:6px;border:1px solid var(--border-1);font-size:13px;font-weight:600;font-family:Onest,Inter,sans-serif;color:var(--text-1);text-align:center;background:var(--bg-card);outline:none;-moz-appearance:textfield;appearance:textfield;" oninput="window._calcFinish && window._calcFinish()">
+              <input type="number" id="totalDaysSlider" min="1" max="999" placeholder="0" style="width:72px;padding:5px 12px;border-radius:6px;border:1px solid var(--border-1);font-size:13px;font-weight:600;font-family:Onest,Inter,sans-serif;color:var(--text-1);text-align:center;background:var(--bg-card);outline:none;-moz-appearance:textfield;appearance:textfield;" oninput="window._calcFinish && window._calcFinish()">
               <span class="gantt-days-lbl">рабочих дней</span>
               <div style="flex:1"></div>
               <!-- Переключатель режима графика -->
