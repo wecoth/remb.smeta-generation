@@ -156,15 +156,39 @@ export function setGanttMode(mode) {
   appState.ganttMode = mode;
   document.getElementById('ganttBtnStages')?.classList.toggle('active', mode === 'stages');
   document.getElementById('ganttBtnWorks')?.classList.toggle('active',  mode === 'works');
+  const clearBtn = document.getElementById('ganttClearBtn');
+  if (clearBtn) clearBtn.style.display = mode === 'works' ? '' : 'none';
   renderGantt();
 }
 
-// ── Рендер (диспетчер) ─────────────────────────────────────────────
+// ── Очистка режима «По работам» ────────────────────────────────────
+
+export function clearWorksGantt() {
+  appState.workDays          = {};
+  appState.workStart         = {};
+  appState.workMovedManually = {};
+  appState.worksRealEnd      = 0;
+  // Инициализируем нули для всех живых работ
+  appState.smrRows.filter(r => !r.isSection && r.name).forEach(r => {
+    appState.workDays[String(r._uid)] = 0;
+  });
+  recalcAllStageDaysAuto();
+  renderGantt();
+  _renderGanttRuler();
+  _onDurationChanged();
+}
+
+
 
 export function renderGantt() {
   const wrap = document.getElementById('ganttBars');
   if (!wrap) return;
   const mode = appState.ganttMode || 'stages';
+
+  // Показываем/скрываем кнопку очистки
+  const clearBtn = document.getElementById('ganttClearBtn');
+  if (clearBtn) clearBtn.style.display = mode === 'works' ? '' : 'none';
+
   if (mode === 'works') {
     _renderGanttWorks(wrap);
     _renderGanttRuler();
