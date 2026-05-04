@@ -562,6 +562,14 @@ function _bindSmrEvents(tbody) {
       if (f === 'name' && activeRows[i].isSection && appState.smrMode === 'client') {
         _syncSectionsToGantt();
       }
+      // Синхронизируем изменения поля в копию мастеров (только в клиентском режиме)
+      if (appState.smrMode === 'client' && activeRows[i]?._uid !== undefined) {
+        const masterRow = appState.smrRowsMasters.find(r => r._uid === activeRows[i]._uid);
+        if (masterRow) {
+          masterRow[f] = activeRows[i][f];
+          if (f === 'qty' || f === 'price') masterRow.total = activeRows[i].total;
+        }
+      }
     });
   });
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
