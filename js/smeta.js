@@ -256,26 +256,19 @@ function _updateTotals() {
 
 function _updateHeaderDates() {
   const el = id => document.getElementById(id);
-  const totalDays = parseInt(el('totalDaysVal')?.textContent) || 0;
+  // Читаем актуальное значение напрямую из инпута слайдера (источник истины)
+  const sliderEl = el('totalDaysSlider');
+  const totalDays = sliderEl ? (parseInt(sliderEl.value) || 0) : 0;
+
+  // Обновляем строку "Срок" в шапке
   if (el('hdrDays')) el('hdrDays').textContent = totalDays ? totalDays + ' дн.' : '—';
 
-  // Try to get start date from first stage, calculate finish
-  const startStage = appState.stages.length ? appState.stages.reduce((a, b) => (a.start < b.start ? a : b), appState.stages[0]) : null;
-  const endStage   = appState.stages.length ? appState.stages.reduce((a, b) => ((a.start + a.dur) > (b.start + b.dur) ? a : b), appState.stages[0]) : null;
+  // Синхронизируем totalDaysVal (используется в _updateTotals для маржи/день)
+  const valEl = el('totalDaysVal');
+  if (valEl) valEl.textContent = totalDays || '';
 
-  if (startStage && totalDays > 0) {
-    // Use today as project start reference if no explicit date
-    const base = new Date();
-    const startDay = startStage.start || 0;
-    const endDay   = endStage ? (endStage.start + endStage.dur) : totalDays;
-    const startDate = new Date(base); startDate.setDate(startDate.getDate() + startDay);
-    const finishDate = new Date(base); finishDate.setDate(finishDate.getDate() + endDay);
-    if (el('hdrStart'))  el('hdrStart').textContent  = startDate.toLocaleDateString('ru-RU', {day:'numeric',month:'short'});
-    if (el('hdrFinish')) el('hdrFinish').textContent = finishDate.toLocaleDateString('ru-RU', {day:'numeric',month:'short'});
-  } else {
-    if (el('hdrStart'))  el('hdrStart').textContent  = '—';
-    if (el('hdrFinish')) el('hdrFinish').textContent = '—';
-  }
+  // Пересчитываем финиш через HTML-функцию (она учитывает только рабочие дни)
+  if (typeof window._calcFinish === 'function') window._calcFinish();
 }
 
 // ── ROW DRAG-AND-DROP ─────────────────────────────────────────────
@@ -878,12 +871,21 @@ function _syncSectionsToGantt() {
 // ── GANTT ─────────────────────────────────────────────────────────
 
 // appState.totalDays — хранится в state.js (по умолчанию 60)
+// appState.ganttMode — 'stages' | 'works'
 let _dragging  = null; // { idx, type:'bar'|'left'|'right', startX, origPct, origW, trackW }
 
 function _renderGantt() {
   const wrap = document.getElementById('ganttBars');
   if (!wrap) return;
+  const mode = appState.ganttMode || 'stages';
 
+  if (mode === 'works') {
+    _renderGanttWorks(wrap);
+    _renderGanttRuler();
+    return;
+  }
+
+  // ── Режим "По этапам" (дефолт) ──────────────────────────────────
   if (!appState.stages.length) {
     wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Этапы появятся когда вы добавите строки в смету и укажете им этапы</div>';
     _renderGanttRuler();
@@ -955,6 +957,94 @@ function _renderGantt() {
   _renderGanttRuler();
 }
 
+// ── Режим "По работам" ────────────────────────────────────────────
+// Каждая строка СМР (не раздел) — отдельный бар. Длительность задаётся вручную
+// через числовой инпут. Данные хранятся в appState.workDays: { [_uid]: days }
+function _renderGanttWorks(wrap) {
+  if (!appState.workDays) appState.workDays = {};
+  const rows = appState.smrRows.filter(r => !r.isSection && r.name);
+
+  if (!rows.length) {
+    wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Добавьте работы в смету — они появятся здесь</div>';
+    return;
+  }
+
+  // Считаем сумму проставленных дней
+  const totalSet = rows.reduce((s, r) => s + (appState.workDays[r._uid] || 0), 0);
+  const totalDays = appState.totalDays || 1;
+
+  wrap.innerHTML = '';
+
+  // Считаем позицию начала каждого бара (последовательно)
+  let cursor = 0; // в днях от начала
+  rows.forEach((r, i) => {
+    const uid  = r._uid;
+    const days = appState.workDays[uid] || 0;
+    const pct  = totalDays > 0 ? (cursor / totalDays * 100) : 0;
+    const wPct = totalDays > 0 ? (days   / totalDays * 100) : 0;
+
+    // Найдём цвет раздела этой строки
+    let color = '#9b9b9b';
+    for (let j = i - 1; j >= 0; j--) {
+      if (appState.smrRows[j]?.isSection) {
+        const stageName = appState.smrRows[j].name?.trim();
+        const stage = appState.stages.find(s => s.name === stageName);
+        if (stage) { color = stage.color; }
+        break;
+      }
+    }
+
+    const row = document.createElement('div');
+    row.className = 'gantt-row';
+    row.innerHTML = `
+      <div class="gantt-row-label" style="gap:6px">
+        <span class="gantt-stage-dot" style="background:${color}"></span>
+        <span class="gantt-stage-name" style="cursor:default;border:none" title="${esc(r.name)}">${esc(r.name.length > 28 ? r.name.slice(0, 26) + '…' : r.name)}</span>
+        <input type="number" min="0" max="999" value="${days || ''}"
+          placeholder="дн."
+          data-uid="${uid}"
+          style="width:44px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);
+                 font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
+                 font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;"
+          class="gantt-work-days-inp">
+      </div>
+      <div class="gantt-track-wrap">
+        <div class="gantt-track">
+          ${days > 0 ? `<div class="gantt-bar" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${color};pointer-events:none">
+            <span class="gantt-bar-label">${days} дн.</span>
+          </div>` : ''}
+        </div>
+      </div>`;
+    wrap.appendChild(row);
+
+    if (days > 0) cursor += days;
+  });
+
+  // Биндим инпуты
+  wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const uid = inp.dataset.uid;
+      const val = Math.max(0, parseInt(inp.value) || 0);
+      if (!appState.workDays) appState.workDays = {};
+      appState.workDays[uid] = val;
+      _renderGanttWorks(wrap);
+      _renderGanttRuler();
+      _updateTotals();
+    });
+  });
+}
+
+// Публичная функция переключения режима Ганта
+export function setGanttMode(mode) {
+  appState.ganttMode = mode; // 'stages' | 'works'
+  // Обновляем кнопки-переключатели
+  const btnStages = document.getElementById('ganttBtnStages');
+  const btnWorks  = document.getElementById('ganttBtnWorks');
+  if (btnStages) btnStages.classList.toggle('active', mode === 'stages');
+  if (btnWorks)  btnWorks.classList.toggle('active',  mode === 'works');
+  _renderGantt();
+}
+
 function _updateGanttBarDOM(idx) {
   const s = appState.stages[idx];
   const bar = document.querySelector(`.gantt-bar[data-idx="${idx}"]`);
@@ -1000,15 +1090,20 @@ function _initGanttDrag() {
     const dx   = e.clientX - startX;
     const dpct = dx / trackW * 100;
     const s    = appState.stages[idx];
+    // Шаг снэппинга = 1 рабочий день в процентах
+    const snap = appState.totalDays > 0 ? (100 / appState.totalDays) : 1;
 
     if (type === 'bar') {
-      s.pct = Math.max(0, Math.min(origPct + dpct, 100 - origW));
+      let rawPct = Math.max(0, Math.min(origPct + dpct, 100 - origW));
+      s.pct = Math.round(rawPct / snap) * snap;
     } else if (type === 'left') {
-      const newPct = Math.max(0, Math.min(origPct + dpct, origPct + origW - 2));
-      s.w   = origW - (newPct - origPct);
-      s.pct = newPct;
+      let rawPct = Math.max(0, Math.min(origPct + dpct, origPct + origW - snap));
+      rawPct = Math.round(rawPct / snap) * snap;
+      s.w   = origW - (rawPct - origPct);
+      s.pct = rawPct;
     } else {
-      s.w = Math.max(2, Math.min(origW + dpct, 100 - origPct));
+      let rawW = Math.max(snap, Math.min(origW + dpct, 100 - origPct));
+      s.w = Math.round(rawW / snap) * snap;
     }
     _updateGanttBarDOM(idx);
   });
@@ -1224,17 +1319,30 @@ function _initDaysSlider() {
   const slider = document.getElementById('totalDaysSlider');
   const output = document.getElementById('totalDaysVal');
   if (!slider || !output) return;
-  // Восстанавливаем значение из appState (если проект был загружен)
-  slider.value = appState.totalDays;
-  output.textContent = appState.totalDays;
-  slider.addEventListener('input', () => {
-    appState.totalDays = +slider.value;
+
+  // Восстанавливаем значение из appState только если оно было явно задано пользователем
+  // (totalDaysSet флаг). При первом запуске поле остаётся пустым (placeholder виден).
+  if (appState.totalDaysSet && appState.totalDays > 0) {
+    slider.value = appState.totalDays;
     output.textContent = appState.totalDays;
+  } else {
+    slider.value = '';
+    output.textContent = '';
+  }
+
+  slider.addEventListener('input', () => {
+    const v = +slider.value || 0;
+    appState.totalDays    = v;
+    appState.totalDaysSet = v > 0;
+    output.textContent    = v || '';
     _renderGantt();
     _renderPayments();
     _updateHeaderDates();
     _updateTotals();
   });
+
+  // При инициализации пересчитываем финиш (если уже есть дата старта из сохранённого проекта)
+  if (typeof window._calcFinish === 'function') window._calcFinish();
 }
 
 // ── PDF ───────────────────────────────────────────────────────────
