@@ -27,6 +27,9 @@ const _state = {
   stages:         [],      // этапы Гантта
   payments:       [],      // платёжные слоты
   totalDays:      60,      // общее число рабочих дней
+  totalDaysOverride: null, // null = авто, число = ручной режим
+  workDays:       {},      // { [_uid]: days } — дни по работам
+  workParallel:   {},      // { [_uid]: bool } — параллельность работ
   stageCounter:   0,       // счётчик id этапов
   payCounter:     0,       // счётчик id платежей
 
