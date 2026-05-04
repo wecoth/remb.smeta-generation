@@ -1130,17 +1130,20 @@ function _renderGanttWorks(wrap) {
   }
 
   // Новым работам проставляем workStart последовательно: каждая начинается после предыдущей.
-  // Проходим по allWorkRows по порядку — для каждой работы без workStart берём конец предыдущей.
+  // Для уже расставленных вручную — не трогаем, но учитываем их конец для следующих новых.
   {
     let seqCursor = 0;
     allWorkRows.forEach(r => {
       if (appState.workStart[r._uid] === undefined) {
-        // Новая работа: ставим после того места где закончилась предыдущая
+        // Новая работа — ставим ровно туда где закончилась предыдущая
         appState.workStart[r._uid] = seqCursor;
+        // Сразу двигаем курсор вперёд на её длительность
+        seqCursor += appState.workDays[r._uid] || 0;
+      } else {
+        // Уже расставленная вручную — не трогаем, но двигаем курсор если она выступает дальше
+        const end = appState.workStart[r._uid] + (appState.workDays[r._uid] || 0);
+        if (end > seqCursor) seqCursor = end;
       }
-      // Двигаем курсор до конца этой работы (чтобы следующая новая шла за ней)
-      const end = appState.workStart[r._uid] + (appState.workDays[r._uid] || 0);
-      if (end > seqCursor) seqCursor = end;
     });
   }
 
