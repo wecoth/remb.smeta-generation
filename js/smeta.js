@@ -1,5 +1,6 @@
 // ─── SMETA.JS ─────────────────────────────────────────────────────
 import { appState } from './state.js';
+import { EventBus } from './eventBus.js';
 import { renderToImage, getWallsBboxWorld } from './render.js';
 
 // ── Utils ─────────────────────────────────────────────────────────
@@ -134,6 +135,15 @@ export function importRoomsFromPlanner(rooms) {
     perim: parseFloat(r.perimeter)  || 0,
   }));
   _renderExpl();
+}
+
+function _syncRoomsFromState() {
+  _rooms = (appState.rooms || []).map(r => ({
+    name:  r.name,
+    floor: r.area,
+    walls: r.metrics?.wallAreaNetM2 ?? r.wallArea,
+    perim: r.metrics?.perimeterFloorM ?? r.perimeter,
+  }));
 }
 
 function _renderExpl() {
@@ -1277,4 +1287,17 @@ export function initSmeta() {
   _renderGantt();
   _renderPayments();
   _updateTotals();
+
+  // Автоматическая синхронизация экспликации с планировщиком
+  EventBus.on('rooms:computed', () => {
+    _syncRoomsFromState();
+    _renderExpl();
+    _updateTotals();
+  });
+
+  // Если комнаты уже загружены (например, из localStorage), сразу показать
+  if (appState.rooms && appState.rooms.length) {
+    _syncRoomsFromState();
+    _renderExpl();
+  }
 }
