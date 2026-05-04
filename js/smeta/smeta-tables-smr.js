@@ -32,6 +32,7 @@ export function handleSmr(e) {
     }
     renderSmrTable();
     updateTotals();
+    _syncSectionsToGantt();
   });
 }
 
@@ -55,7 +56,7 @@ export function addSmrRow(isSection = false) {
   }
   renderSmrTable();
   updateTotals();
-  if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
+  if (appState.smrMode === 'client') _syncSectionsToGantt();
   setTimeout(() => {
     const inputs = document.querySelectorAll('#smrTbody input.inp-name, #smrTbody input.inp-section');
     inputs[inputs.length - 1]?.focus();
@@ -72,7 +73,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
   }
   renderSmrTable();
   updateTotals();
-  if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
+  if (appState.smrMode === 'client') _syncSectionsToGantt();
   setTimeout(() => {
     const tbody = document.getElementById('smrTbody');
     if (!tbody) return;
@@ -168,7 +169,7 @@ export function renderSmrTable() {
     }
     renderSmrTable();
     updateTotals();
-    if (isSection && appState.smrMode === 'client') _syncSectionsToGantt();
+    if (appState.smrMode === 'client') _syncSectionsToGantt();
     setTimeout(() => {
       const tbody2 = document.getElementById('smrTbody');
       for (const tr of tbody2.querySelectorAll('tr')) {
@@ -177,7 +178,7 @@ export function renderSmrTable() {
       }
     }, 30);
   });
-  initRowDnd(tbody, rows, () => { renderSmrTable(); updateTotals(); });
+  initRowDnd(tbody, rows, () => { renderSmrTable(); updateTotals(); _syncSectionsToGantt(); });
 }
 
 // ── Привязка событий ───────────────────────────────────────────────
@@ -233,7 +234,7 @@ function _bindSmrEvents(tbody) {
       }
       renderSmrTable();
       updateTotals();
-      if (wasSection && appState.smrMode === 'client') _syncSectionsToGantt();
+      if (appState.smrMode === 'client') _syncSectionsToGantt();
     });
   });
 }
