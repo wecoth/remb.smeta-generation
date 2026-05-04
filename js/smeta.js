@@ -951,12 +951,7 @@ function _renderGantt() {
             <div class="gantt-ticks">${ticksHtml}</div>
             <span class="gantt-bar-label">${dur} дн.</span>
             ${!isOverride && hasAuto ? '' : `<div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>`}
-          </div>` : `<div class="gantt-bar" data-idx="${idx}" style="left:${s.pct}%;width:${s.w}%;background:${s.color}">
-            <div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>
-            <div class="gantt-ticks"></div>
-            <span class="gantt-bar-label">${Math.max(1, Math.round(totalDays * s.w / 100))} дн.</span>
-            <div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>
-          </div>`}
+          </div>` : ''}
         </div>
       </div>`;
     wrap.appendChild(row);
@@ -1369,11 +1364,20 @@ function _renderGanttRuler() {
   ruler.innerHTML = '';
   const totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 0;
   if (!totalDays) return;
-  const ticks = Math.min(totalDays, 12);
+
+  // Адаптируем ширину spacer под текущий режим (works vs stages)
+  const spacer = document.getElementById('ganttRulerSpacer');
+  if (spacer) {
+    const isWorks = (appState.ganttMode === 'works');
+    spacer.style.width = isWorks ? 'calc(280px + 14px)' : 'calc(230px + 14px)';
+  }
+
+  const ticks = Math.min(totalDays, 20);
   for (let i = 0; i <= ticks; i++) {
+    const dayNum = Math.round(totalDays * i / ticks);
     const t = document.createElement('span');
     t.className = 'gantt-tick';
-    t.textContent = Math.round(totalDays * i / ticks);
+    t.textContent = dayNum;
     t.style.left = (i / ticks * 100) + '%';
     ruler.appendChild(t);
   }
