@@ -424,7 +424,7 @@ function _renderGanttWorks(wrap) {
                    font-size:11px;font-weight:600;color:#fff;white-space:nowrap;
                    background:transparent;border-radius:3px;padding:1px 5px;
                    border:none;cursor:text;user-select:none;z-index:2;
-                   outline:1px dashed rgba(0,0,0,0.5);outline-offset:-2px;">${days} дн.</span>
+                   outline:1px solid rgba(255,255,255,0.85);outline-offset:-2px;">${days} дн.</span>
           <div class="gantt-handle gantt-handle-r gantt-work-handle" data-uid="${uid}" data-edge="right"></div>`;
         track.appendChild(bar);
       }
