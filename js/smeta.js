@@ -1129,6 +1129,21 @@ function _renderGanttWorks(wrap) {
     return;
   }
 
+  // Новым работам (uid ещё нет в workStart) ставим startDay после последней известной работы
+  let knownMax = 0;
+  allWorkRows.forEach(r => {
+    if (appState.workStart[r._uid] !== undefined) {
+      const s = appState.workStart[r._uid];
+      const d = appState.workDays[r._uid] || 0;
+      knownMax = Math.max(knownMax, s + d);
+    }
+  });
+  allWorkRows.forEach(r => {
+    if (appState.workStart[r._uid] === undefined) {
+      appState.workStart[r._uid] = knownMax;
+    }
+  });
+
   // totalDays = max(startDay + duration) по всем работам
   let autoTotal = 0;
   allWorkRows.forEach(r => {
@@ -1213,7 +1228,20 @@ function _renderGanttWorks(wrap) {
       _renderGanttRuler();
       _updateTotals();
     };
-    inp.addEventListener('blur', commit);
+    // mousedown на другом инпуте не должен вызывать blur у текущего раньше времени
+    inp.addEventListener('mousedown', e => e.stopPropagation());
+    inp.addEventListener('blur', e => {
+      // Если фокус уходит на другой .gantt-work-days-inp — не рендерим сейчас,
+      // новый инпут сам получит focus и commit произойдёт при его blur
+      const next = e.relatedTarget;
+      if (next && next.classList && next.classList.contains('gantt-work-days-inp')) {
+        // Просто сохраняем значение без ре-рендера
+        if (!appState.workDays) appState.workDays = {};
+        appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
+        return;
+      }
+      commit();
+    });
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
   });
 
