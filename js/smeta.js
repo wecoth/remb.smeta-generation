@@ -1156,15 +1156,11 @@ function _renderGanttWorks(wrap) {
     autoTotal = Math.max(autoTotal, start + days);
   });
 
-  const manualTotal = parseInt(document.getElementById('totalDaysSlider')?.value) || 0;
-  let totalDays = Math.max(manualTotal, autoTotal) || 1;
-
-  // Обновляем поле общего срока
+  // totalDays = строго по барам, слайдер только отображает (не ограничивает снизу)
+  let totalDays = autoTotal || 1;
+  appState.totalDays = totalDays;
   const sliderEl = document.getElementById('totalDaysSlider');
-  if (sliderEl && String(totalDays) !== sliderEl.value) {
-    sliderEl.value = totalDays;
-    appState.totalDays = totalDays;
-  }
+  if (sliderEl) sliderEl.value = totalDays;
 
   wrap.innerHTML = '';
 
