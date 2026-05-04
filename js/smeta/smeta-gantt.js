@@ -400,16 +400,7 @@ function _renderGanttWorks(wrap) {
       labelDiv.dataset.uid = uid;
       labelDiv.innerHTML = `
         <span class="gantt-work-drag-handle" title="Перетащите на шкалу">⠿</span>
-        <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>
-        <input type="number" min="1" max="999"
-          class="gantt-works-days-inp"
-          data-uid="${uid}"
-          value="${days > 0 ? days : ''}"
-          placeholder="0"
-          style="width:38px;padding:1px 3px;border-radius:4px;border:1px solid var(--border-1);
-                 font-size:11px;text-align:center;background:var(--bg-card);color:var(--text-1);
-                 font-family:var(--font-mono);-moz-appearance:textfield;appearance:textfield;outline:none;">
-        <span style="font-size:11px;color:var(--text-3)">дн.</span>`;
+        <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>`;
 
       const trackWrap = document.createElement('div');
       trackWrap.className = 'gantt-track-wrap';
@@ -428,7 +419,12 @@ function _renderGanttWorks(wrap) {
           <div class="gantt-ticks">${Array.from({length: days + 1}, (_, ti) =>
             `<div class="gantt-tick-mark" style="left:${(ti / days * 100).toFixed(2)}%"></div>`
           ).join('')}</div>
-          <span class="gantt-bar-label">${days} дн.</span>
+          <span class="gantt-bar-days-badge" data-uid="${uid}" title="Нажмите чтобы изменить"
+            style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                   font-size:11px;font-weight:600;color:#fff;white-space:nowrap;
+                   background:rgba(0,0,0,0.18);border-radius:4px;padding:1px 6px;
+                   border-bottom:1px dashed rgba(255,255,255,0.7);cursor:text;
+                   user-select:none;z-index:2;">${days} дн.</span>
           <div class="gantt-handle gantt-handle-r gantt-work-handle" data-uid="${uid}" data-edge="right"></div>`;
         track.appendChild(bar);
       }
@@ -440,19 +436,50 @@ function _renderGanttWorks(wrap) {
     });
   });
 
-  // ── Редактируемые дни работы ─────────────────────────────────────────
-  wrap.querySelectorAll('.gantt-works-days-inp').forEach(inp => {
-    inp.addEventListener('mousedown', e => e.stopPropagation()); // не триггерить drag лейбла
-    inp.addEventListener('change', e => {
-      const uid = inp.dataset.uid;
-      const val = Math.max(1, parseInt(inp.value) || 1);
-      inp.value = val;
-      appState.workDays[uid] = val;
-      if (!appState.workMovedManually) appState.workMovedManually = {};
-      recalcAllStageDaysAuto();
-      _renderGanttWorks(wrap);
-      _renderGanttRuler();
-      _onDurationChanged();
+  // ── Клик на цифру внутри бара → инлайн-редактирование ───────────────
+  wrap.querySelectorAll('.gantt-bar-days-badge').forEach(badge => {
+    badge.addEventListener('mousedown', e => { e.stopPropagation(); e.preventDefault(); });
+    badge.addEventListener('click', e => {
+      e.stopPropagation();
+      const uid = badge.dataset.uid;
+      const curDays = appState.workDays[uid] || 1;
+
+      // Создаём инпут на месте badge
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = 1; inp.max = 999;
+      inp.value = curDays;
+      inp.style.cssText = `
+        position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        width:44px;padding:1px 4px;border-radius:4px;
+        border:1px solid rgba(255,255,255,0.9);
+        font-size:11px;font-weight:600;text-align:center;
+        background:rgba(0,0,0,0.45);color:#fff;
+        font-family:var(--font-mono);
+        -moz-appearance:textfield;appearance:textfield;
+        outline:none;z-index:10;`;
+      badge.style.display = 'none';
+      badge.parentElement.appendChild(inp);
+      inp.focus(); inp.select();
+
+      function commit() {
+        const val = Math.max(1, parseInt(inp.value) || 1);
+        appState.workDays[uid] = val;
+        if (!appState.workMovedManually) appState.workMovedManually = {};
+        inp.remove();
+        badge.style.display = '';
+        recalcAllStageDaysAuto();
+        _renderGanttWorks(wrap);
+        _renderGanttRuler();
+        _onDurationChanged();
+      }
+
+      inp.addEventListener('mousedown', e => e.stopPropagation());
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { inp.remove(); badge.style.display = ''; }
+      });
+      inp.addEventListener('blur', commit);
     });
   });
 
