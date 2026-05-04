@@ -1129,25 +1129,20 @@ function _renderGanttWorks(wrap) {
     return;
   }
 
-  // Новым работам (uid ещё нет в workStart) ставим startDay последовательно друг за другом
-  // Считаем текущий «хвост» по уже известным работам
-  let knownMax = 0;
-  allWorkRows.forEach(r => {
-    if (appState.workStart[r._uid] !== undefined) {
-      const s = appState.workStart[r._uid];
-      const d = appState.workDays[r._uid] || 0;
-      knownMax = Math.max(knownMax, s + d);
-    }
-  });
-  // Новые работы выстраиваем последовательно начиная с knownMax
-  let cursor = knownMax;
-  allWorkRows.forEach(r => {
-    if (appState.workStart[r._uid] === undefined) {
-      appState.workStart[r._uid] = cursor;
-      // Сдвигаем cursor вперёд на длительность этой работы (0 пока не введено — ставим 1 как плейсхолдер)
-      cursor += Math.max(appState.workDays[r._uid] || 0, 0);
-    }
-  });
+  // Новым работам проставляем workStart последовательно: каждая начинается после предыдущей.
+  // Проходим по allWorkRows по порядку — для каждой работы без workStart берём конец предыдущей.
+  {
+    let seqCursor = 0;
+    allWorkRows.forEach(r => {
+      if (appState.workStart[r._uid] === undefined) {
+        // Новая работа: ставим после того места где закончилась предыдущая
+        appState.workStart[r._uid] = seqCursor;
+      }
+      // Двигаем курсор до конца этой работы (чтобы следующая новая шла за ней)
+      const end = appState.workStart[r._uid] + (appState.workDays[r._uid] || 0);
+      if (end > seqCursor) seqCursor = end;
+    });
+  }
 
   // totalDays = max(startDay + duration) по всем работам
   let autoTotal = 0;
@@ -1221,30 +1216,35 @@ function _renderGanttWorks(wrap) {
     });
   });
 
-  // Инпуты — обновляют state при вводе, ре-рендер при blur/Enter
-  // _ganttRenderPending предотвращает двойной ре-рендер при переходе между инпутами
+  // Инпуты — сохраняют state при вводе, ре-рендер сразу при blur
+  // После ре-рендера восстанавливаем фокус на тот инпут, на который перешли мышью
   wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
+    inp.addEventListener('focus', () => { inp.select(); });
     inp.addEventListener('input', () => {
       if (!appState.workDays) appState.workDays = {};
       appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
     });
-    inp.addEventListener('focus', () => {
-      inp.select();
-    });
-    inp.addEventListener('blur', () => {
+    // Запоминаем uid следующего инпута при mousedown (до того как blur сработает)
+    inp.addEventListener('mousedown', () => { wrap._pendingFocusUid = inp.dataset.uid; });
+    inp.addEventListener('blur', e => {
       if (!appState.workDays) appState.workDays = {};
       appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
-      // Откладываем ре-рендер на следующий тик — если фокус перешёл на другой инпут,
-      // новый focus отменит таймер и ре-рендер произойдёт только один раз при уходе из зоны
-      if (wrap._commitTimer) clearTimeout(wrap._commitTimer);
-      wrap._commitTimer = setTimeout(() => {
-        _recalcAllStageDaysAuto();
-        _renderGanttWorks(wrap);
-        _renderGanttRuler();
-        _updateTotals();
-      }, 50);
+      // Узнаём uid следующего инпута (если переходим на другой)
+      const nextUid = e.relatedTarget && e.relatedTarget.dataset && e.relatedTarget.dataset.uid
+        ? e.relatedTarget.dataset.uid
+        : wrap._pendingFocusUid;
+      wrap._pendingFocusUid = null;
+      _recalcAllStageDaysAuto();
+      _renderGanttWorks(wrap);
+      _renderGanttRuler();
+      _updateTotals();
+      // После ре-рендера фокусируем нужный инпут
+      if (nextUid) {
+        const nextInp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${nextUid}"]`);
+        if (nextInp) { nextInp.focus(); nextInp.select(); }
+      }
     });
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
   });
 
   // Drag бара (перемещение) и хэндлов (изменение размера)
