@@ -625,6 +625,16 @@
   .gantt-work-drag-handle:hover { background: var(--bg-hover); color: var(--text-2); }
   .gantt-work-drag-handle:active { cursor: grabbing; }
 
+  /* Весь лейбл работы — перетаскиваемый */
+  .gantt-works-label-draggable {
+    cursor: grab; border-radius: var(--r-sm);
+    transition: background .12s;
+  }
+  .gantt-works-label-draggable:hover {
+    background: var(--bg-hover);
+  }
+  .gantt-works-label-draggable:active { cursor: grabbing; }
+
   /* Ghost-бар при перетаскивании из лейбла */
   .gantt-work-ghost {
     position: fixed; height: 22px; border-radius: 4px;
