@@ -3,6 +3,10 @@ import { appState } from './state.js';
 import { EventBus } from './eventBus.js';
 import { renderToImage, getWallsBboxWorld } from './render.js';
 
+// ── Row UID generator ─────────────────────────────────────────────
+let _rowUid = 1;
+function _uid() { return _rowUid++; }
+
 // ── Utils ─────────────────────────────────────────────────────────
 
 export function fmt(v) {
@@ -389,14 +393,13 @@ function _initInsertZones(tbody, table) {
 
       if (table === 'smr') {
         const newRow = isSection
-          ? { name: '', isSection: true }
-          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+          ? { name: '', isSection: true, _uid: _uid() }
+          : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
         if (appState.smrMode === 'masters') {
           appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
         } else {
           appState.smrRows.splice(beforeIdx, 0, newRow);
-          // Один объект — изменения видны в обоих массивах
-          appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
+          appState.smrRowsMasters.splice(beforeIdx, 0, structuredClone(newRow));
         }
         _renderSmrTable();
         _updateTotals();
@@ -436,13 +439,13 @@ export function handleSmr(e) {
     if (err) { alert('Ошибка чтения файла'); return; }
     const rows = smartParse(json);
     if (appState.smrMode === 'masters') {
+      rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
       appState.smrRowsMasters = rows;
     } else {
+      // Клиентский режим: проставляем UID и создаём независимые копии для мастеров
+      rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
       appState.smrRows = rows;
-      // Инициализируем мастеров теми же объектами
-      if (appState.smrRowsMasters.length === 0) {
-        appState.smrRowsMasters = [...rows];
-      }
+      appState.smrRowsMasters = rows.map(r => structuredClone(r));
     }
     _renderSmrTable();
     _updateTotals();
@@ -564,8 +567,22 @@ function _bindSmrEvents(tbody) {
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
     btn.addEventListener('click', e => {
       const i = +e.target.dataset.i;
-      const wasSection = activeRows[i]?.isSection;
-      activeRows.splice(i, 1);
+      const isClientMode = appState.smrMode === 'client';
+      const activeRows = isClientMode ? appState.smrRows : appState.smrRowsMasters;
+      const row = activeRows[i];
+      const wasSection = row?.isSection;
+
+      if (isClientMode) {
+        // Удаляем из клиентского списка и синхронно из мастеров по _uid
+        appState.smrRows.splice(i, 1);
+        if (row?._uid !== undefined) {
+          const masterIdx = appState.smrRowsMasters.findIndex(r => r._uid === row._uid);
+          if (masterIdx !== -1) appState.smrRowsMasters.splice(masterIdx, 1);
+        }
+      } else {
+        // Удаляем только из мастеров — клиентский список не трогаем
+        appState.smrRowsMasters.splice(i, 1);
+      }
       _renderSmrTable();
       _updateTotals();
       if (wasSection && appState.smrMode === 'client') _syncSectionsToGantt();
@@ -575,14 +592,13 @@ function _bindSmrEvents(tbody) {
 
 export function addSmrRow(isSection = false) {
   const newRow = isSection
-    ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+    ? { name: '', isSection: true, _uid: _uid() }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters.push(newRow);
   } else {
     appState.smrRows.push(newRow);
-    // Один и тот же объект — изменения видны в обоих массивах
-    appState.smrRowsMasters.push(newRow);
+    appState.smrRowsMasters.push(structuredClone(newRow));
   }
   _renderSmrTable();
   _updateTotals();
@@ -596,14 +612,13 @@ export function addSmrRow(isSection = false) {
 // Insert a row/section at a specific index
 export function insertSmrRow(afterIdx, isSection = false) {
   const newRow = isSection
-    ? { name: '', isSection: true }
-    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false };
+    ? { name: '', isSection: true, _uid: _uid() }
+    : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
   } else {
     appState.smrRows.splice(afterIdx + 1, 0, newRow);
-    // Один объект — изменения видны в обоих массивах
-    appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
+    appState.smrRowsMasters.splice(afterIdx + 1, 0, structuredClone(newRow));
   }
   _renderSmrTable();
   _updateTotals();
@@ -627,6 +642,7 @@ export function clearSmr() {
     appState.smrRowsMasters = [];
   } else {
     appState.smrRows = [];
+    appState.smrRowsMasters = [];
   }
   _renderSmrTable();
   _updateTotals();
@@ -635,9 +651,10 @@ export function clearSmr() {
 export function setSmrMode(mode) {
   if (mode === appState.smrMode) return;
   appState.smrMode = mode;
-  // Если переключаемся на мастеров и их массив пустой — копируем те же объекты (не клоны)
+  // Если переключаемся на мастеров и их массив пустой — создаём независимые копии
   if (mode === 'masters' && appState.smrRowsMasters.length === 0 && appState.smrRows.length > 0) {
-    appState.smrRowsMasters = [...appState.smrRows];
+    appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
+    appState.smrRowsMasters = appState.smrRows.map(r => structuredClone(r));
   }
   const btnClient  = document.getElementById('smrBtnClient');
   const btnMasters = document.getElementById('smrBtnMasters');
@@ -1277,6 +1294,9 @@ export function initSmeta() {
   if (appState.smrRows.length === 0 && appState.smrRowsMasters.length === 0) {
     initSmrManual();
   } else {
+    // Проставляем UID строкам, загруженным из localStorage (могут не иметь _uid)
+    appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
+    appState.smrRowsMasters.forEach(r => { if (!r._uid) r._uid = _uid(); });
     _renderSmrTable();
   }
   if (appState.matRows.length === 0) {
