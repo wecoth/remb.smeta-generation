@@ -236,6 +236,11 @@
             <button class="smr-mode-btn active" id="ganttBtnStages" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('stages')">По этапам</button>
             <button class="smr-mode-btn" id="ganttBtnWorks" onclick="event.stopPropagation(); window._smetaModule.setGanttMode('works')">По работам</button>
           </div>
+          <button id="ganttClearBtn" onclick="event.stopPropagation(); window._smetaModule.clearWorksGantt()"
+            style="display:none;margin-left:8px;padding:3px 12px;border-radius:6px;border:1px solid var(--border-1);
+                   background:var(--bg-card);color:#e05c5c;font-size:12px;cursor:pointer;white-space:nowrap;">
+            Очистить
+          </button>
           <div class="scard-arrow">▾</div>
         </div>
         <div class="scard-body">
