@@ -1199,9 +1199,6 @@ function _renderGanttWorks(wrap) {
       row.className = 'gantt-row gantt-works-row';
       row.innerHTML = `
         <div class="gantt-row-label" style="gap:5px;padding-left:20px">
-          ${ri > 0
-            ? `<button class="gantt-parallel-btn${isParallel ? ' active' : ''}" data-uid="${uid}" title="Параллельно с предыдущей работой">⇉</button>`
-            : '<span style="width:22px;display:inline-block"></span>'}
           <span class="gantt-work-name" title="${esc(r.name)}">${esc(r.name)}</span>
           <input type="number" min="0" max="999" value="${days || ''}"
             placeholder="0"
@@ -1230,25 +1227,20 @@ function _renderGanttWorks(wrap) {
   });
 
   wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
+    // Обновляем state при вводе, но НЕ ре-рендерим (чтобы не терять фокус)
     inp.addEventListener('input', () => {
       if (!appState.workDays) appState.workDays = {};
       appState.workDays[inp.dataset.uid] = Math.max(0, parseInt(inp.value) || 0);
+    });
+    // Полный ре-рендер только когда ушли из поля или нажали Enter
+    const commit = () => {
       _recalcAllStageDaysAuto();
       _renderGanttWorks(wrap);
       _renderGanttRuler();
       _updateTotals();
-    });
-  });
-
-  wrap.querySelectorAll('.gantt-parallel-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!appState.workParallel) appState.workParallel = {};
-      const uid = btn.dataset.uid;
-      appState.workParallel[uid] = !appState.workParallel[uid];
-      _recalcAllStageDaysAuto();
-      _renderGanttWorks(wrap);
-      _renderGanttRuler();
-    });
+    };
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
   });
 
   // Drag хэндлов и бара для работ
