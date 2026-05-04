@@ -29,7 +29,8 @@ import { initGantt,
          setGanttMode,
          ensureStage,
          syncSectionsToGantt,
-         recalcTotalDaysAuto } from './smeta-gantt.js';
+         recalcTotalDaysAuto,
+         clearWorksGantt } from './smeta-gantt.js';
 import { renderPayments }    from './smeta-payments.js';
 import { generatePDF }       from './smeta-pdf.js';
 
@@ -216,6 +217,7 @@ export const smetaModule = {
   // Gantt
   setGanttMode,
   ensureStage,
+  clearWorksGantt,
 
   // Header
   updateTotals,
