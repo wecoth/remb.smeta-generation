@@ -136,12 +136,15 @@ export function recalcTotalDaysAuto() {
     if (end > maxEnd) maxEnd = end;
   });
   if (!appState.totalDaysOverride && maxEnd > 0) {
+    // Если работы уже расставлены — верим им, этапы не перезаписывают totalDays
+    const worksEnd = appState.worksRealEnd || 0;
+    const effectiveEnd = worksEnd > 0 ? worksEnd : maxEnd;
     const inp = document.getElementById('totalDaysSlider');
     if (inp) {
-      inp.value = maxEnd;
-      appState.totalDays = maxEnd;
+      inp.value = effectiveEnd;
+      appState.totalDays = Math.max(effectiveEnd, 7);
       const valEl = document.getElementById('totalDaysVal');
-      if (valEl) valEl.textContent = maxEnd;
+      if (valEl) valEl.textContent = effectiveEnd;
       if (typeof window._calcFinish === 'function') window._calcFinish();
     }
   }
@@ -366,6 +369,7 @@ function _renderGanttWorks(wrap) {
   // Для рендера баров шкала минимум 7 — визуальное пространство для drag
   const totalDays = Math.max(realEnd, 7);
   appState.totalDays = totalDays;
+  appState.worksRealEnd = realEnd; // фиксируем правду от работ
   // В поле «Общий срок» показываем реальный конец (без минимума 7)
   const sliderEl = document.getElementById('totalDaysSlider');
   if (sliderEl) sliderEl.value = realEnd > 0 ? realEnd : '';
