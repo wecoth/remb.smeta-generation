@@ -180,7 +180,7 @@ function _renderGanttStages(wrap) {
   }
 
   recalcAllStageDaysAuto();
-  const totalDays = appState.totalDays || 7;
+  const totalDays = Math.max(appState.totalDays || 0, 7);
 
   // Позиционируем с учётом parallelWithPrev
   let cursor = 0;
@@ -330,6 +330,12 @@ function _renderGanttWorks(wrap) {
 
   const allWorkRows = groups.flatMap(g => g.rows);
   if (!allWorkRows.length) {
+    // Даже без работ — держим шкалу на дефолте 7
+    if (!appState.totalDays || appState.totalDays < 7) {
+      appState.totalDays = 7;
+      const sl = document.getElementById('totalDaysSlider');
+      if (sl) sl.value = 7;
+    }
     wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Добавьте работы в смету — они появятся здесь</div>';
     return;
   }
@@ -355,7 +361,8 @@ function _renderGanttWorks(wrap) {
   allWorkRows.forEach(r => {
     autoTotal = Math.max(autoTotal, (appState.workStart[r._uid] || 0) + (appState.workDays[r._uid] || 0));
   });
-  let totalDays = autoTotal || 1;
+  // Не схлопываем шкалу: берём максимум из авто, текущего значения и минимума 7
+  const totalDays = Math.max(autoTotal, appState.totalDays || 0, 7);
   appState.totalDays = totalDays;
   const sliderEl = document.getElementById('totalDaysSlider');
   if (sliderEl) sliderEl.value = totalDays;
@@ -564,7 +571,7 @@ function _renderGanttRuler() {
   const ruler = document.getElementById('ganttRuler');
   if (!ruler) return;
   ruler.innerHTML = '';
-  const totalDays = parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 7;
+  const totalDays = Math.max(parseInt(document.getElementById('totalDaysSlider')?.value) || appState.totalDays || 0, 7);
   if (!totalDays) return;
 
   const spacer = document.getElementById('ganttRulerSpacer');
