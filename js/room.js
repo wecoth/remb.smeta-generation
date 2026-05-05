@@ -735,64 +735,47 @@ export function computeRoomMetrics({
     }
   }
 
-  // Узкие участки стен — любые непрерывные отрезки поверхности стены
-  // шириной < 500 мм (между проёмами или целые ребра полигона).
+  // Узкие участки стен — любые отрезки поверхности стены шириной < 500 мм.
   //
-  // Итерируем по РЁБРАМ ПОЛИГОНА, а не по полной длине стен:
-  // это позволяет корректно поймать торцы висящих перегородок (200 мм),
-  // которые являются отдельным коротким ребром полигона, хотя физически
-  // принадлежат той же стене что и её длинная сторона.
+  // Два прохода:
+  // 1) По стенам с проёмами — ищем простенки между проёмами < 500 мм.
+  // 2) По рёбрам полигона — ловим короткие рёбра без проёмов (торцы
+  //    перегородок и т.п.), которые findAllWallsForEdge не находит
+  //    из-за проверки коллинеарности (торец ⊥ оси стены).
   let narrowWallAreaM2 = 0;
 
-  // Высота узкого участка: если сосед — дверной проём, берём высоту двери.
-  const narrowH = (prevOp, nextOp) => {
-    const prevH = prevOp && prevOp.type === 'door' ? prevOp.height / 1000 : heightM;
-    const nextH = nextOp && nextOp.type === 'door' ? nextOp.height / 1000 : heightM;
-    return Math.min(prevH, nextH);
-  };
-
+  // Строим карту проёмов по стенам
+  const opsByWall = new Map();
   for (const w of boundaryWalls) {
     const fullLen = wallFullLengthMm(w);
-    if (fullLen < 0.5) continue;
-
-    // Длина данной стены в этой комнате (может быть меньше fullLen,
-    // если стена T-образно разделена между несколькими комнатами).
-    let edgeLenMm = 0;
-    for (let k = 0; k < polygon.length; k++) {
-      const a = polygon[k], b = polygon[(k + 1) % polygon.length];
-      const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
-      if (edgeWalls.some(ew => ew.id === w.id)) {
-        edgeLenMm += Math.hypot(b.x - a.x, b.y - a.y);
-      }
-    }
-    if (edgeLenMm < 0.5) continue;
-
-    const wallOps = openings
+    const wOps = openings
       .filter(op => op.wallId === w.id)
       .map(op => ({
         startMm: Math.max(0, (op.t * fullLen) - op.width / 2),
         endMm:   Math.min(fullLen, (op.t * fullLen) + op.width / 2),
-        op: op,
+        op,
       }))
       .filter(item => item.endMm > item.startMm)
       .sort((a, b) => a.startMm - b.startMm);
+    opsByWall.set(w.id, wOps);
+  }
 
-    if (edgeLenMm < 500 && wallOps.length === 0) {
-      // Целое ребро < 500 мм без проёмов — полностью в погонаж
-      narrowWallsLm   += heightM;
-      narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
-      continue;
-    }
+  // Проход 1: простенки между проёмами на стенах с проёмами
+  for (const w of boundaryWalls) {
+    const fullLen = wallFullLengthMm(w);
+    const wOps = opsByWall.get(w.id) || [];
+    if (wOps.length === 0) continue;
 
-    // Иначе — стандартная логика: проходим по участкам между проёмами
     let cursor = 0;
-    for (let idx = 0; idx < wallOps.length; idx++) {
-      const item = wallOps[idx];
+    for (let idx = 0; idx < wOps.length; idx++) {
+      const item = wOps[idx];
       if (item.startMm > cursor + 0.5) {
         const gap = item.startMm - cursor;
         if (gap < 500) {
-          const prevOp = idx > 0 ? wallOps[idx - 1].op : null;
-          const h = narrowH(prevOp, item.op);
+          const prevOp = idx > 0 ? wOps[idx - 1].op : null;
+          const prevH = prevOp && prevOp.type === 'door' ? prevOp.height / 1000 : heightM;
+          const nextH = item.op.type === 'door' ? item.op.height / 1000 : heightM;
+          const h = Math.min(prevH, nextH);
           narrowWallsLm   += h;
           narrowWallAreaM2 += (gap / 1000) * h;
         }
@@ -802,12 +785,31 @@ export function computeRoomMetrics({
     if (cursor < fullLen - 0.5) {
       const gap = fullLen - cursor;
       if (gap < 500) {
-        const prevOp = wallOps.length > 0 ? wallOps[wallOps.length - 1].op : null;
-        const h = narrowH(prevOp, null);
+        const prevOp = wOps[wOps.length - 1].op;
+        const h = prevOp.type === 'door' ? prevOp.height / 1000 : heightM;
         narrowWallsLm   += h;
         narrowWallAreaM2 += (gap / 1000) * h;
       }
     }
+  }
+
+  // Проход 2: короткие рёбра полигона < 500 мм без проёмов
+  // (торцы перегородок, углы-выступы и т.п.)
+  for (let k = 0; k < polygon.length; k++) {
+    const a = polygon[k], b = polygon[(k + 1) % polygon.length];
+    const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
+    if (edgeLenMm >= 500) continue;
+
+    // Стены этого ребра по коллинеарности
+    const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
+
+    // Если у найденных стен есть проёмы — они уже обработаны в проходе 1
+    const hasOps = edgeWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
+    if (hasOps) continue;
+
+    // Торец или короткий участок без проёмов — полностью в погонаж
+    narrowWallsLm   += heightM;
+    narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
   }
 
   // Номинальная площадь стен (до вычета узких простенков)
@@ -897,7 +899,7 @@ export function updateExpl(explBody, roomCountEl) {
       <td>${r.area.toFixed(2)}</td>
       <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
       <td>${fmt(m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea)}</td>
-      <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
+      <td>${fmt((m.wallAreaNetM2 ?? r.wallArea ?? 0) + (m.narrowWallsLm ?? 0))}</td>
       <td>${fmt(m.windowAreaM2)}</td>
       <td>${fmt(m.windowRevealsLm)}</td>
       <td>${fmt(m.outerAnglesLm)}</td>
@@ -919,7 +921,7 @@ export function getComputedRooms() {
       name:              r.name,
       floorArea:         r.area,
       wallsAreaNominal:  m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea,
-      wallsArea:         m.wallAreaNetM2     ?? r.wallArea,
+      wallsArea:         (m.wallAreaNetM2 ?? r.wallArea ?? 0) + (m.narrowWallsLm ?? 0),
       perimeter:         m.perimeterFloorM   ?? r.perimeter,
       height:            r.height            ?? 0,
       windowAreaM2:      m.windowAreaM2      ?? 0,
