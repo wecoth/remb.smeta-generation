@@ -404,13 +404,18 @@ export function getSnappedWallResizePoint(fixedPoint, worldPoint, screenPoint, s
     const lenPx = len * _scale;
     if (lenPx > 8 && !shiftDown) {
       let angle = Math.atan2(dy, dx);
-      const AXIS_THRESHOLD = 0.18; // ~10°, согласовано с WallTool
+      const ANGLE_THRESHOLD = 0.09; // ~5°, согласовано с WallTool
+      const AXIS_SNAP_PX = 14;
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
         let diff = angle - sa;
         diff = diff - Math.round(diff / (2 * Math.PI)) * (2 * Math.PI);
-        if (Math.abs(diff) < AXIS_THRESHOLD) {
-          angle = sa;
-          nextPoint = { x: fixedPoint.x + Math.cos(angle) * len, y: fixedPoint.y + Math.sin(angle) * len };
+        if (Math.abs(diff) < ANGLE_THRESHOLD) {
+          const cosA = Math.cos(sa), sinA = Math.sin(sa);
+          const crossPx = Math.abs(-sinA * dx + cosA * dy) * _scale;
+          if (crossPx <= AXIS_SNAP_PX) {
+            angle = sa;
+            nextPoint = { x: fixedPoint.x + Math.cos(angle) * len, y: fixedPoint.y + Math.sin(angle) * len };
+          }
           break;
         }
       }
