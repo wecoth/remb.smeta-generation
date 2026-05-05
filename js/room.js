@@ -756,16 +756,26 @@ function calcOpeningsImpact(openings, heightMm, entranceDoorId) {
 //
 function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
   let narrowWallAreaM2 = 0;
-  // narrowWallsLm — высота в метрах каждого узкого участка.
-  // Для чистой площади стен прибавляется как м² (см. комментарий выше).
   let narrowWallsLm = 0;
 
-  // Карта проёмов по стенам
-  const opsByWall = new Map();
+  // ── Устраняем дублирование стен: одна стена может быть разбита примыканием ──
+  //    перегородки на несколько сегментов. Объединяем их по wallId.
+  //    Полная длина стены в комнате вычисляется через wallLengthInRoomMm.
+  const uniqueWalls = [];
+  const seenWallIds = new Set();
   for (const w of boundaryWalls) {
-    const fullLen = wallFullLengthMm(w);
+    if (seenWallIds.has(w.id)) continue;
+    seenWallIds.add(w.id);
+    const fullLen = wallLengthInRoomMm(w, polygon, boundaryWalls);
+    if (fullLen < 1) continue;
+    uniqueWalls.push({ wall: w, fullLen });
+  }
+
+  // Карта проёмов для каждой настоящей стены (ключ: wallId)
+  const opsByWall = new Map();
+  for (const { wall, fullLen } of uniqueWalls) {
     const wOps = openings
-      .filter(op => op.wallId === w.id)
+      .filter(op => op.wallId === wall.id)
       .map(op => ({
         startMm: Math.max(0, (op.t * fullLen) - op.width / 2),
         endMm:   Math.min(fullLen, (op.t * fullLen) + op.width / 2),
@@ -773,13 +783,12 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
       }))
       .filter(item => item.endMm > item.startMm)
       .sort((a, b) => a.startMm - b.startMm);
-    opsByWall.set(w.id, wOps);
+    opsByWall.set(wall.id, wOps);
   }
 
   // Проход 1: простенки между проёмами на стенах с проёмами
-  for (const w of boundaryWalls) {
-    const fullLen = wallFullLengthMm(w);
-    const wOps = opsByWall.get(w.id) || [];
+  for (const { wall, fullLen } of uniqueWalls) {
+    const wOps = opsByWall.get(wall.id) || [];
     if (wOps.length === 0) continue;
 
     let cursor = 0;
