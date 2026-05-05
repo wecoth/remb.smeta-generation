@@ -50,7 +50,7 @@ function _syncRoomsFromState() {
     name:          r.name,
     floor:         r.area,
     wallsNominal:  r.metrics?.wallAreaNominalM2 ?? r.metrics?.wallAreaNetM2 ?? r.wallArea,
-    walls:         r.metrics?.wallAreaNetM2     ?? r.wallArea,
+    walls:         (r.metrics?.wallAreaNetM2 ?? r.wallArea ?? 0) + (r.metrics?.narrowWallsLm ?? 0),
     perim:         r.metrics?.perimeterFloorM   ?? r.perimeter,
     windows:       r.metrics?.windowAreaM2      ?? 0,
     reveals:       r.metrics?.windowRevealsLm   ?? 0,
