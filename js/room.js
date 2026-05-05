@@ -869,12 +869,13 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
       const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
       const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
       if (Math.abs(edUX * wUX + edUY * wUY) > 0.1) continue; // ребро должно быть ⊥ стене
-      const eps = w.thickness || 10;
+      const epsAlong = 5;
+      const epsPerp  = 5; // жёсткий допуск — w.thickness здесь давал false positive
       const checkPt = (px, py) => {
         const dx = px - wx1, dy = py - wy1;
         const along = dx * wUX + dy * wUY;
         const perp = Math.abs(dx * (-wUY) + dy * wUX);
-        return along >= -eps && along <= wLen + eps && perp <= eps;
+        return along >= -epsAlong && along <= wLen + epsAlong && perp <= epsPerp;
       };
       if (checkPt(a.x, a.y) && checkPt(b.x, b.y)) {
         closedByWall = true;
