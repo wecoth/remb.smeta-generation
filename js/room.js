@@ -922,15 +922,36 @@ export function computeRoomMetrics({
 
   // ── Шаг 1: Периметр и валовая площадь стен ──────────────────────
   // Рёбра разделителя не дают ни периметра пола, ни площади стен.
-  const allBoundaryForEdge = [...boundaryWalls, ...dividerWalls];
+  // Проверяем геометрически: середина ребра лежит на оси разделителя?
+  function isEdgeOnDivider(ax, ay, bx, by) {
+    if (!dividerWalls || dividerWalls.length === 0) return false;
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const edgeLen = Math.hypot(bx - ax, by - ay);
+    if (edgeLen < 1) return false;
+    const edUX = (bx - ax) / edgeLen, edUY = (by - ay) / edgeLen;
+    for (const d of dividerWalls) {
+      const dx1 = d.cx1 ?? d.x1, dy1 = d.cy1 ?? d.y1;
+      const dx2 = d.cx2 ?? d.x2, dy2 = d.cy2 ?? d.y2;
+      const dLen = Math.hypot(dx2 - dx1, dy2 - dy1);
+      if (dLen < 1) continue;
+      const dUX = (dx2 - dx1) / dLen, dUY = (dy2 - dy1) / dLen;
+      // Коллинеарны?
+      if (Math.abs(edUX * dUX + edUY * dUY) < 0.95) continue;
+      // Середина ребра лежит на оси разделителя?
+      const ddx = mx - dx1, ddy = my - dy1;
+      const along = ddx * dUX + ddy * dUY;
+      const perp = Math.abs(ddx * (-dUY) + ddy * dUX);
+      if (along >= -5 && along <= dLen + 5 && perp <= 5) return true;
+    }
+    return false;
+  }
+
   let perimeterMm = 0;
   let wallAreaGrossM2 = 0;
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i], b = polygon[(i + 1) % polygon.length];
     const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
-    const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, allBoundaryForEdge);
-    const isDividerEdge = edgeWalls.length > 0 && edgeWalls.every(w => w.isDivider);
-    if (!isDividerEdge) {
+    if (!isEdgeOnDivider(a.x, a.y, b.x, b.y)) {
       perimeterMm += edgeLenMm;
       wallAreaGrossM2 += (edgeLenMm / 1000) * heightM;
     }
