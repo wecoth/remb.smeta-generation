@@ -28,6 +28,7 @@ export class WallTool extends BaseTool {
     this.lengthMode = false;
     this.currentGuideLine = null;
     this.currentObjectSnap = null;
+    this._onTrackingLine = false; // гистерезис для tracking-линий
     
     // Отслеживание точки для рулетки
     this.activeTrackingPoint = null;
@@ -55,6 +56,7 @@ export class WallTool extends BaseTool {
     this.currentObjectSnap = null;
     this.lengthInput = '';
     this.lengthMode = false;
+    this._onTrackingLine = false;
     this.clearTracking();
     if (this.ui.dom.lengthOverlay) this.ui.dom.lengthOverlay.style.display = 'none';
     if (this.ui.dom.lblLen) this.ui.dom.lblLen.style.display = 'none';
@@ -343,12 +345,15 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
       const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
       const dx = rawGrid.x - this.drawStart.x;
       const dy = rawGrid.y - this.drawStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len > 1) {
+      const lenPx = Math.hypot(dx, dy) * (this.ui._scale ?? 0.12); // порог в пикселях, не мировых единицах
+      if (lenPx > 8) { // минимум ~8px движения чтобы активировать lock
         const angle = Math.atan2(dy, dx);
+        const AXIS_THRESHOLD = 0.18; // ~10° — достаточно широко чтобы не слетало
         for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-          const diff = Math.abs(angle - sa);
-          if (diff < 0.07 || Math.abs(diff - 2 * Math.PI) < 0.07) {
+          // нормализуем разницу углов в диапазон [-π, π] чтобы корректно обработать π/-π
+          let diff = angle - sa;
+          diff = diff - Math.round(diff / (2 * Math.PI)) * (2 * Math.PI);
+          if (Math.abs(diff) < AXIS_THRESHOLD) {
             lockedAngle = sa;
             break;
           }
@@ -356,9 +361,23 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
       }
     }
 
-    // ── Шаг 2: если угол зафиксирован и НЕ активен lengthMode — ранний возврат ──
-    // (обходим объектные привязки/направляющие/tracking — ортогональность важнее)
+    // ── Шаг 2: если угол зафиксирован — пробуем объектный snap вдоль оси ──
+    // Сначала проверяем, нет ли угла/конца стены рядом — они важнее осевого lock
+    // (иначе горизонтальная стена никогда не прикрепится к углу соседней стены)
     if (lockedAngle !== null && !this.lengthMode) {
+      const objSnap = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        tolerance: 24,
+      });
+      const isHard = objSnap.snapType === 'endpoint' ||
+                     objSnap.snapType === 'corner' ||
+                     objSnap.snapType === 'intersection';
+      if (isHard) {
+        // Угол/конец стены найден — прикрепляемся точно к нему, игнорируем осевой lock
+        objSnap.snappedToEndpoint = objSnap.snapType === 'endpoint';
+        return objSnap;
+      }
+      // Нет жёсткой привязки — проецируем на ось
       const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
       const len = Math.hypot(rawGrid.x - this.drawStart.x, rawGrid.y - this.drawStart.y);
       return {
@@ -391,12 +410,17 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     // ── Шаг 5: tracking lines ──
 const weakSnapTypes = new Set(['wallFace', 'wallAxis', 'measureLine']);
 const canTryTracking = !snappedBase.snapType || weakSnapTypes.has(snappedBase.snapType);
-if (this.activeTrackingPoint && canTryTracking && !this.currentGuideLine) {
+if (this.activeTrackingPoint && canTryTracking) {
   const tLines = getTrackingLines(this.activeTrackingPoint);
-  const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, 16);
+  // Гистерезис: захват при 24px, удержание при 40px
+  const tTolerance = this._onTrackingLine ? 40 : 24;
+  const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, tTolerance);
   if (tSnap) {
+    this._onTrackingLine = true;
     rawEnd = { ...rawEnd, x: tSnap.x, y: tSnap.y, snapType: 'tracking' };
     finalSnapType = 'tracking';
+  } else {
+    this._onTrackingLine = false;
   }
 }
 
