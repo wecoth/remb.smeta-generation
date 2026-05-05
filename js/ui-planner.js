@@ -8,6 +8,7 @@ import { RenameRoomCommand } from './commands/RenameRoomCommand.js';
 import { updateExpl, getComputedRooms, renameRoom, setWallHeight } from './room.js';
 import { setViewport, setModifiers, toScreen, toWorld } from './snapping.js';
 import { redraw, initRenderer } from './render.js';
+import { autosaveToLocalStorage } from './storage.js';
 import { createTool } from './tools/index.js';
 import { VoiceInput } from './voiceInput.js';
 import { UpdateWallCommand } from './commands/UpdateWallCommand.js';
@@ -50,8 +51,12 @@ export function initPlanner(domRefs) {
   EventBus.on('openings:changed', redrawOnChange);
   EventBus.on('dividers:changed', redrawOnChange);
   EventBus.on('measures:changed', () => doRedraw());
+  EventBus.on('dimensionOffsets:changed', () => { autosaveToLocalStorage?.(); });
   
   initRenderer(canvas, canvas.getContext('2d'), () => scale);
+
+  // Инициализируем dimensionOffsets если не загружены из проекта
+  if (!appState.dimensionOffsets) appState.dimensionOffsets = {};
 
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
@@ -188,6 +193,7 @@ export function doRedraw() {
     lengthLabel: dom.lengthLabel,
     lblLen: dom.lblLen,
     lblLenVal: dom.lblLenVal,
+    dimensionOffsets: appState.dimensionOffsets || {},
     ...toolState,
   };
   redraw(plannerState);
