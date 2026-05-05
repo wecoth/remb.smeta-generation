@@ -53,6 +53,13 @@ export class AddRoomCommand extends BaseCommand {
 
     // Чистая площадь пола (пока без учёта долей проёмов, но для начального приближения сойдёт)
     // В computeRoomMetrics она не используется для wallArea, только для объёма, поэтому можно оставить так.
+    const dividerWalls = (appState.dividers || []).map(d => ({
+      id: `div_${d.id}`,
+      x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
+      cx1: d.x1, cy1: d.y1, cx2: d.x2, cy2: d.y2,
+      thickness: 0, height: heightMm, offset: 'left', isDivider: true,
+    }));
+
     const metrics = computeRoomMetrics({
       boundaryWalls,
       interiorWalls: [],
@@ -60,9 +67,10 @@ export class AddRoomCommand extends BaseCommand {
       heightMm,
       polygon: this.polygon,
       entranceDoorId: null,
-      hasDividers: false,
+      hasDividers: dividerWalls.length > 0,
       netAreaMm2: polygonArea(this.polygon),
       exteriorWallIds: new Set(),
+      dividerWalls,
     });
 
     const room = {
