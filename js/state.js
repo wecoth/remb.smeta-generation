@@ -36,6 +36,19 @@ const _state = {
 
   // ── UI ──
   activeTab: 'smeta',  // 'planner' | 'smeta'
+
+  // ── UI-параметры инструментов ──
+  wallOffset:        'left',
+  defaultDoorHinge:  'start',
+  defaultDoorSwing:  1,
+
+  // Значения полей ввода (чтобы не сбрасывались на дефолты HTML)
+  inpWallThick:      200,
+  inpWallHeight:     2700,
+  inpWindowWidth:    1200,
+  inpWindowHeight:   1500,
+  inpDoorWidth:      900,
+  inpDoorHeight:     2100,
 };
 
 // Proxy-обёртка: любое прямое присвоение свойства верхнего уровня
