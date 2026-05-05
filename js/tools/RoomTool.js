@@ -33,67 +33,62 @@ export class RoomTool extends BaseTool {
   }
 
   onMouseMove(pos, world, e) {
-  const walls = appState.walls;
-  if (walls.length < 3) {
-    this.hoverPolygon = null;
-    this.ui.doRedraw();
-    return true;
-  }
+    const walls = appState.walls;
+    if (walls.length < 3) {
+      this.hoverPolygon = null;
+      this.ui.doRedraw();
+      return true;
+    }
 
-  // Добавляем разделители как виртуальные стены с нулевой толщиной
-  const allWalls = [...walls, ...(appState.dividers || []).map(d => ({
-    ...d, cx1: d.x1, cy1: d.y1, cx2: d.x2, cy2: d.y2,
-    thickness: 0, height: 2700, offset: 'left', isDivider: true
-  }))];
+    // Добавляем разделители как виртуальные стены с нулевой толщиной
+    const allWalls = [...walls, ...(appState.dividers || []).map(d => ({
+      ...d, cx1: d.x1, cy1: d.y1, cx2: d.x2, cy2: d.y2,
+      thickness: 0, height: 2700, offset: 'left', isDivider: true
+    }))];
 
-  const points = findAllIntersections(allWalls);
-  if (points.length < 3) {
-    this.hoverPolygon = null;
-    this.ui.doRedraw();
-    return true;
-  }
+    const points = findAllIntersections(allWalls);
+    if (points.length < 3) {
+      this.hoverPolygon = null;
+      this.ui.doRedraw();
+      return true;
+    }
 
-  const { vertices, edges } = buildWallGraph(allWalls, points);
-  const faces = findFaces(vertices, edges);
+    const { vertices, edges } = buildWallGraph(allWalls, points);
+    const faces = findFaces(vertices, edges);
 
-  // Проверяем: кликнул ли пользователь внутрь тела стены?
-  const insideWall = appState.walls.some(w => isPointInWall(world, w));
+    // Проверяем: кликнул ли пользователь внутрь тела стены?
+    const insideWall = appState.walls.some(w => isPointInWall(world, w));
 
-  let best = null;
-  let bestArea = Infinity;
+    let best = null;
+    let bestArea = Infinity;
 
-  if (!insideWall) {
-    for (const face of faces) {
-      const poly = face.map(v => ({ x: v.x, y: v.y }));
-      if (poly.length < 3) continue;
-      if (polygonArea(poly) < 50000) continue;   // меньше 0.05 м²
-      if (!isPointInPolygon(world, poly)) continue;
+    if (!insideWall) {
+      for (const face of faces) {
+        const poly = face.map(v => ({ x: v.x, y: v.y }));
+        if (poly.length < 3) continue;
+        if (polygonArea(poly) < 50000) continue;   // меньше 0.05 м²
+        if (!isPointInPolygon(world, poly)) continue;
 
-      // Уже есть комната чей центроид лежит в этом же контуре?
-      const center = polygonCentroid(poly);
-      const alreadyRoom = appState.rooms.some(r =>
-        r.polygon && isPointInPolygon(center, r.polygon)
-      );
-      if (alreadyRoom) continue;
+        // Уже есть комната чей центроид лежит в этом же контуре?
+        const center = polygonCentroid(poly);
+        const alreadyRoom = appState.rooms.some(r =>
+          r.polygon && isPointInPolygon(center, r.polygon)
+        );
+        if (alreadyRoom) continue;
 
-      // Центроид кандидата лежит внутри тела стены? → артефакт стыка, пропускаем
-      const candCenter = polygonCentroid(poly);
-      const candInsideWall = appState.walls.some(w => isPointInWall(candCenter, w));
-      if (candInsideWall) continue;
-
-      const area = polygonArea(poly);
-      if (area < bestArea) {
-        bestArea = area;
-        best = poly;
+        const area = polygonArea(poly);
+        if (area < bestArea) {
+          bestArea = area;
+          best = poly;
+        }
       }
     }
+
+    this.hoverPolygon = best;
+    this.ui.updateCoordinatesLabel(world, null, null);
+    this.ui.doRedraw();
+    return true;
   }
-           
-  this.hoverPolygon = best;
-  this.ui.updateCoordinatesLabel(world, null, null);
-  this.ui.doRedraw();
-  return true;
-}
 
   onMouseDown(pos, world, e) {
     if (this.hoverPolygon) {
