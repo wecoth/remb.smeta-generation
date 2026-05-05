@@ -287,6 +287,7 @@ export function computeRooms(wallHeightFallback = 2700) {
   const walls = appState.walls;
   const dividers = appState.dividers || [];
 
+  console.log("[computeRooms] appState.dividers:", JSON.stringify(appState.dividers));
   if (walls.length === 0 && dividers.length === 0) {
     EventBus.emit('rooms:computed');
     return;
