@@ -14,6 +14,7 @@ const _state = {
   idDivider: 1,
   measures: [],    // { id, x1, y1, x2, y2, label }
   idMeasure: 1,
+  dimensionOffsets: {}, // ключ: "roomKey-segIdx" или "wallId-segIdx" → {dx, dy} в мм
 
   // ── Smeta ──
   logoData: null,
