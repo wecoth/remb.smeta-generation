@@ -198,7 +198,7 @@ export class SelectTool extends BaseTool {
   onMouseMove(pos, world, e) {
     // ── Drag размерной подписи ────────────────────────────────────
     if (this.dragDimState) {
-      const scale = this.ui.scale || 0.12;
+      const scale = (window._plannerViewport?.scale) || this.ui.scale || 0.12;
       // Перевод смещения экрана (px) в мировые мм
       const dxPx = pos.x - this.dragDimState.startScreenX;
       const dyPx = pos.y - this.dragDimState.startScreenY;
