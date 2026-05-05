@@ -940,15 +940,11 @@ export function computeRoomMetrics({
       const dUX = (dx2 - dx1) / dLen, dUY = (dy2 - dy1) / dLen;
       // Коллинеарны?
       const dot = Math.abs(edUX * dUX + edUY * dUY);
-      const ddx = mx - dx1, ddy = my - dy1;
-      const along = ddx * dUX + ddy * dUY;
-      const perp = Math.abs(ddx * (-dUY) + ddy * dUX);
+      const mdx = mx - dx1, mdy = my - dy1;
+      const along = mdx * dUX + mdy * dUY;
+      const perp = Math.abs(mdx * (-dUY) + mdy * dUX);
       console.log('[isEdgeOnDivider] edge mid:', Math.round(mx), Math.round(my), '| divider:', Math.round(dx1), Math.round(dy1), '->', Math.round(dx2), Math.round(dy2), '| dot:', dot.toFixed(3), 'along:', Math.round(along), 'perp:', Math.round(perp), 'dLen:', Math.round(dLen));
       if (dot < 0.95) continue;
-      // Середина ребра лежит на оси разделителя?
-      const ddx = mx - dx1, ddy = my - dy1;
-      const along = ddx * dUX + ddy * dUY;
-      const perp = Math.abs(ddx * (-dUY) + ddy * dUX);
       if (along >= -5 && along <= dLen + 5 && perp <= 5) return true;
     }
     return false;
