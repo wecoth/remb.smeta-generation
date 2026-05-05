@@ -736,6 +736,8 @@ export function computeRoomMetrics({
   }
 
   // Узкие простенки — простенки между проёмами шириной < 500 мм
+  // Для каждого такого участка считаем и погонаж (высота), и площадь (ширина × высота)
+  let narrowWallAreaM2 = 0;
   for (const w of boundaryWalls) {
     const fullLen = wallFullLengthMm(w);
     const wallOps = openings
@@ -750,17 +752,26 @@ export function computeRoomMetrics({
     for (const op of wallOps) {
       if (op.startMm > cursor + 0.5) {
         const gap = op.startMm - cursor;
-        if (gap < 500) narrowWallsLm += heightM;
+        if (gap < 500) {
+          narrowWallsLm   += heightM;
+          narrowWallAreaM2 += (gap / 1000) * heightM;
+        }
       }
       cursor = Math.max(cursor, op.endMm);
     }
     if (cursor < fullLen - 0.5) {
       const gap = fullLen - cursor;
-      if (gap < 500) narrowWallsLm += heightM;
+      if (gap < 500) {
+        narrowWallsLm   += heightM;
+        narrowWallAreaM2 += (gap / 1000) * heightM;
+      }
     }
   }
 
-  const wallAreaNetM2 = Math.max(0, wallAreaGrossM2 - openingsAreaM2);
+  // Номинальная площадь стен (до вычета узких простенков)
+  const wallAreaNominalM2 = Math.max(0, wallAreaGrossM2 - openingsAreaM2);
+  // Чистая площадь стен (участки < 50 см исключены из квадратуры → погонаж)
+  const wallAreaNetM2 = Math.max(0, wallAreaNominalM2 - narrowWallAreaM2);
   const perimeterFloorM = Math.max(0, perimeterMm - perimeterDeductMm) / 1000;
   const cornerStats = computeCornerStats(polygon);
 
@@ -774,9 +785,11 @@ export function computeRoomMetrics({
 
   return {
     perimeterFloorM:    round2(perimeterFloorM),
+    wallAreaNominalM2:  round2(wallAreaNominalM2),
     wallAreaNetM2:      round2(wallAreaNetM2),
     wallAreaGrossM2:    round2(wallAreaGrossM2),
     openingsAreaM2:     round2(openingsAreaM2),
+    narrowWallAreaM2:   round2(narrowWallAreaM2),
     narrowWallsLm:      round2(narrowWallsLm),
     cornersInner:       cornerStats.inner,
     cornersOuter:       cornerStats.outer,
@@ -823,7 +836,7 @@ export function updateExpl(explBody, roomCountEl) {
   if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
 
   if (!appState.rooms.length) {
-    explBody.innerHTML = `<tr class="empty-row"><td colspan="7">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
+    explBody.innerHTML = `<tr class="empty-row"><td colspan="9">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
     return;
   }
 
@@ -839,11 +852,13 @@ export function updateExpl(explBody, roomCountEl) {
           data-room-key="${escHtml(r.key)}" data-room-default="${escHtml(r.defaultName)}">
       </div></td>
       <td>${r.area.toFixed(2)}</td>
-      <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
       <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
+      <td>${fmt(m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea)}</td>
+      <td>${fmt(m.wallAreaNetM2 ?? r.wallArea)}</td>
       <td>${fmt(m.windowAreaM2)}</td>
-      <td>${fmt(m.pogonazLm)}</td>
+      <td>${fmt(m.windowRevealsLm)}</td>
       <td>${fmt(m.outerAnglesLm)}</td>
+      <td>${fmt(m.narrowWallsLm)}</td>
     </tr>`;
   }).join('');
 }
@@ -858,18 +873,20 @@ export function getComputedRooms() {
   return appState.rooms.map(r => {
     const m = r.metrics || {};
     return {
-      name:            r.name,
-      floorArea:       r.area,
-      wallsArea:       m.wallAreaNetM2   ?? r.wallArea,
-      perimeter:       m.perimeterFloorM ?? r.perimeter,
-      height:          r.height          ?? 0,
-      windowAreaM2:    m.windowAreaM2    ?? 0,
-      windowCount:     m.windowCount     ?? 0,
-      pogonazLm:       m.pogonazLm       ?? 0,
-      outerAnglesLm:   m.outerAnglesLm   ?? 0,
-      cornersOuter:    m.cornersOuter    ?? 0,
-      narrowWallsLm:   m.narrowWallsLm   ?? 0,
-      windowRevealsLm: m.windowRevealsLm ?? 0,
+      name:              r.name,
+      floorArea:         r.area,
+      wallsAreaNominal:  m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea,
+      wallsArea:         m.wallAreaNetM2     ?? r.wallArea,
+      perimeter:         m.perimeterFloorM   ?? r.perimeter,
+      height:            r.height            ?? 0,
+      windowAreaM2:      m.windowAreaM2      ?? 0,
+      windowCount:       m.windowCount       ?? 0,
+      pogonazLm:         m.pogonazLm         ?? 0,
+      outerAnglesLm:     m.outerAnglesLm     ?? 0,
+      cornersOuter:      m.cornersOuter      ?? 0,
+      narrowWallsLm:     m.narrowWallsLm     ?? 0,
+      narrowWallAreaM2:  m.narrowWallAreaM2  ?? 0,
+      windowRevealsLm:   m.windowRevealsLm   ?? 0,
     };
   });
 }
