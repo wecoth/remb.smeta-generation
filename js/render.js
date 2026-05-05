@@ -1257,12 +1257,15 @@ function drawRoomDimensions() {
       _ctx.lineTo(sB.x, sB.y);
       if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
       _ctx.stroke();
-      // Выноска: attach → диагональ → горизонтальная полочка → подпись ниже
+      // Выноска: attach → диагональ → горизонтальная полочка → подпись над полочкой
       // Стиль как у окон/дверей: сплошная линия с изломом
       const leaderColor = isOpening ? '#e07020' : '#6b7280';
       const shelfDir = sText.x >= attachScreen.x ? 1 : -1;
-      const LABEL_GAP_PX = 8; // зазор между полочкой и центром текста
-      const shelfY = sText.y - LABEL_GAP_PX;
+      // Зазор от полочки до текста в мировых мм — масштабируется вместе с планом
+      const TEXT_GAP_MM = 80;
+      const textGapPx = TEXT_GAP_MM * _getScale();
+      // Полочка ниже центра текста на textGapPx
+      const shelfY = sText.y + textGapPx;
       const diagEndX = attachScreen.x + shelfDir * Math.abs(shelfY - attachScreen.y) * 0.7;
       _ctx.strokeStyle = leaderColor;
       _ctx.lineWidth = 0.8;
@@ -1276,7 +1279,7 @@ function drawRoomDimensions() {
       _ctx.arc(attachScreen.x, attachScreen.y, 2, 0, Math.PI * 2);
       _ctx.fillStyle = leaderColor;
       _ctx.fill();
-      // Текст горизонтально, ниже полочки
+      // Текст горизонтально, выше полочки, зазор масштабируется
       drawAlignedTextBox(label, sText, 0, {
         font: '500 13px Merriweather, Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
@@ -1565,10 +1568,11 @@ function drawWallDimensions() {
           _ctx.lineTo(sB.x, sB.y);
           if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
           _ctx.stroke();
-          // Выноска: anchor → диагональ → горизонтальная полочка → подпись ниже
-          const LABEL_GAP_PX = 8;
+          // Выноска: anchor → диагональ → горизонтальная полочка → подпись над полочкой
+          const TEXT_GAP_MM_W = 80;
+          const textGapPxW = TEXT_GAP_MM_W * _getScale();
           const shelfDir = sText.x >= anchorScreen.x ? 1 : -1;
-          const shelfY = sText.y - LABEL_GAP_PX;
+          const shelfY = sText.y + textGapPxW;
           const diagEndX = anchorScreen.x + shelfDir * Math.abs(shelfY - anchorScreen.y) * 0.7;
           _ctx.strokeStyle = '#6b7280';
           _ctx.lineWidth = 0.8;
@@ -1582,7 +1586,7 @@ function drawWallDimensions() {
           _ctx.arc(anchorScreen.x, anchorScreen.y, 2, 0, Math.PI * 2);
           _ctx.fillStyle = '#6b7280';
           _ctx.fill();
-          // Текст горизонтально, ниже полочки
+          // Текст горизонтально, выше полочки, зазор в мировых мм
           drawAlignedTextBox(label, sText, 0, {
             font: '500 13px Merriweather, Onest, Inter, sans-serif',
             background: 'rgba(255,255,255,0.95)',
