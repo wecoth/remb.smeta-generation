@@ -24,6 +24,7 @@ export function saveProject() {
     dividers,
     measures,
     roomNameOverrides: { ...appState.roomNameOverrides },
+    dimensionOffsets: { ...(appState.dimensionOffsets || {}) },
     idWall:            appState.idWall ?? nextId(walls, 'id', 1),
     idOpen:            appState.idOpen ?? nextId(openings, 'id', 1),
     idDivider:         appState.idDivider ?? nextId(dividers, 'id', 1),
@@ -50,6 +51,7 @@ export function loadProject(jsonStr) {
   appState.dividers          = (data.dividers || []).map(d => ({ ...d }));
   appState.measures          = (data.measures || []).map(m => ({ ...m }));
   appState.roomNameOverrides = data.roomNameOverrides || {};
+  appState.dimensionOffsets  = data.dimensionOffsets  || {};
   appState.idWall            = Number.isFinite(Number(data.idWall)) ? Number(data.idWall) : nextId(appState.walls, 'id', 1);
   appState.idOpen            = Number.isFinite(Number(data.idOpen)) ? Number(data.idOpen) : nextId(appState.openings, 'id', 1);
   appState.idDivider         = Number.isFinite(Number(data.idDivider)) ? Number(data.idDivider) : nextId(appState.dividers, 'id', 1);
