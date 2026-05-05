@@ -735,38 +735,64 @@ export function computeRoomMetrics({
     }
   }
 
-  // Узкие простенки — простенки между проёмами шириной < 500 мм
-  // Для каждого такого участка считаем и погонаж (высота), и площадь (ширина × высота)
+  // Узкие участки стен — любые непрерывные отрезки поверхности стены
+  // шириной < 500 мм (между проёмами или целые ребра полигона).
+  //
+  // Итерируем по РЁБРАМ ПОЛИГОНА, а не по полной длине стен:
+  // это позволяет корректно поймать торцы висящих перегородок (200 мм),
+  // которые являются отдельным коротким ребром полигона, хотя физически
+  // принадлежат той же стене что и её длинная сторона.
   let narrowWallAreaM2 = 0;
+
+  // Высота узкого участка: если сосед — дверной проём, берём высоту двери.
+  const narrowH = (prevOp, nextOp) => {
+    const prevH = prevOp && prevOp.type === 'door' ? prevOp.height / 1000 : heightM;
+    const nextH = nextOp && nextOp.type === 'door' ? nextOp.height / 1000 : heightM;
+    return Math.min(prevH, nextH);
+  };
+
   for (const w of boundaryWalls) {
     const fullLen = wallFullLengthMm(w);
+    if (fullLen < 0.5) continue;
+
+    // Длина данной стены в этой комнате (может быть меньше fullLen,
+    // если стена T-образно разделена между несколькими комнатами).
+    let edgeLenMm = 0;
+    for (let k = 0; k < polygon.length; k++) {
+      const a = polygon[k], b = polygon[(k + 1) % polygon.length];
+      const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
+      if (edgeWalls.some(ew => ew.id === w.id)) {
+        edgeLenMm += Math.hypot(b.x - a.x, b.y - a.y);
+      }
+    }
+    if (edgeLenMm < 0.5) continue;
+
     const wallOps = openings
       .filter(op => op.wallId === w.id)
       .map(op => ({
         startMm: Math.max(0, (op.t * fullLen) - op.width / 2),
         endMm:   Math.min(fullLen, (op.t * fullLen) + op.width / 2),
-        op,
+        op: op,
       }))
       .filter(item => item.endMm > item.startMm)
       .sort((a, b) => a.startMm - b.startMm);
 
-    // Высота узкого участка зависит от соседних проёмов:
-    // если сосед — дверь, берём высоту двери (не до потолка), иначе — высоту помещения.
-    // Если с двух сторон — берём минимум из обоих соседей.
-    const narrowH = (prevItem, nextItem) => {
-      const prevH = prevItem?.op?.type === 'door' ? prevItem.op.height / 1000 : heightM;
-      const nextH = nextItem?.op?.type === 'door' ? nextItem.op.height / 1000 : heightM;
-      return Math.min(prevH, nextH);
-    };
+    if (edgeLenMm < 500 && wallOps.length === 0) {
+      // Целое ребро < 500 мм без проёмов — полностью в погонаж
+      narrowWallsLm   += heightM;
+      narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
+      continue;
+    }
 
+    // Иначе — стандартная логика: проходим по участкам между проёмами
     let cursor = 0;
     for (let idx = 0; idx < wallOps.length; idx++) {
       const item = wallOps[idx];
       if (item.startMm > cursor + 0.5) {
         const gap = item.startMm - cursor;
         if (gap < 500) {
-          const prevItem = idx > 0 ? wallOps[idx - 1] : null;
-          const h = narrowH(prevItem, item);
+          const prevOp = idx > 0 ? wallOps[idx - 1].op : null;
+          const h = narrowH(prevOp, item.op);
           narrowWallsLm   += h;
           narrowWallAreaM2 += (gap / 1000) * h;
         }
@@ -776,8 +802,8 @@ export function computeRoomMetrics({
     if (cursor < fullLen - 0.5) {
       const gap = fullLen - cursor;
       if (gap < 500) {
-        const prevItem = wallOps.length > 0 ? wallOps[wallOps.length - 1] : null;
-        const h = narrowH(prevItem, null);
+        const prevOp = wallOps.length > 0 ? wallOps[wallOps.length - 1].op : null;
+        const h = narrowH(prevOp, null);
         narrowWallsLm   += h;
         narrowWallAreaM2 += (gap / 1000) * h;
       }
