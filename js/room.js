@@ -786,16 +786,6 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
     opsByWall.set(wall.id, wOps);
   }
 
-  // ── DEBUG ──────────────────────────────────────────────────────────
-  console.log('[calcNarrowSections] uniqueWalls:',
-    uniqueWalls.map(u => ({ id: u.wall.id, fullLen: Math.round(u.fullLen) })));
-  console.log('[calcNarrowSections] opsByWall:',
-    [...opsByWall.entries()].map(([id, ops]) => ({
-      id,
-      ops: ops.map(o => ({ start: Math.round(o.startMm), end: Math.round(o.endMm), type: o.op.type }))
-    })));
-  // ── /DEBUG ─────────────────────────────────────────────────────────
-
   // Проход 1: простенки между проёмами на стенах с проёмами
   for (const { wall, fullLen } of uniqueWalls) {
     const wOps = opsByWall.get(wall.id) || [];
@@ -832,25 +822,40 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
   //
   // Торец перегородки, упирающийся в другую стену — короткое ребро полигона,
   // но считать его НЕ нужно: физически поверхность закрыта примыкающей стеной.
-  // Признак закрытого торца: findAllWallsForEdge найдёт коллинеарную стену.
-  // Открытый торец — перпендикулярен всем стенам → findAllWallsForEdge вернёт [].
+  // Признак закрытого торца: findAllWallsForEdge найдёт КОЛЛИНЕАРНУЮ стену.
+  // Открытый торец — перпендикулярен всем стенам → коллинеарных стен нет.
+  //
+  // ВАЖНО: findAllWallsForEdge может вернуть стену, которая лишь проходит
+  // РЯДОМ с торцом (например, стена с дверью), но не коллинеарна ему.
+  // Поэтому после вызова проверяем реальную коллинеарность: dot-продукт
+  // единичных векторов ребра и стены должен быть > 0.95.
   for (let k = 0; k < polygon.length; k++) {
     const a = polygon[k], b = polygon[(k + 1) % polygon.length];
     const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
     if (edgeLenMm >= NARROW_WALL_THRESHOLD_MM) continue;
 
+    const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
+
     const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
 
-    if (edgeWalls.length > 0) {
-      const hasOps = edgeWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
-      console.log('[pass2] короткое ребро', Math.round(edgeLenMm), 'мм, edgeWalls:', edgeWalls.map(w=>w.id), 'hasOps:', hasOps);
+    // Фильтруем: оставляем только стены, реально коллинеарные ребру
+    const collinearWalls = edgeWalls.filter(w => {
+      const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
+      const wx2 = w.cx2 ?? w.x2, wy2 = w.cy2 ?? w.y2;
+      const wLen = Math.hypot(wx2 - wx1, wy2 - wy1);
+      if (wLen < 1) return false;
+      const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
+      return Math.abs(edUX * wUX + edUY * wUY) > 0.95;
+    });
+
+    if (collinearWalls.length > 0) {
+      const hasOps = collinearWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
       if (hasOps) continue; // уже обработано в проходе 1
       // Нет проёмов, короткий участок стены — в погонаж
       narrowWallsLm   += heightM;
       narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
       continue;
     }
-    console.log('[pass2] потенциальный открытый торец', Math.round(edgeLenMm), 'мм');
 
     // Коллинеарных стен нет — потенциально открытый торец перегородки.
     // Проверяем, что он не закрыт перпендикулярной стеной
@@ -879,7 +884,6 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
     if (closedByWall) continue;
 
     // Открытый торец — в погонаж
-    console.log('[pass2] открытый торец ДОБАВЛЕН', Math.round(edgeLenMm), 'мм → +', heightM, 'пм');
     narrowWallsLm   += heightM;
     narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
   }
