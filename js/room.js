@@ -794,20 +794,68 @@ export function computeRoomMetrics({
   }
 
   // Проход 2: короткие рёбра полигона < 500 мм без проёмов
-  // (торцы перегородок, углы-выступы и т.п.)
+  // (открытые торцы перегородок, короткие участки стен и т.п.)
+  //
+  // Важно: торец перегородки, упирающийся в другую стену — это тоже
+  // короткое ребро полигона, но его НЕ надо считать: физически эта
+  // поверхность закрыта примыкающей стеной. Признак: ребро коллинеарно
+  // хотя бы одной из стен (findAllWallsForEdge найдёт её). Такое ребро
+  // является частью той стены и уже учтено в её площади.
+  // Открытый торец — перпендикулярен всем стенам, поэтому
+  // findAllWallsForEdge возвращает пустой массив.
   for (let k = 0; k < polygon.length; k++) {
     const a = polygon[k], b = polygon[(k + 1) % polygon.length];
     const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
     if (edgeLenMm >= 500) continue;
 
-    // Стены этого ребра по коллинеарности
+    // Ищем стены коллинеарные этому ребру
     const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
 
-    // Если у найденных стен есть проёмы — они уже обработаны в проходе 1
-    const hasOps = edgeWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
-    if (hasOps) continue;
+    // Если нашли коллинеарную стену — это часть стены (короткий простенок
+    // или участок). Если у неё есть проёмы — уже обработана в проходе 1.
+    if (edgeWalls.length > 0) {
+      const hasOps = edgeWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
+      if (hasOps) continue;
+      // Нет проёмов, короткий участок стены < 500 мм — в погонаж
+      if (edgeLenMm < 500) {
+        narrowWallsLm   += heightM;
+        narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
+      }
+      continue;
+    }
 
-    // Торец или короткий участок без проёмов — полностью в погонаж
+    // Коллинеарных стен нет — это открытый торец перегородки.
+    // Торец виден только если он НЕ упирается в другую стену.
+    // Проверяем: обе вершины ребра должны быть свободны
+    // (не лежать на одной и той же стене одновременно).
+    // Упрощённо: если ребро перпендикулярно оси какой-то стены
+    // и обе его точки лежат на этой стене — это закрытый торец, пропускаем.
+    let closedByWall = false;
+    for (const w of boundaryWalls) {
+      const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
+      const wx2 = w.cx2 ?? w.x2, wy2 = w.cy2 ?? w.y2;
+      const wLen = Math.hypot(wx2 - wx1, wy2 - wy1);
+      if (wLen < 1) continue;
+      const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
+      // Ребро должно быть перпендикулярно стене
+      const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
+      if (Math.abs(edUX * wUX + edUY * wUY) > 0.1) continue;
+      // Обе вершины ребра лежат на оси этой стены (с допуском)
+      const eps = w.thickness || 10;
+      const checkPt = (px, py) => {
+        const dx = px - wx1, dy = py - wy1;
+        const along = dx * wUX + dy * wUY;
+        const perp = Math.abs(dx * (-wUY) + dy * wUX);
+        return along >= -eps && along <= wLen + eps && perp <= eps;
+      };
+      if (checkPt(a.x, a.y) && checkPt(b.x, b.y)) {
+        closedByWall = true;
+        break;
+      }
+    }
+    if (closedByWall) continue;
+
+    // Открытый торец — в погонаж
     narrowWallsLm   += heightM;
     narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
   }
