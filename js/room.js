@@ -8,6 +8,10 @@
 // • Чистая площадь пола = площадь контура МИНУС:
 //     - площадь "следов" висящих стен/перегородок внутри (длина × толщина)
 //     - площадь вложенных помещений (если есть замкнутый контур внутри)
+//   ПЛЮС доля дверных проёмов:
+//     - межкомнатная дверь: +1/2 (ширина × толщина) каждой из двух комнат
+//     - входная дверь (внешняя стена): +1/2 (ширина × толщина), т.к. вторая
+//       половина "уходит на улицу"
 // • Площадь стен помещения = для каждой граничной стены: (длина сегмента,
 //   относящегося к этому помещению) × высота, минус площадь проёмов.
 // • Разделители (нулевая толщина) — участвуют в графе помещений, но в
@@ -505,13 +509,13 @@ export function computeRooms(wallHeightFallback = 2700) {
       if (!wall) continue;
       const isInterior = !exteriorWallIds.has(op.wallId);
       if (isInterior) {
-        // Межкомнатная дверь → +1/2 (ширина × толщина)
+        // Межкомнатная дверь → +1/2 (ширина × толщина):
+        // площадь проёма делится поровну между двумя комнатами.
         netAreaMm2 += (op.width * (wall.thickness || 0)) / 2;
-      }
-      // Для входной двери (внешняя стена) — пол под проёмом считаем целиком
-      // принадлежащим этой комнате (с другой стороны улица).
-      else {
-        netAreaMm2 += op.width * (wall.thickness || 0);
+      } else {
+        // Входная дверь (внешняя стена) → +1/2 (ширина × толщина):
+        // вторая половина "уходит на улицу" — нас не интересует.
+        netAreaMm2 += (op.width * (wall.thickness || 0)) / 2;
       }
     }
 
@@ -869,13 +873,12 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
       const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
       const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
       if (Math.abs(edUX * wUX + edUY * wUY) > 0.1) continue; // ребро должно быть ⊥ стене
-      const epsAlong = 5;
-      const epsPerp  = 5; // жёсткий допуск — w.thickness здесь давал false positive
+      const eps = w.thickness || 10;
       const checkPt = (px, py) => {
         const dx = px - wx1, dy = py - wy1;
         const along = dx * wUX + dy * wUY;
         const perp = Math.abs(dx * (-wUY) + dy * wUX);
-        return along >= -epsAlong && along <= wLen + epsAlong && perp <= epsPerp;
+        return along >= -eps && along <= wLen + eps && perp <= eps;
       };
       if (checkPt(a.x, a.y) && checkPt(b.x, b.y)) {
         closedByWall = true;
@@ -1192,11 +1195,10 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
       if (op.type !== 'door') continue;
       const wall = boundaryWallsList.find(w => w.id === op.wallId);
       if (!wall) continue;
-      if (!localExteriorWalls.has(op.wallId)) {
-        netAreaMm2 += (op.width * (wall.thickness || 0)) / 2;
-      } else {
-        netAreaMm2 += op.width * (wall.thickness || 0);
-      }
+      // Межкомнатная и входная двери: всегда +1/2 (ширина × толщина).
+      // Межкомнатная: площадь проёма делится поровну между двумя комнатами.
+      // Входная: вторая половина "уходит на улицу" — нас не интересует.
+      netAreaMm2 += (op.width * (wall.thickness || 0)) / 2;
     }
 
     const interiorWalls = [];
