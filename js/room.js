@@ -1128,6 +1128,7 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
 
   const walls = appState.walls;
   const dividers = appState.dividers || [];
+  console.log("[refreshExistingRooms] appState.dividers:", JSON.stringify(appState.dividers));
   const dividerWalls = dividers.map(d => ({
     id: `div_${d.id}`,
     x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
