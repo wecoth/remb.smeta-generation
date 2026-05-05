@@ -345,16 +345,22 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
       const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
       const dx = rawGrid.x - this.drawStart.x;
       const dy = rawGrid.y - this.drawStart.y;
-      const lenPx = Math.hypot(dx, dy) * (this.ui._scale ?? 0.12); // порог в пикселях, не мировых единицах
-      if (lenPx > 8) { // минимум ~8px движения чтобы активировать lock
+      const lenPx = Math.hypot(dx, dy) * (this.ui._scale ?? 0.12);
+      if (lenPx > 8) {
         const angle = Math.atan2(dy, dx);
-        const AXIS_THRESHOLD = 0.18; // ~10° — достаточно широко чтобы не слетало
+        const ANGLE_THRESHOLD = 0.09; // ~5° — узкий угловой порог
+        const AXIS_SNAP_PX = 14;      // макс. поперечное смещение от оси в пикселях
         for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-          // нормализуем разницу углов в диапазон [-π, π] чтобы корректно обработать π/-π
           let diff = angle - sa;
           diff = diff - Math.round(diff / (2 * Math.PI)) * (2 * Math.PI);
-          if (Math.abs(diff) < AXIS_THRESHOLD) {
-            lockedAngle = sa;
+          if (Math.abs(diff) < ANGLE_THRESHOLD) {
+            // Дополнительно: поперечное смещение конца от оси не должно быть > AXIS_SNAP_PX
+            // Это гарантирует что длинная стена не "тянется" к оси с большого расстояния
+            const cosA = Math.cos(sa), sinA = Math.sin(sa);
+            const crossPx = Math.abs(-sinA * dx + cosA * dy) * (this.ui._scale ?? 0.12);
+            if (crossPx <= AXIS_SNAP_PX) {
+              lockedAngle = sa;
+            }
             break;
           }
         }
