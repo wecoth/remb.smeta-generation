@@ -745,25 +745,41 @@ export function computeRoomMetrics({
       .map(op => ({
         startMm: Math.max(0, (op.t * fullLen) - op.width / 2),
         endMm:   Math.min(fullLen, (op.t * fullLen) + op.width / 2),
+        op,
       }))
-      .filter(op => op.endMm > op.startMm)
+      .filter(item => item.endMm > item.startMm)
       .sort((a, b) => a.startMm - b.startMm);
+
+    // Высота узкого участка зависит от соседних проёмов:
+    // если сосед — дверь, берём высоту двери (не до потолка), иначе — высоту помещения.
+    // Если с двух сторон — берём минимум из обоих соседей.
+    const narrowH = (prevItem, nextItem) => {
+      const prevH = prevItem?.op?.type === 'door' ? prevItem.op.height / 1000 : heightM;
+      const nextH = nextItem?.op?.type === 'door' ? nextItem.op.height / 1000 : heightM;
+      return Math.min(prevH, nextH);
+    };
+
     let cursor = 0;
-    for (const op of wallOps) {
-      if (op.startMm > cursor + 0.5) {
-        const gap = op.startMm - cursor;
+    for (let idx = 0; idx < wallOps.length; idx++) {
+      const item = wallOps[idx];
+      if (item.startMm > cursor + 0.5) {
+        const gap = item.startMm - cursor;
         if (gap < 500) {
-          narrowWallsLm   += heightM;
-          narrowWallAreaM2 += (gap / 1000) * heightM;
+          const prevItem = idx > 0 ? wallOps[idx - 1] : null;
+          const h = narrowH(prevItem, item);
+          narrowWallsLm   += h;
+          narrowWallAreaM2 += (gap / 1000) * h;
         }
       }
-      cursor = Math.max(cursor, op.endMm);
+      cursor = Math.max(cursor, item.endMm);
     }
     if (cursor < fullLen - 0.5) {
       const gap = fullLen - cursor;
       if (gap < 500) {
-        narrowWallsLm   += heightM;
-        narrowWallAreaM2 += (gap / 1000) * heightM;
+        const prevItem = wallOps.length > 0 ? wallOps[wallOps.length - 1] : null;
+        const h = narrowH(prevItem, null);
+        narrowWallsLm   += h;
+        narrowWallAreaM2 += (gap / 1000) * h;
       }
     }
   }
@@ -778,7 +794,8 @@ export function computeRoomMetrics({
   const wallOuterCornersLm = round2(cornerStats.outer * heightM);
   let revealCornersLm = 0;
   for (const op of openings) {
-    if (op.type === 'window') revealCornersLm += 2 * op.height / 1000;
+    // Два вертикальных угла (высота × 2) + горизонтальный откос сверху (ширина)
+    if (op.type === 'window') revealCornersLm += 2 * op.height / 1000 + op.width / 1000;
   }
   const outerAnglesLm = round2(wallOuterCornersLm + revealCornersLm);
   const pogonazLm = round2(narrowWallsLm + windowRevealsLm);
