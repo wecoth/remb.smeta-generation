@@ -1257,30 +1257,33 @@ function drawRoomDimensions() {
       _ctx.lineTo(sB.x, sB.y);
       if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
       _ctx.stroke();
-      // Выноска: attach → диагональ → горизонтальная полочка → подпись над полочкой
+      // Выноска: attach → диагональ по направлению drag → горизонтальная полочка → подпись над полочкой
       // Стиль как у окон/дверей: сплошная линия с изломом
       const leaderColor = isOpening ? '#e07020' : '#6b7280';
       const shelfDir = sText.x >= attachScreen.x ? 1 : -1;
       // Полочка: горизонталь на уровне sText, текст выше на TEXT_GAP_MM мировых мм
       const TEXT_GAP_MM = 80;
       const textGapPx = TEXT_GAP_MM * _getScale();
+      // Диагональ идёт прямо от attach до sText (свободный угол — куда потащил мышь)
+      // Полочка стартует от sText горизонтально
       const shelfY = sText.y + textGapPx;
-      const diagEndX = attachScreen.x + shelfDir * Math.abs(shelfY - attachScreen.y) * 0.7;
-      // Длина полочки: от diagEnd до края текста + выступ в мировых мм
+      // Длина полочки: от sText до края текста + выступ в мировых мм
       const scale = _getScale();
       const basePx = BASE_FONT_MM * scale;
       _ctx.font = `500 ${basePx.toFixed(1)}px Merriweather, Onest, Inter, sans-serif`;
       const textHalfW = _ctx.measureText(label).width / 2;
       const SHELF_OVERHANG_MM = 60; // выступ полочки за край текста
       const overhangPx = SHELF_OVERHANG_MM * scale;
+      // Диагональ идёт от anchor до sText.x (точка излома — свободный угол по drag)
+      // Полочка горизонтально от sText.x в направлении shelfDir
       const shelfEndX = sText.x + shelfDir * (textHalfW + overhangPx);
       _ctx.strokeStyle = leaderColor;
       _ctx.lineWidth = 0.8;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(attachScreen.x, attachScreen.y);
-      _ctx.lineTo(diagEndX, shelfY);
-      _ctx.lineTo(shelfEndX, shelfY);
+      _ctx.lineTo(sText.x, shelfY);   // диагональ до точки излома (угол = куда потащил мышь)
+      _ctx.lineTo(shelfEndX, shelfY); // горизонтальная полочка
       _ctx.stroke();
       _ctx.beginPath();
       _ctx.arc(attachScreen.x, attachScreen.y, 2, 0, Math.PI * 2);
@@ -1575,13 +1578,12 @@ function drawWallDimensions() {
           _ctx.lineTo(sB.x, sB.y);
           if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
           _ctx.stroke();
-          // Выноска: anchor → диагональ → горизонтальная полочка → подпись над полочкой
+          // Выноска: anchor → диагональ по направлению drag → горизонтальная полочка → подпись над полочкой
           const TEXT_GAP_MM_W = 80;
           const textGapPxW = TEXT_GAP_MM_W * _getScale();
           const shelfDir = sText.x >= anchorScreen.x ? 1 : -1;
           const shelfY = sText.y + textGapPxW;
-          const diagEndX = anchorScreen.x + shelfDir * Math.abs(shelfY - anchorScreen.y) * 0.7;
-          // Полочка тянется за край текста + выступ в мировых мм
+          // Диагональ идёт прямо от anchor до начала полочки (свободный угол — куда потащил мышь)
           const scaleW = _getScale();
           const basePxW = BASE_FONT_MM * scaleW;
           _ctx.font = `500 ${basePxW.toFixed(1)}px Merriweather, Onest, Inter, sans-serif`;
@@ -1594,8 +1596,8 @@ function drawWallDimensions() {
           _ctx.setLineDash([]);
           _ctx.beginPath();
           _ctx.moveTo(anchorScreen.x, anchorScreen.y);
-          _ctx.lineTo(diagEndX, shelfY);
-          _ctx.lineTo(shelfEndX, shelfY);
+          _ctx.lineTo(sText.x, shelfY);   // диагональ до точки излома (свободный угол по drag)
+          _ctx.lineTo(shelfEndX, shelfY); // горизонтальная полочка
           _ctx.stroke();
           _ctx.beginPath();
           _ctx.arc(anchorScreen.x, anchorScreen.y, 2, 0, Math.PI * 2);
