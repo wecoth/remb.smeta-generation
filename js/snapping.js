@@ -103,7 +103,8 @@ export function findObjectSnapCandidate(worldPoint, screenPoint, options = {}) {
       for (const entry of getWallSnapSegments(wall)) {
         const proj = projectPointOntoSegment(worldPoint, entry.segment);
         const inside = isPointInsideWallSurface(worldPoint, wall, 0.75);
-        register(entry.type, proj, { wallId: wall.id, wallAngle }, inside ? Infinity : wpt);
+        // Infinity ломает сортировку по дистанции — используем увеличенный, но конечный порог
+        register(entry.type, proj, { wallId: wall.id, wallAngle }, inside ? wpt * 2 : wpt);
       }
     }
   }
@@ -400,11 +401,14 @@ export function getSnappedWallResizePoint(fixedPoint, worldPoint, screenPoint, s
   if (!snappedBase.snapType) {
     const dx = nextPoint.x - fixedPoint.x, dy = nextPoint.y - fixedPoint.y;
     const len = Math.hypot(dx, dy);
-    if (len > 20 && !shiftDown) {
+    const lenPx = len * _scale;
+    if (lenPx > 8 && !shiftDown) {
       let angle = Math.atan2(dy, dx);
+      const AXIS_THRESHOLD = 0.18; // ~10°, согласовано с WallTool
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const diff = Math.abs(angle - sa);
-        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
+        let diff = angle - sa;
+        diff = diff - Math.round(diff / (2 * Math.PI)) * (2 * Math.PI);
+        if (Math.abs(diff) < AXIS_THRESHOLD) {
           angle = sa;
           nextPoint = { x: fixedPoint.x + Math.cos(angle) * len, y: fixedPoint.y + Math.sin(angle) * len };
           break;
@@ -446,7 +450,7 @@ export function getTrackingLines(trackingPoint) {
 // Пытается привязать worldPoint к линиям отслеживания.
 // Приоритет: пересечение двух линий > проекция на ближайшую линию.
 // Возвращает { x, y, snapType:'tracking', lineType } или null.
-export function snapToTrackingLines(worldPoint, screenPoint, trackingLines, tolerance = 14) {
+export function snapToTrackingLines(worldPoint, screenPoint, trackingLines, tolerance = 24) {
   if (!trackingLines?.length) return null;
 
   // 1. Ищем пересечения всех пар линий — самая ценная привязка
