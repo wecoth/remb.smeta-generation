@@ -39,6 +39,16 @@ export function saveProject() {
     totalDays:      appState.totalDays ?? 60,
     stageCounter:   appState.stageCounter ?? 0,
     payCounter:     appState.payCounter ?? 0,
+    // ── UI-параметры ──
+    wallOffset:        appState.wallOffset        ?? 'left',
+    defaultDoorHinge:  appState.defaultDoorHinge  ?? 'start',
+    defaultDoorSwing:  appState.defaultDoorSwing  ?? 1,
+    inpWallThick:      appState.inpWallThick      ?? 200,
+    inpWallHeight:     appState.inpWallHeight     ?? 2700,
+    inpWindowWidth:    appState.inpWindowWidth    ?? 1200,
+    inpWindowHeight:   appState.inpWindowHeight   ?? 1500,
+    inpDoorWidth:      appState.inpDoorWidth      ?? 900,
+    inpDoorHeight:     appState.inpDoorHeight     ?? 2100,
     savedAt:        Date.now(),
   };
   return JSON.stringify(data);
@@ -66,6 +76,16 @@ export function loadProject(jsonStr) {
   if (data.totalDays      !== undefined) appState.totalDays      = data.totalDays ?? 60;
   if (data.stageCounter   !== undefined) appState.stageCounter   = data.stageCounter ?? 0;
   if (data.payCounter     !== undefined) appState.payCounter     = data.payCounter ?? 0;
+  // ── UI-параметры ──
+  appState.wallOffset        = data.wallOffset        ?? 'left';
+  appState.defaultDoorHinge  = data.defaultDoorHinge  ?? 'start';
+  appState.defaultDoorSwing  = data.defaultDoorSwing  ?? 1;
+  appState.inpWallThick      = data.inpWallThick      ?? 200;
+  appState.inpWallHeight     = data.inpWallHeight     ?? 2700;
+  appState.inpWindowWidth    = data.inpWindowWidth    ?? 1200;
+  appState.inpWindowHeight   = data.inpWindowHeight   ?? 1500;
+  appState.inpDoorWidth      = data.inpDoorWidth      ?? 900;
+  appState.inpDoorHeight     = data.inpDoorHeight     ?? 2100;
 }
 
 export function autosaveToLocalStorage() {
