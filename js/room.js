@@ -923,6 +923,9 @@ export function computeRoomMetrics({
   // ── Шаг 1: Периметр и валовая площадь стен ──────────────────────
   // Рёбра разделителя не дают ни периметра пола, ни площади стен.
   // Проверяем геометрически: середина ребра лежит на оси разделителя?
+  console.log('[computeRoomMetrics] dividerWalls count:', dividerWalls.length, JSON.stringify(dividerWalls.map(d => ({id:d.id, x1:Math.round(d.cx1??d.x1), y1:Math.round(d.cy1??d.y1), x2:Math.round(d.cx2??d.x2), y2:Math.round(d.cy2??d.y2)}))));
+  console.log('[computeRoomMetrics] polygon:', JSON.stringify(polygon.map(p => ({x:Math.round(p.x), y:Math.round(p.y)}))));
+
   function isEdgeOnDivider(ax, ay, bx, by) {
     if (!dividerWalls || dividerWalls.length === 0) return false;
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
@@ -936,7 +939,12 @@ export function computeRoomMetrics({
       if (dLen < 1) continue;
       const dUX = (dx2 - dx1) / dLen, dUY = (dy2 - dy1) / dLen;
       // Коллинеарны?
-      if (Math.abs(edUX * dUX + edUY * dUY) < 0.95) continue;
+      const dot = Math.abs(edUX * dUX + edUY * dUY);
+      const ddx = mx - dx1, ddy = my - dy1;
+      const along = ddx * dUX + ddy * dUY;
+      const perp = Math.abs(ddx * (-dUY) + ddy * dUX);
+      console.log('[isEdgeOnDivider] edge mid:', Math.round(mx), Math.round(my), '| divider:', Math.round(dx1), Math.round(dy1), '->', Math.round(dx2), Math.round(dy2), '| dot:', dot.toFixed(3), 'along:', Math.round(along), 'perp:', Math.round(perp), 'dLen:', Math.round(dLen));
+      if (dot < 0.95) continue;
       // Середина ребра лежит на оси разделителя?
       const ddx = mx - dx1, ddy = my - dy1;
       const along = ddx * dUX + ddy * dUY;
@@ -951,7 +959,9 @@ export function computeRoomMetrics({
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i], b = polygon[(i + 1) % polygon.length];
     const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
-    if (!isEdgeOnDivider(a.x, a.y, b.x, b.y)) {
+    const onDiv = isEdgeOnDivider(a.x, a.y, b.x, b.y);
+    console.log('[edge]', Math.round(a.x), Math.round(a.y), '->', Math.round(b.x), Math.round(b.y), 'len:', Math.round(edgeLenMm), 'isDivider:', onDiv);
+    if (!onDiv) {
       perimeterMm += edgeLenMm;
       wallAreaGrossM2 += (edgeLenMm / 1000) * heightM;
     }
