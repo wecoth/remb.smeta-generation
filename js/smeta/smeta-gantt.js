@@ -98,7 +98,10 @@ export function syncSectionsToGantt() {
 // ── Days auto-calc ─────────────────────────────────────────────────
 
 function _calcStageDaysAuto(stageName) {
-  let inside = false, auto = 0, prevDays = 0;
+  // Реальная длительность этапа = конец последней работы минус начало первой.
+  // Используем workStart + workDays чтобы учесть реальное расположение баров
+  // (параллельные работы, пропуски, drag-позиции) — не суммируем вслепую.
+  let inside = false, stageStart = Infinity, stageEnd = 0, hasAny = false;
   for (const r of appState.smrRows) {
     if (r.isSection) {
       if (inside) break;
@@ -106,22 +109,44 @@ function _calcStageDaysAuto(stageName) {
       continue;
     }
     if (!inside) continue;
-    const d        = appState.workDays?.[r._uid] || 0;
-    const parallel = appState.workParallel?.[r._uid] || false;
-    if (parallel && prevDays > 0) {
-      auto = auto - prevDays + Math.max(prevDays, d);
-    } else {
-      auto += d;
-    }
-    prevDays = d;
+    const d = appState.workDays?.[String(r._uid)] || 0;
+    if (d <= 0) continue;
+    hasAny = true;
+    const s = appState.workStart?.[String(r._uid)] || 0;
+    if (s < stageStart) stageStart = s;
+    if (s + d > stageEnd) stageEnd = s + d;
   }
-  return auto;
+  if (!hasAny) return 0;
+  return stageEnd - stageStart;
 }
 
 export function recalcAllStageDaysAuto() {
   if (!appState.stages) return;
-  appState.stages.forEach(s => { s.daysAuto = _calcStageDaysAuto(s.name); });
+  appState.stages.forEach(s => {
+    s.daysAuto = _calcStageDaysAuto(s.name);
+    // Запоминаем реальное начало этапа по workStart (для позиционирования бара)
+    s._autoStartDay = _calcStageStartDay(s.name);
+  });
   recalcTotalDaysAuto();
+}
+
+// Реальный день начала этапа = min(workStart) по его работам с d > 0
+function _calcStageStartDay(stageName) {
+  let inside = false, minStart = Infinity, hasAny = false;
+  for (const r of appState.smrRows) {
+    if (r.isSection) {
+      if (inside) break;
+      inside = (r.name?.trim() === stageName);
+      continue;
+    }
+    if (!inside) continue;
+    const d = appState.workDays?.[String(r._uid)] || 0;
+    if (d <= 0) continue;
+    hasAny = true;
+    const s = appState.workStart?.[String(r._uid)] || 0;
+    if (s < minStart) minStart = s;
+  }
+  return hasAny ? minStart : 0;
 }
 
 export function recalcTotalDaysAuto() {
@@ -216,13 +241,21 @@ function _renderGanttStages(wrap) {
     s._dur = s.daysOverride != null ? s.daysOverride : (s.daysAuto || 0);
   });
 
-  // Позиционирование с учётом parallelWithPrev
-  let cursor = 0;
-  appState.stages.forEach((s, i) => {
-    const start = (s.parallelWithPrev && i > 0) ? (appState.stages[i - 1]._startDay || 0) : cursor;
-    s._startDay = start;
-    if (!s.parallelWithPrev) cursor = start + s._dur;
-  });
+  // Позиционирование: если работы расставлены — используем реальные позиции из workStart.
+  // Fallback (нет работ) — накопительный cursor.
+  const hasWorkData = appState.stages.some(s => (s._autoStartDay || 0) > 0 || s.daysAuto > 0);
+  if (hasWorkData) {
+    appState.stages.forEach(s => {
+      s._startDay = s._autoStartDay || 0;
+    });
+  } else {
+    let cursor = 0;
+    appState.stages.forEach((s, i) => {
+      const start = (s.parallelWithPrev && i > 0) ? (appState.stages[i - 1]._startDay || 0) : cursor;
+      s._startDay = start;
+      if (!s.parallelWithPrev) cursor = start + s._dur;
+    });
+  }
 
   // totalDays = максимальный конец этапов, минимум 7
   const stagesEnd = appState.stages.reduce((m, s) => Math.max(m, s._startDay + s._dur), 0);
