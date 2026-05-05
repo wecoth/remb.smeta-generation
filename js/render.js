@@ -1261,19 +1261,26 @@ function drawRoomDimensions() {
       // Стиль как у окон/дверей: сплошная линия с изломом
       const leaderColor = isOpening ? '#e07020' : '#6b7280';
       const shelfDir = sText.x >= attachScreen.x ? 1 : -1;
-      // Зазор от полочки до текста в мировых мм — масштабируется вместе с планом
+      // Полочка: горизонталь на уровне sText, текст выше на TEXT_GAP_MM мировых мм
       const TEXT_GAP_MM = 80;
       const textGapPx = TEXT_GAP_MM * _getScale();
-      // Полочка ниже центра текста на textGapPx
       const shelfY = sText.y + textGapPx;
       const diagEndX = attachScreen.x + shelfDir * Math.abs(shelfY - attachScreen.y) * 0.7;
+      // Длина полочки: от diagEnd до края текста + выступ в мировых мм
+      const scale = _getScale();
+      const basePx = BASE_FONT_MM * scale;
+      _ctx.font = `500 ${basePx.toFixed(1)}px Merriweather, Onest, Inter, sans-serif`;
+      const textHalfW = _ctx.measureText(label).width / 2;
+      const SHELF_OVERHANG_MM = 60; // выступ полочки за край текста
+      const overhangPx = SHELF_OVERHANG_MM * scale;
+      const shelfEndX = sText.x + shelfDir * (textHalfW + overhangPx);
       _ctx.strokeStyle = leaderColor;
       _ctx.lineWidth = 0.8;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(attachScreen.x, attachScreen.y);
       _ctx.lineTo(diagEndX, shelfY);
-      _ctx.lineTo(sText.x, shelfY);
+      _ctx.lineTo(shelfEndX, shelfY);
       _ctx.stroke();
       _ctx.beginPath();
       _ctx.arc(attachScreen.x, attachScreen.y, 2, 0, Math.PI * 2);
@@ -1574,13 +1581,21 @@ function drawWallDimensions() {
           const shelfDir = sText.x >= anchorScreen.x ? 1 : -1;
           const shelfY = sText.y + textGapPxW;
           const diagEndX = anchorScreen.x + shelfDir * Math.abs(shelfY - anchorScreen.y) * 0.7;
+          // Полочка тянется за край текста + выступ в мировых мм
+          const scaleW = _getScale();
+          const basePxW = BASE_FONT_MM * scaleW;
+          _ctx.font = `500 ${basePxW.toFixed(1)}px Merriweather, Onest, Inter, sans-serif`;
+          const textHalfWW = _ctx.measureText(label).width / 2;
+          const SHELF_OVERHANG_MM_W = 60;
+          const overhangPxW = SHELF_OVERHANG_MM_W * scaleW;
+          const shelfEndX = sText.x + shelfDir * (textHalfWW + overhangPxW);
           _ctx.strokeStyle = '#6b7280';
           _ctx.lineWidth = 0.8;
           _ctx.setLineDash([]);
           _ctx.beginPath();
           _ctx.moveTo(anchorScreen.x, anchorScreen.y);
           _ctx.lineTo(diagEndX, shelfY);
-          _ctx.lineTo(sText.x, shelfY);
+          _ctx.lineTo(shelfEndX, shelfY);
           _ctx.stroke();
           _ctx.beginPath();
           _ctx.arc(anchorScreen.x, anchorScreen.y, 2, 0, Math.PI * 2);
