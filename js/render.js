@@ -15,6 +15,12 @@ let _canvas, _ctx, _hatchPat = null;
 let _getScale = () => 0.12;
 let _fontScale = 1; // множитель шрифта для offscreen рендера (PDF)
 
+// ── Реестр hit-зон размерных подписей (заполняется при каждом redraw) ──
+// Каждая запись: { key, labelScreenX, labelScreenY, defaultWorldX, defaultWorldY }
+// key используется как индекс в appState.dimensionOffsets
+let _dimHitBoxes = [];
+let _dimOffsets  = {}; // ссылка на appState.dimensionOffsets, обновляется в redraw
+
 export function initRenderer(canvas, ctx, getScaleFn) {
   _canvas = canvas; _ctx = ctx;
   _getScale = getScaleFn || (() => 0.12);
@@ -205,10 +211,24 @@ export function hitTestWallResizeHandle(sp, tool, selectedItems) {
   return null;
 }
 
+// Возвращает ключ размерной подписи под курсором (screenPoint = {x,y} в px)
+// или null если нет попадания.
+export function getDimensionHitTest(screenPoint) {
+  const HIT_PX = 18;
+  for (const hb of _dimHitBoxes) {
+    const dx = screenPoint.x - hb.labelScreenX;
+    const dy = screenPoint.y - hb.labelScreenY;
+    if (Math.hypot(dx, dy) <= HIT_PX) return hb;
+  }
+  return null;
+}
+
 // ── MAIN REDRAW ───────────────────────────────────────────────────
 
 export function redraw(ps) {
   if (!_ctx || !_canvas) return;
+  _dimHitBoxes = []; // сброс реестра перед каждым redraw
+  _dimOffsets = ps.dimensionOffsets || appState.dimensionOffsets || {};
   _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
   drawGrid();
   drawRoomFills(ps.selectedItems);
@@ -1163,7 +1183,8 @@ function drawRoomDimensions() {
   
   // Рисует один размерный отрезок (от pt1 до pt2 в мировых координатах)
   // со смещением inward на lineOff, засечками и текстом
-  function drawOneDim(pt1, pt2, inward, angle, ux, uy, isOpening) {
+  // dimKey — уникальный ключ для хранения drag-смещения
+  function drawOneDim(pt1, pt2, inward, angle, ux, uy, isOpening, dimKey) {
     const len = Math.hypot(pt2.x - pt1.x, pt2.y - pt1.y);
     if (len < MIN_SEG_MM) return;
     const label = `${Math.round(len)} мм`;
@@ -1171,10 +1192,24 @@ function drawRoomDimensions() {
     const lineOffY = inward.y * LINE_OFF_MM;
     const wA = { x: pt1.x + lineOffX, y: pt1.y + lineOffY };
     const wB = { x: pt2.x + lineOffX, y: pt2.y + lineOffY };
-    const wL = { x: (pt1.x + pt2.x) / 2 + lineOffX, y: (pt1.y + pt2.y) / 2 + lineOffY };
+
+    // Дефолтная позиция подписи (мировые координаты)
+    const textOffX = inward.x * TEXT_OFF_MM;
+    const textOffY = inward.y * TEXT_OFF_MM;
+    const defaultTextWorld = {
+      x: (pt1.x + pt2.x) / 2 + textOffX,
+      y: (pt1.y + pt2.y) / 2 + textOffY,
+    };
+
+    // Смещение от drag (в мировых мм)
+    const off = dimKey && _dimOffsets[dimKey];
+    const textWorld = off
+      ? { x: defaultTextWorld.x + off.dx, y: defaultTextWorld.y + off.dy }
+      : defaultTextWorld;
+
     const sA = toScreen(wA.x, wA.y);
     const sB = toScreen(wB.x, wB.y);
-    const sL = toScreen(wL.x, wL.y);
+    const sText = toScreen(textWorld.x, textWorld.y);
     // Выносные линии
     const e1 = toScreen(pt1.x, pt1.y);
     const e2 = toScreen(pt2.x, pt2.y);
@@ -1185,58 +1220,75 @@ function drawRoomDimensions() {
     _ctx.moveTo(e1.x, e1.y); _ctx.lineTo(sA.x, sA.y);
     _ctx.moveTo(e2.x, e2.y); _ctx.lineTo(sB.x, sB.y);
     _ctx.stroke();
+
     // Размерная линия
     const lineColor = isOpening ? '#e07020' : '#111';
     const textColor = isOpening ? '#e07020' : '#111';
-    if (len >= MIN_INLINE_MM) {
-  _ctx.strokeStyle = lineColor;
-  _ctx.lineWidth = 1.0;
-  _ctx.setLineDash([]);
-  _ctx.beginPath();
-  _ctx.moveTo(sA.x, sA.y);
-  _ctx.lineTo(sB.x, sB.y);
-  drawTick45(sA, angle);
-  drawTick45(sB, angle);
-  _ctx.stroke();
-  // Текст смещаем на TEXT_OFF_MM вместо LINE_OFF_MM
-  const textOffX = inward.x * TEXT_OFF_MM;
-  const textOffY = inward.y * TEXT_OFF_MM;
-  const textWorld = {
-    x: (pt1.x + pt2.x) / 2 + textOffX,
-    y: (pt1.y + pt2.y) / 2 + textOffY
-  };
-  const sText = toScreen(textWorld.x, textWorld.y);
-  drawAlignedTextBox(label, sText, angle, {
-    font: '500 13px Merriweather, Onest, Inter, sans-serif',
-    background: 'rgba(255,255,255,0.95)',
-    textColor,
-  });
-} else {
-  // ... остальной код без изменений
-      // Выноска для коротких сегментов
-      const midW = { x: (wA.x + wB.x) / 2, y: (wA.y + wB.y) / 2 };
-      const diagW = { x: midW.x + inward.x * LEADER_OUT_MM, y: midW.y + inward.y * LEADER_OUT_MM };
-      const shelfW = { x: diagW.x + ux * SHELF_MM, y: diagW.y + uy * SHELF_MM };
-      const midShelfW = { x: (diagW.x + shelfW.x) / 2, y: (diagW.y + shelfW.y) / 2 };
-      const pA = toScreen(midW.x, midW.y);
-      const pD = toScreen(diagW.x, diagW.y);
-      const pE = toScreen(shelfW.x, shelfW.y);
-      const pM = toScreen(midShelfW.x, midShelfW.y);
+
+    if (len >= MIN_INLINE_MM && !off) {
+      // ── Inline: текст над линией, без выноски ─────────────────────
+      _ctx.strokeStyle = lineColor;
+      _ctx.lineWidth = 1.0;
+      _ctx.setLineDash([]);
+      _ctx.beginPath();
+      _ctx.moveTo(sA.x, sA.y);
+      _ctx.lineTo(sB.x, sB.y);
+      drawTick45(sA, angle);
+      drawTick45(sB, angle);
+      _ctx.stroke();
+      drawAlignedTextBox(label, sText, angle, {
+        font: '500 13px Merriweather, Onest, Inter, sans-serif',
+        background: 'rgba(255,255,255,0.95)',
+        textColor,
+      });
+    } else {
+      // ── Выноска (короткий сегмент или drag-смещение) ──────────────
+      // Точка привязки: середина размерной линии
+      const attachScreen = toScreen(
+        (wA.x + wB.x) / 2,
+        (wA.y + wB.y) / 2,
+      );
+      // Рисуем размерную линию
+      _ctx.strokeStyle = lineColor;
+      _ctx.lineWidth = off ? 1.0 : 0.8;
+      _ctx.setLineDash([]);
+      _ctx.beginPath();
+      _ctx.moveTo(sA.x, sA.y);
+      _ctx.lineTo(sB.x, sB.y);
+      if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
+      _ctx.stroke();
+      // Выноска: attach → колено → подпись
       _ctx.strokeStyle = isOpening ? '#e07020' : '#444';
       _ctx.lineWidth = 0.8;
       _ctx.setLineDash([3, 3]);
       _ctx.beginPath();
-      _ctx.moveTo(pA.x, pA.y); _ctx.lineTo(pD.x, pD.y); _ctx.lineTo(pE.x, pE.y);
+      _ctx.moveTo(attachScreen.x, attachScreen.y);
+      // Колено — горизонтально или вертикально на уровне подписи
+      _ctx.lineTo(attachScreen.x, sText.y);
+      _ctx.lineTo(sText.x, sText.y);
       _ctx.stroke();
       _ctx.setLineDash([]);
       _ctx.beginPath();
-      _ctx.arc(pA.x, pA.y, 2, 0, Math.PI * 2);
+      _ctx.arc(attachScreen.x, attachScreen.y, 2, 0, Math.PI * 2);
       _ctx.fillStyle = isOpening ? '#e07020' : '#444';
       _ctx.fill();
-      drawAlignedTextBox(label, pM, angle, {
+      drawAlignedTextBox(label, sText, angle, {
         font: '500 13px Merriweather, Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
         textColor: isOpening ? '#e07020' : '#333',
+      });
+    }
+
+    // Регистрируем hit-зону для drag
+    if (dimKey) {
+      _dimHitBoxes.push({
+        key: dimKey,
+        labelScreenX: sText.x,
+        labelScreenY: sText.y,
+        defaultWorldX: defaultTextWorld.x,
+        defaultWorldY: defaultTextWorld.y,
+        anchorWorldX: (wA.x + wB.x) / 2,
+        anchorWorldY: (wA.y + wB.y) / 2,
       });
     }
   }
@@ -1360,8 +1412,10 @@ function drawRoomDimensions() {
         ? splitEdgeByOpenings(a, b, wall, ux, uy, edgeLen)
         : [{ pt1: a, pt2: b, isOpening: false }];
 
-      for (const sub of subsegs) {
-        drawOneDim(sub.pt1, sub.pt2, inward, angle, ux, uy, sub.isOpening);
+      for (let subIdx = 0; subIdx < subsegs.length; subIdx++) {
+        const sub = subsegs[subIdx];
+        const dimKey = `r_${room.key}_e${i}_s${subIdx}`;
+        drawOneDim(sub.pt1, sub.pt2, inward, angle, ux, uy, sub.isOpening, dimKey);
       }
     }
   }
@@ -1444,7 +1498,8 @@ function drawWallDimensions() {
       if (cursor < wlen - 1) segments.push({ from: cursor, to: wlen });
 
       // ── Draw each segment ─────────────────────────────────────────
-      for (const seg of segments) {
+      for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+        const seg = segments[segIdx];
         const segLen = seg.to - seg.from;
         if (segLen < MIN_SEG_MM) continue;
 
@@ -1459,14 +1514,27 @@ function drawWallDimensions() {
                      y: wall.y1 + uy * (seg.from + GAP_MM) + ny * lineOff };
         const wB = { x: wall.x1 + ux * (seg.to   - GAP_MM) + nx * lineOff,
                      y: wall.y1 + uy * (seg.to   - GAP_MM) + ny * lineOff };
-        const wL = { x: wall.x1 + ux * segCx + nx * textOff,
-                     y: wall.y1 + uy * segCx + ny * textOff };
+
+        // Дефолтная позиция подписи
+        const defaultTextWorld = {
+          x: wall.x1 + ux * segCx + nx * textOff,
+          y: wall.y1 + uy * segCx + ny * textOff,
+        };
+
+        // Drag-смещение
+        const dimKey = `w_${wall.id}_s${segIdx}`;
+        const off = _dimOffsets[dimKey];
+        const textWorld = off
+          ? { x: defaultTextWorld.x + off.dx, y: defaultTextWorld.y + off.dy }
+          : defaultTextWorld;
 
         const sA = toScreen(wA.x, wA.y);
         const sB = toScreen(wB.x, wB.y);
-        const sL = toScreen(wL.x, wL.y);
+        const sText = toScreen(textWorld.x, textWorld.y);
+        // Точка привязки выноски — середина размерной линии
+        const anchorScreen = toScreen((wA.x + wB.x) / 2, (wA.y + wB.y) / 2);
 
-        if (segLen >= MIN_INLINE_MM) {
+        if (segLen >= MIN_INLINE_MM && !off) {
           // ── Inline dimension ──────────────────────────────────────
           _ctx.strokeStyle = '#111';
           _ctx.lineWidth = 1.0;
@@ -1477,49 +1545,52 @@ function drawWallDimensions() {
           drawTick45(sA, angle);
           drawTick45(sB, angle);
           _ctx.stroke();
-          drawAlignedTextBox(label, sL, angle, {
+          drawAlignedTextBox(label, sText, angle, {
             font: '500 13px Merriweather, Onest, Inter, sans-serif',
             background: 'rgba(255,255,255,0.95)',
             textColor: '#111',
           });
         } else {
-          // ── Leader line (elbow) inside room ───────────────────────
-          // Attach point: wall face on interior side
-          const attachW = { x: wall.x1 + ux * segCx + nx * sideSign * halfT,
-                            y: wall.y1 + uy * segCx + ny * sideSign * halfT };
-          // Diagonal leg: goes inward (into room) and perpendicular
-          const diagW = { x: attachW.x + nx * sideSign * LEADER_OUT_MM,
-                          y: attachW.y + ny * sideSign * LEADER_OUT_MM };
-          // Shelf: runs parallel to wall
-          const shelfW = { x: diagW.x + ux * SHELF_MM,
-                           y: diagW.y + uy * SHELF_MM };
-          const midShelfW = { x: (diagW.x + shelfW.x) / 2,
-                              y: (diagW.y + shelfW.y) / 2 };
-
-          const pA  = toScreen(attachW.x, attachW.y);
-          const pD  = toScreen(diagW.x,   diagW.y);
-          const pE  = toScreen(shelfW.x,  shelfW.y);
-          const pM  = toScreen(midShelfW.x, midShelfW.y);
-
+          // ── Выноска (короткий сегмент или drag-смещение) ──────────
+          _ctx.strokeStyle = '#111';
+          _ctx.lineWidth = off ? 1.0 : 0.8;
+          _ctx.setLineDash([]);
+          _ctx.beginPath();
+          _ctx.moveTo(sA.x, sA.y);
+          _ctx.lineTo(sB.x, sB.y);
+          if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
+          _ctx.stroke();
+          // Выноска: anchor → колено → подпись
           _ctx.strokeStyle = '#444';
           _ctx.lineWidth = 0.8;
           _ctx.setLineDash([3, 3]);
           _ctx.beginPath();
-          _ctx.moveTo(pA.x, pA.y);
-          _ctx.lineTo(pD.x, pD.y);
-          _ctx.lineTo(pE.x, pE.y);
+          _ctx.moveTo(anchorScreen.x, anchorScreen.y);
+          _ctx.lineTo(anchorScreen.x, sText.y);
+          _ctx.lineTo(sText.x, sText.y);
           _ctx.stroke();
           _ctx.setLineDash([]);
           _ctx.beginPath();
-          _ctx.arc(pA.x, pA.y, 2, 0, Math.PI * 2);
+          _ctx.arc(anchorScreen.x, anchorScreen.y, 2, 0, Math.PI * 2);
           _ctx.fillStyle = '#444';
           _ctx.fill();
-          drawAlignedTextBox(label, pM, angle, {
+          drawAlignedTextBox(label, sText, angle, {
             font: '500 13px Merriweather, Onest, Inter, sans-serif',
             background: 'rgba(255,255,255,0.95)',
             textColor: '#333',
           });
         }
+
+        // Регистрируем hit-зону
+        _dimHitBoxes.push({
+          key: dimKey,
+          labelScreenX: sText.x,
+          labelScreenY: sText.y,
+          defaultWorldX: defaultTextWorld.x,
+          defaultWorldY: defaultTextWorld.y,
+          anchorWorldX: (wA.x + wB.x) / 2,
+          anchorWorldY: (wA.y + wB.y) / 2,
+        });
       }
     }
   }
