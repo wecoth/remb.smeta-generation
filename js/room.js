@@ -565,7 +565,7 @@ export function computeRooms(wallHeightFallback = 2700) {
       volume: netAreaMm2 * heightMm / 1e9,
       height: heightMm / 1000,
       perimeter: metrics.perimeterFloorM,
-      wallArea: metrics.wallAreaNetM2,
+      wallArea: metrics.wallAreaCleanM2,
       openingsArea: metrics.openingsAreaM2,
       metrics,
       wallIds: [...boundaryWallIds],
@@ -578,6 +578,16 @@ export function computeRooms(wallHeightFallback = 2700) {
 // ══════════════════════════════════════════════════════════════════
 // МЕТРИКИ КОМНАТ
 // ══════════════════════════════════════════════════════════════════
+
+// ─── Пороговые константы ───────────────────────────────────────────
+// Узкий простенок / торец: ширина < этого значения (мм) считается
+// слишком узкой для стандартной отделки и переводится в погонаж.
+const NARROW_WALL_THRESHOLD_MM = 500;
+
+// Минимальная длина сегмента, которую мы считаем значимой (мм).
+// Сегменты короче этого значения отбрасываются как погрешность.
+const MIN_SEGMENT_LENGTH_MM = 0.5;
+
 function round2(v) { return Math.round(v * 100) / 100; }
 
 function wallStart(w) { return { x: w.cx1 ?? w.x1, y: w.cy1 ?? w.y1 }; }
@@ -677,49 +687,30 @@ function computeCornerStats(polygon) {
   return { inner, outer };
 }
 
-export function computeRoomMetrics({
-  boundaryWalls, interiorWalls, openings, heightMm, polygon,
-  entranceDoorId, hasDividers, netAreaMm2,
-}) {
-  const heightM = heightMm / 1000;
-
-  // Периметр комнаты — по полигону (это контур по cx/cy = внутренние грани)
+// ─── Шаг 1: Периметр и валовая площадь стен ──────────────────────
+// Возвращает периметр полигона (мм) и wallAreaGrossM2 (м²).
+// wallAreaGrossM2 = периметр × высота. Разделители и висящие перегородки
+// добавляются сверху вызывающим кодом.
+function calcPerimeterAndGrossArea(polygon, heightM) {
   let perimeterMm = 0;
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i], b = polygon[(i + 1) % polygon.length];
     perimeterMm += Math.hypot(b.x - a.x, b.y - a.y);
   }
+  const wallAreaGrossM2 = (perimeterMm / 1000) * heightM;
+  return { perimeterMm, wallAreaGrossM2 };
+}
 
-  // Площадь стен помещения (gross) = периметр полигона × высота.
-  // Периметр уже правильно включает все рёбра контура, в том числе
-  // перегородки (они проходятся дважды — туда и обратно — поэтому
-  // обе стороны учитываются автоматически).
-  // Разделители (нулевая толщина) входят в полигон, но физической
-  // площади стен не дают — их длина вычитается отдельно ниже.
-  let wallAreaGrossM2 = (perimeterMm / 1000) * heightM;
-  let narrowWallsLm = 0;
-
-  const allWallsForEdge = [...boundaryWalls];
-
+// ─── Шаг 2: Площадь и периметровый вычет проёмов ─────────────────
+// Возвращает суммарную площадь проёмов, вычет из периметра,
+// а также оконную статистику.
+function calcOpeningsImpact(openings, heightMm, entranceDoorId) {
+  const heightM = heightMm / 1000;
   let openingsAreaM2 = 0;
   let perimeterDeductMm = 0;
   let windowAreaM2 = 0, windowCount = 0, windowRevealsLm = 0;
   let entranceDoorAreaM2 = 0;
 
-  // Висящие перегородки — добавляют площадь стен с двух сторон + торцы
-  for (const { wall, lengthMm } of interiorWalls) {
-    const lenM = lengthMm / 1000;
-    const thickM = (wall.thickness || 0) / 1000;
-    // Две длинные стороны
-    wallAreaGrossM2 += 2 * lenM * heightM;
-    // Торцы (если стена висящая — оба, если врезана одним концом — один)
-    // Упрощённо: считаем оба торца. Для T-стыка где торец стыкуется со
-    // стеной, его площадь обычно мала и в реальной отделке учитывается
-    // отдельно. Можно уточнить позже при необходимости.
-    wallAreaGrossM2 += 2 * thickM * heightM;
-  }
-
-  // Проёмы — считаются только в граничных стенах
   for (const op of openings) {
     const opArea = (op.width * op.height) / 1e6;
     openingsAreaM2 += opArea;
@@ -735,16 +726,41 @@ export function computeRoomMetrics({
     }
   }
 
-  // Узкие участки стен — любые отрезки поверхности стены шириной < 500 мм.
-  //
-  // Два прохода:
-  // 1) По стенам с проёмами — ищем простенки между проёмами < 500 мм.
-  // 2) По рёбрам полигона — ловим короткие рёбра без проёмов (торцы
-  //    перегородок и т.п.), которые findAllWallsForEdge не находит
-  //    из-за проверки коллинеарности (торец ⊥ оси стены).
-  let narrowWallAreaM2 = 0;
+  return {
+    openingsAreaM2, perimeterDeductMm,
+    windowAreaM2, windowCount, windowRevealsLm,
+    entranceDoorAreaM2,
+  };
+}
 
-  // Строим карту проёмов по стенам
+// ─── Шаг 3: Узкие простенки и открытые торцы ─────────────────────
+//
+// Возвращает два числа:
+//   narrowWallAreaM2  — суммарная площадь узких участков (м²), ВЫЧИТАЕТСЯ
+//                       из номинальной площади стен.
+//   narrowWallsLm     — погонаж узких участков (м). Прибавляется к чистой
+//                       площади стен КАК М², потому что в сметной логике
+//                       каждый погонный метр такого участка даёт 1 м²
+//                       условной площади отделки (высота простенка = 1 п.м.).
+//
+// Два прохода:
+//   Проход 1 — простенки между проёмами на стенах с проёмами (ширина < NARROW_WALL_THRESHOLD_MM).
+//   Проход 2 — короткие рёбра полигона без проёмов (торцы перегородок и т.п.).
+//
+// Схема простенка (вид сверху, стена с двумя окнами):
+//   ┌──────────┬────┬──────────────┬────┬──────────┐
+//   │ стена    │ О  │  ПРОСТЕНОК   │ О  │  стена   │
+//   │          │ к  │  < 500 мм    │ к  │          │
+//   └──────────┴────┴──────────────┴────┴──────────┘
+//   О = окно/дверь
+//
+function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
+  let narrowWallAreaM2 = 0;
+  // narrowWallsLm — высота в метрах каждого узкого участка.
+  // Для чистой площади стен прибавляется как м² (см. комментарий выше).
+  let narrowWallsLm = 0;
+
+  // Карта проёмов по стенам
   const opsByWall = new Map();
   for (const w of boundaryWalls) {
     const fullLen = wallFullLengthMm(w);
@@ -769,9 +785,9 @@ export function computeRoomMetrics({
     let cursor = 0;
     for (let idx = 0; idx < wOps.length; idx++) {
       const item = wOps[idx];
-      if (item.startMm > cursor + 0.5) {
+      if (item.startMm > cursor + MIN_SEGMENT_LENGTH_MM) {
         const gap = item.startMm - cursor;
-        if (gap < 500) {
+        if (gap < NARROW_WALL_THRESHOLD_MM) {
           const prevOp = idx > 0 ? wOps[idx - 1].op : null;
           const prevH = prevOp && prevOp.type === 'door' ? prevOp.height / 1000 : heightM;
           const nextH = item.op.type === 'door' ? item.op.height / 1000 : heightM;
@@ -782,9 +798,9 @@ export function computeRoomMetrics({
       }
       cursor = Math.max(cursor, item.endMm);
     }
-    if (cursor < fullLen - 0.5) {
+    if (cursor < fullLen - MIN_SEGMENT_LENGTH_MM) {
       const gap = fullLen - cursor;
-      if (gap < 500) {
+      if (gap < NARROW_WALL_THRESHOLD_MM) {
         const prevOp = wOps[wOps.length - 1].op;
         const h = prevOp.type === 'door' ? prevOp.height / 1000 : heightM;
         narrowWallsLm   += h;
@@ -793,43 +809,31 @@ export function computeRoomMetrics({
     }
   }
 
-  // Проход 2: короткие рёбра полигона < 500 мм без проёмов
-  // (открытые торцы перегородок, короткие участки стен и т.п.)
+  // Проход 2: короткие рёбра полигона < NARROW_WALL_THRESHOLD_MM без проёмов
   //
-  // Важно: торец перегородки, упирающийся в другую стену — это тоже
-  // короткое ребро полигона, но его НЕ надо считать: физически эта
-  // поверхность закрыта примыкающей стеной. Признак: ребро коллинеарно
-  // хотя бы одной из стен (findAllWallsForEdge найдёт её). Такое ребро
-  // является частью той стены и уже учтено в её площади.
-  // Открытый торец — перпендикулярен всем стенам, поэтому
-  // findAllWallsForEdge возвращает пустой массив.
+  // Торец перегородки, упирающийся в другую стену — короткое ребро полигона,
+  // но считать его НЕ нужно: физически поверхность закрыта примыкающей стеной.
+  // Признак закрытого торца: findAllWallsForEdge найдёт коллинеарную стену.
+  // Открытый торец — перпендикулярен всем стенам → findAllWallsForEdge вернёт [].
   for (let k = 0; k < polygon.length; k++) {
     const a = polygon[k], b = polygon[(k + 1) % polygon.length];
     const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
-    if (edgeLenMm >= 500) continue;
+    if (edgeLenMm >= NARROW_WALL_THRESHOLD_MM) continue;
 
-    // Ищем стены коллинеарные этому ребру
     const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
 
-    // Если нашли коллинеарную стену — это часть стены (короткий простенок
-    // или участок). Если у неё есть проёмы — уже обработана в проходе 1.
     if (edgeWalls.length > 0) {
       const hasOps = edgeWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
-      if (hasOps) continue;
-      // Нет проёмов, короткий участок стены < 500 мм — в погонаж
-      if (edgeLenMm < 500) {
-        narrowWallsLm   += heightM;
-        narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
-      }
+      if (hasOps) continue; // уже обработано в проходе 1
+      // Нет проёмов, короткий участок стены — в погонаж
+      narrowWallsLm   += heightM;
+      narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
       continue;
     }
 
-    // Коллинеарных стен нет — это открытый торец перегородки.
-    // Торец виден только если он НЕ упирается в другую стену.
-    // Проверяем: обе вершины ребра должны быть свободны
-    // (не лежать на одной и той же стене одновременно).
-    // Упрощённо: если ребро перпендикулярно оси какой-то стены
-    // и обе его точки лежат на этой стене — это закрытый торец, пропускаем.
+    // Коллинеарных стен нет — потенциально открытый торец перегородки.
+    // Проверяем, что он не закрыт перпендикулярной стеной
+    // (обе вершины ребра лежат на оси одной и той же стены).
     let closedByWall = false;
     for (const w of boundaryWalls) {
       const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
@@ -837,10 +841,8 @@ export function computeRoomMetrics({
       const wLen = Math.hypot(wx2 - wx1, wy2 - wy1);
       if (wLen < 1) continue;
       const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
-      // Ребро должно быть перпендикулярно стене
       const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
-      if (Math.abs(edUX * wUX + edUY * wUY) > 0.1) continue;
-      // Обе вершины ребра лежат на оси этой стены (с допуском)
+      if (Math.abs(edUX * wUX + edUY * wUY) > 0.1) continue; // ребро должно быть ⊥ стене
       const eps = w.thickness || 10;
       const checkPt = (px, py) => {
         const dx = px - wx1, dy = py - wy1;
@@ -860,10 +862,75 @@ export function computeRoomMetrics({
     narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
   }
 
-  // Номинальная площадь стен (до вычета узких простенков)
+  return { narrowWallAreaM2, narrowWallsLm };
+}
+
+// ─── Шаг 4: Итоговые площади стен ────────────────────────────────
+//
+// Явная формула чистой площади стен:
+//   wallAreaCleanM2 = wallAreaNominalM2 - narrowWallAreaM2 + narrowWallsLm
+//
+// где:
+//   wallAreaNominalM2 = wallAreaGrossM2 - openingsAreaM2   (gross минус проёмы)
+//   narrowWallAreaM2  — площадь узких участков (вычитается, т.к. не входит в квадратуру)
+//   narrowWallsLm     — погонаж узких участков (прибавляется как м²,
+//                       т.к. каждый п.м. = 1 м² условной площади отделки)
+//
+function calcFinalWallAreas(wallAreaGrossM2, openingsAreaM2, narrowWallAreaM2, narrowWallsLm) {
   const wallAreaNominalM2 = Math.max(0, wallAreaGrossM2 - openingsAreaM2);
-  // Чистая площадь стен (участки < 50 см исключены из квадратуры → погонаж)
-  const wallAreaNetM2 = Math.max(0, wallAreaNominalM2 - narrowWallAreaM2);
+  const wallAreaNetM2     = Math.max(0, wallAreaNominalM2 - narrowWallAreaM2);
+  // wallAreaCleanM2 — итоговая «чистая площадь стен» для сметы:
+  // участки < 50 см вынесены в погонаж, но их высота компенсируется обратно.
+  const wallAreaCleanM2   = wallAreaNetM2 + narrowWallsLm;
+  return { wallAreaNominalM2, wallAreaNetM2, wallAreaCleanM2 };
+}
+
+
+export function computeRoomMetrics({
+  boundaryWalls, interiorWalls, openings, heightMm, polygon,
+  entranceDoorId, hasDividers, netAreaMm2,
+}) {
+  const heightM = heightMm / 1000;
+
+  // ── Шаг 1: Периметр и валовая площадь стен ──────────────────────
+  // wallAreaGrossM2 = периметр × высота. Периметр включает все рёбра
+  // контура, в т.ч. перегородки (они проходятся дважды → обе стороны учтены).
+  // Разделители (нулевая толщина) входят в полигон, но площади не дают.
+  let { perimeterMm, wallAreaGrossM2 } = calcPerimeterAndGrossArea(polygon, heightM);
+
+  // Висящие перегородки внутри комнаты: две длинные стороны + два торца
+  for (const { wall, lengthMm } of interiorWalls) {
+    const lenM = lengthMm / 1000;
+    const thickM = (wall.thickness || 0) / 1000;
+    wallAreaGrossM2 += 2 * lenM * heightM;   // две длинных стороны
+    wallAreaGrossM2 += 2 * thickM * heightM; // два торца (упрощённо)
+  }
+
+  // ── Шаг 2: Площадь и периметровый вычет проёмов ─────────────────
+  const {
+    openingsAreaM2, perimeterDeductMm,
+    windowAreaM2, windowCount, windowRevealsLm,
+    entranceDoorAreaM2,
+  } = calcOpeningsImpact(openings, heightMm, entranceDoorId);
+
+  // ── Шаг 3: Узкие простенки и открытые торцы ─────────────────────
+  const { narrowWallAreaM2, narrowWallsLm } =
+    calcNarrowSections(boundaryWalls, polygon, openings, heightM);
+
+  // ── Шаг 4: Итоговые площади стен ────────────────────────────────
+  //
+  // Явная формула чистой площади стен («чистая» = wallAreaCleanM2):
+  //
+  //   wallAreaNominalM2 = wallAreaGrossM2 - openingsAreaM2
+  //   wallAreaNetM2     = wallAreaNominalM2 - narrowWallAreaM2
+  //   wallAreaCleanM2   = wallAreaNetM2 + narrowWallsLm
+  //
+  // narrowWallsLm — погонаж узких участков (м, высота каждого участка).
+  // Прибавляется как м², потому что в сметной логике каждый погонный метр
+  // такого участка даёт 1 м² условной площади отделки.
+  const { wallAreaNominalM2, wallAreaNetM2, wallAreaCleanM2 } =
+    calcFinalWallAreas(wallAreaGrossM2, openingsAreaM2, narrowWallAreaM2, narrowWallsLm);
+
   const perimeterFloorM = Math.max(0, perimeterMm - perimeterDeductMm) / 1000;
   const cornerStats = computeCornerStats(polygon);
 
@@ -880,6 +947,7 @@ export function computeRoomMetrics({
     perimeterFloorM:    round2(perimeterFloorM),
     wallAreaNominalM2:  round2(wallAreaNominalM2),
     wallAreaNetM2:      round2(wallAreaNetM2),
+    wallAreaCleanM2:    round2(wallAreaCleanM2),
     wallAreaGrossM2:    round2(wallAreaGrossM2),
     openingsAreaM2:     round2(openingsAreaM2),
     narrowWallAreaM2:   round2(narrowWallAreaM2),
@@ -947,7 +1015,7 @@ export function updateExpl(explBody, roomCountEl) {
       <td>${r.area.toFixed(2)}</td>
       <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
       <td>${fmt(m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea)}</td>
-      <td>${fmt((m.wallAreaNetM2 ?? r.wallArea ?? 0) + (m.narrowWallsLm ?? 0))}</td>
+      <td>${fmt(m.wallAreaCleanM2 ?? r.wallArea)}</td>
       <td>${fmt(m.windowAreaM2)}</td>
       <td>${fmt(m.windowRevealsLm)}</td>
       <td>${fmt(m.outerAnglesLm)}</td>
@@ -969,7 +1037,7 @@ export function getComputedRooms() {
       name:              r.name,
       floorArea:         r.area,
       wallsAreaNominal:  m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea,
-      wallsArea:         (m.wallAreaNetM2 ?? r.wallArea ?? 0) + (m.narrowWallsLm ?? 0),
+      wallsArea:         m.wallAreaCleanM2   ?? r.wallArea ?? 0,
       perimeter:         m.perimeterFloorM   ?? r.perimeter,
       height:            r.height            ?? 0,
       windowAreaM2:      m.windowAreaM2      ?? 0,
@@ -1142,7 +1210,7 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
       volume: netAreaMm2 * heightMm / 1e9,
       height: heightMm / 1000,
       perimeter: metrics.perimeterFloorM,
-      wallArea: metrics.wallAreaNetM2,
+      wallArea: metrics.wallAreaCleanM2,
       openingsArea: metrics.openingsAreaM2,
       metrics,
       wallIds: [...boundaryWallIds],
