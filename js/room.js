@@ -540,6 +540,7 @@ export function computeRooms(wallHeightFallback = 2700) {
       hasDividers,
       netAreaMm2,
       exteriorWallIds,
+      dividerWalls,
     });
 
     const key = generateRoomKey(poly);
@@ -915,15 +916,25 @@ function calcFinalWallAreas(wallAreaGrossM2, openingsAreaM2, narrowWallAreaM2, n
 
 export function computeRoomMetrics({
   boundaryWalls, interiorWalls, openings, heightMm, polygon,
-  entranceDoorId, hasDividers, netAreaMm2,
+  entranceDoorId, hasDividers, netAreaMm2, dividerWalls = [],
 }) {
   const heightM = heightMm / 1000;
 
   // ── Шаг 1: Периметр и валовая площадь стен ──────────────────────
-  // wallAreaGrossM2 = периметр × высота. Периметр включает все рёбра
-  // контура, в т.ч. перегородки (они проходятся дважды → обе стороны учтены).
-  // Разделители (нулевая толщина) входят в полигон, но площади не дают.
-  let { perimeterMm, wallAreaGrossM2 } = calcPerimeterAndGrossArea(polygon, heightM);
+  // Рёбра разделителя не дают ни периметра пола, ни площади стен.
+  const allBoundaryForEdge = [...boundaryWalls, ...dividerWalls];
+  let perimeterMm = 0;
+  let wallAreaGrossM2 = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+    const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
+    const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, allBoundaryForEdge);
+    const isDividerEdge = edgeWalls.length > 0 && edgeWalls.every(w => w.isDivider);
+    if (!isDividerEdge) {
+      perimeterMm += edgeLenMm;
+      wallAreaGrossM2 += (edgeLenMm / 1000) * heightM;
+    }
+  }
 
   // Висящие перегородки внутри комнаты: две длинные стороны + два торца
   for (const { wall, lengthMm } of interiorWalls) {
@@ -1219,6 +1230,7 @@ function refreshExistingRooms(wallHeightFallback = 2700) {
       hasDividers: boundaryWallsList.some(w => w.isDivider),
       netAreaMm2,
       exteriorWallIds: localExteriorWalls,
+      dividerWalls,
     });
 
     updatedRooms.push({
