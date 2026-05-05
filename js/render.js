@@ -1274,16 +1274,17 @@ function drawRoomDimensions() {
       const textHalfW = _ctx.measureText(label).width / 2;
       const SHELF_OVERHANG_MM = 60; // выступ полочки за край текста
       const overhangPx = SHELF_OVERHANG_MM * scale;
-      // Диагональ идёт от anchor до sText.x (точка излома — свободный угол по drag)
-      // Полочка горизонтально от sText.x в направлении shelfDir
-      const shelfEndX = sText.x + shelfDir * (textHalfW + overhangPx);
+      // Полочка: от ближнего края текста до дальнего (выступ с обеих сторон)
+      // Диагональ идёт до ближнего края полочки — угол свободный (по drag)
+      const shelfStartX = sText.x - shelfDir * (textHalfW + overhangPx);
+      const shelfEndX   = sText.x + shelfDir * (textHalfW + overhangPx);
       _ctx.strokeStyle = leaderColor;
       _ctx.lineWidth = 0.8;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(attachScreen.x, attachScreen.y);
-      _ctx.lineTo(sText.x, shelfY);   // диагональ до точки излома (угол = куда потащил мышь)
-      _ctx.lineTo(shelfEndX, shelfY); // горизонтальная полочка
+      _ctx.lineTo(shelfStartX, shelfY); // диагональ до ближнего края полочки
+      _ctx.lineTo(shelfEndX, shelfY);   // горизонтальная полочка
       _ctx.stroke();
       _ctx.beginPath();
       _ctx.arc(attachScreen.x, attachScreen.y, 2, 0, Math.PI * 2);
@@ -1590,14 +1591,15 @@ function drawWallDimensions() {
           const textHalfWW = _ctx.measureText(label).width / 2;
           const SHELF_OVERHANG_MM_W = 60;
           const overhangPxW = SHELF_OVERHANG_MM_W * scaleW;
-          const shelfEndX = sText.x + shelfDir * (textHalfWW + overhangPxW);
+          const shelfStartX = sText.x - shelfDir * (textHalfWW + overhangPxW);
+          const shelfEndX   = sText.x + shelfDir * (textHalfWW + overhangPxW);
           _ctx.strokeStyle = '#6b7280';
           _ctx.lineWidth = 0.8;
           _ctx.setLineDash([]);
           _ctx.beginPath();
           _ctx.moveTo(anchorScreen.x, anchorScreen.y);
-          _ctx.lineTo(sText.x, shelfY);   // диагональ до точки излома (свободный угол по drag)
-          _ctx.lineTo(shelfEndX, shelfY); // горизонтальная полочка
+          _ctx.lineTo(shelfStartX, shelfY); // диагональ до ближнего края полочки
+          _ctx.lineTo(shelfEndX, shelfY);   // горизонтальная полочка
           _ctx.stroke();
           _ctx.beginPath();
           _ctx.arc(anchorScreen.x, anchorScreen.y, 2, 0, Math.PI * 2);
