@@ -371,23 +371,27 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
       }
     }
 
-    // ── Шаг 2: если угол зафиксирован — пробуем объектный snap вдоль оси ──
-    // Сначала проверяем, нет ли угла/конца стены рядом — они важнее осевого lock
-    // (иначе горизонтальная стена никогда не прикрепится к углу соседней стены)
+    // ── Шаг 2: жёсткий объектный snap (endpoint/corner/intersection) ──
+    // Абсолютный приоритет — всегда побеждает всё остальное.
+    const objSnap = snap(world.x, world.y, { screenPoint: screenPt, tolerance: 24 });
+    const isHard = objSnap.snapType === 'endpoint' ||
+                   objSnap.snapType === 'corner' ||
+                   objSnap.snapType === 'intersection';
+    if (isHard && !this.lengthMode) {
+      this._onTrackingLine = false;
+      objSnap.snappedToEndpoint = objSnap.snapType === 'endpoint';
+      return objSnap;
+    }
+
+    // ── Шаг 3: вычисляем базовую точку ──
+    // Если есть осевой lock — проецируем на ось.
+    // Если нет — используем обычный snap.
+    let rawEnd;
+    let finalSnapType = null;
+
     if (lockedAngle !== null && !this.lengthMode) {
-      const objSnap = snap(world.x, world.y, {
-        screenPoint: screenPt,
-        tolerance: 24,
-      });
-      const isHard = objSnap.snapType === 'endpoint' ||
-                     objSnap.snapType === 'corner' ||
-                     objSnap.snapType === 'intersection';
-      if (isHard) {
-        // Угол/конец стены найден — прикрепляемся точно к нему, игнорируем осевой lock
-        objSnap.snappedToEndpoint = objSnap.snapType === 'endpoint';
-        return objSnap;
-      }
-      // Нет жёсткой привязки — проецируем на ось
+      // Осевой lock: берём чистую позицию мыши (без snap к объектам)
+      // и проецируем на ось от drawStart
       const rawGrid = snap(world.x, world.y, {
         screenPoint: screenPt,
         skipObject: true,
@@ -395,49 +399,51 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
         tolerance: 24,
       });
       const len = Math.hypot(rawGrid.x - this.drawStart.x, rawGrid.y - this.drawStart.y);
-      return {
+      rawEnd = {
         x: this.drawStart.x + Math.cos(lockedAngle) * len,
         y: this.drawStart.y + Math.sin(lockedAngle) * len,
-        snapType: null,
+        snapType: 'axis',
         snappedToEndpoint: false,
       };
+      finalSnapType = 'axis';
+    } else {
+      // Нет осевого lock — обычный snap
+      const snappedBase = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        includePerpendicular: !!this.drawStart,
+        startPoint: this.drawStart,
+        tolerance: 24,
+      });
+      rawEnd = { ...snappedBase };
+      finalSnapType = snappedBase.snapType || null;
     }
 
-    // ── Шаг 3: обычный snap с объектными привязками ──
-    const snappedBase = snap(world.x, world.y, {
-      screenPoint: screenPt,
-      includePerpendicular: !!this.drawStart,
-      startPoint: this.drawStart,
-      tolerance: 24,
-    });
-    let rawEnd = { ...snappedBase };
-    let finalSnapType = snappedBase.snapType || null;
-    const hardSnap = snappedBase.snapType === 'endpoint' || snappedBase.snapType === 'corner' || snappedBase.snapType === 'intersection';
+    // ── Шаг 4: tracking lines — накладываются ПОВЕРХ текущей позиции ──
+    // Работают всегда (и при осевом lock, и без него), кроме жёсткого snap.
+    // Если курсор на tracking-линии — смещаем точку на пересечение оси с линией.
+    if (this.activeTrackingPoint) {
+      const tLines = getTrackingLines(this.activeTrackingPoint);
+      const tTolerance = this._onTrackingLine ? 40 : 24; // гистерезис
+      const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, tTolerance);
+      if (tSnap) {
+        this._onTrackingLine = true;
+        rawEnd = { ...rawEnd, x: tSnap.x, y: tSnap.y, snapType: 'tracking' };
+        finalSnapType = 'tracking';
+      } else {
+        this._onTrackingLine = false;
+      }
+    }
 
-    // ── Шаг 4: направляющие (только объектные) ──
-    if (this.currentGuideLine && !hardSnap) {
+    // ── Шаг 5: объектные направляющие (guideLine) ──
+    // Применяются только если нет tracking и нет жёсткого snap.
+    const currentHard = finalSnapType === 'endpoint' || finalSnapType === 'corner' ||
+                        finalSnapType === 'intersection' || finalSnapType === 'tracking';
+    if (this.currentGuideLine && !currentHard) {
       if (this.currentGuideLine.id !== 'wall:start-axis') {
         const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
         rawEnd = { ...rawEnd, ...projectPointToGuideLineWorld(rawEnd, axisGuide) };
       }
     }
-
-    // ── Шаг 5: tracking lines ──
-const weakSnapTypes = new Set(['wallFace', 'wallAxis', 'measureLine']);
-const canTryTracking = !snappedBase.snapType || weakSnapTypes.has(snappedBase.snapType);
-if (this.activeTrackingPoint && canTryTracking) {
-  const tLines = getTrackingLines(this.activeTrackingPoint);
-  // Гистерезис: захват при 24px, удержание при 40px
-  const tTolerance = this._onTrackingLine ? 40 : 24;
-  const tSnap = snapToTrackingLines(rawEnd, screenPt, tLines, tTolerance);
-  if (tSnap) {
-    this._onTrackingLine = true;
-    rawEnd = { ...rawEnd, x: tSnap.x, y: tSnap.y, snapType: 'tracking' };
-    finalSnapType = 'tracking';
-  } else {
-    this._onTrackingLine = false;
-  }
-}
 
     // ── Шаг 6: lengthMode — применяем длину по зафиксированному углу (или по текущему направлению) ──
     if (this.lengthMode && this.lengthInput && this.drawStart) {
@@ -487,7 +493,7 @@ if (this.activeTrackingPoint && canTryTracking) {
       }
     }
 
-    rawEnd.snappedToEndpoint = snappedBase.snappedToEndpoint;
+    rawEnd.snappedToEndpoint = rawEnd.snappedToEndpoint ?? false;
     rawEnd.snapType = finalSnapType;
     return rawEnd;
   }
