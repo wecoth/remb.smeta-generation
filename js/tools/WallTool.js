@@ -339,23 +339,27 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     const screenPt = this.ui.mouseScreen ? { ...this.ui.mouseScreen } : toScreen(world.x, world.y);
 
     // ── Шаг 1: определяем направление (угол) по «сырой» точке от сетки ──
-    // Объектные привязки не участвуют — они не должны влиять на угол.
-    let lockedAngle = null; // если не null — направление зафиксировано по оси
+    // ВАЖНО: skipObject + forceNoEndpoint — оба нужны, иначе fallback-endpoint
+    // внутри snap() прыгает на ближайший конец стены и ломает вычисление угла.
+    let lockedAngle = null;
     if (!this.ui.shiftDown && this.drawStart) {
-      const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
+      const rawGrid = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        skipObject: true,
+        forceNoEndpoint: true, // ← ключевое: отключаем fallback-endpoint тоже
+        tolerance: 24,
+      });
       const dx = rawGrid.x - this.drawStart.x;
       const dy = rawGrid.y - this.drawStart.y;
       const lenPx = Math.hypot(dx, dy) * (this.ui._scale ?? 0.12);
       if (lenPx > 8) {
         const angle = Math.atan2(dy, dx);
-        const ANGLE_THRESHOLD = 0.09; // ~5° — узкий угловой порог
-        const AXIS_SNAP_PX = 14;      // макс. поперечное смещение от оси в пикселях
+        const ANGLE_THRESHOLD = 0.09; // ~5°
+        const AXIS_SNAP_PX = 14;
         for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
           let diff = angle - sa;
           diff = diff - Math.round(diff / (2 * Math.PI)) * (2 * Math.PI);
           if (Math.abs(diff) < ANGLE_THRESHOLD) {
-            // Дополнительно: поперечное смещение конца от оси не должно быть > AXIS_SNAP_PX
-            // Это гарантирует что длинная стена не "тянется" к оси с большого расстояния
             const cosA = Math.cos(sa), sinA = Math.sin(sa);
             const crossPx = Math.abs(-sinA * dx + cosA * dy) * (this.ui._scale ?? 0.12);
             if (crossPx <= AXIS_SNAP_PX) {
@@ -384,7 +388,12 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
         return objSnap;
       }
       // Нет жёсткой привязки — проецируем на ось
-      const rawGrid = snap(world.x, world.y, { screenPoint: screenPt, skipObject: true, tolerance: 24 });
+      const rawGrid = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        skipObject: true,
+        forceNoEndpoint: true,
+        tolerance: 24,
+      });
       const len = Math.hypot(rawGrid.x - this.drawStart.x, rawGrid.y - this.drawStart.y);
       return {
         x: this.drawStart.x + Math.cos(lockedAngle) * len,
