@@ -22,8 +22,9 @@ let shiftDown = false, ctrlDown = false;
 let isPanning = false, panStartX, panStartY, panStartOffX, panStartOffY;
 let mouseScreen = null;
 let selectedItems = [];
-let defaultDoorHinge = 'start', defaultDoorSwing = 1;
-let wallOffset = 'center';
+let defaultDoorHinge = appState.defaultDoorHinge ?? 'start';
+let defaultDoorSwing = appState.defaultDoorSwing ?? 1;
+let wallOffset = appState.wallOffset ?? 'center';
 let clipboard = null;           // { walls, openings }
 let voiceKeyPressed = false;
 
@@ -82,12 +83,14 @@ export function initPlanner(domRefs) {
     dom.offsetBtns.querySelectorAll('.offset-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     wallOffset = btn.dataset.offset;
+    appState.wallOffset = wallOffset;
   });
 
   dom.doorHingeButtons?.addEventListener('click', e => {
     const btn = e.target.closest('[data-default-door-hinge]');
     if (!btn) return;
     defaultDoorHinge = btn.dataset.defaultDoorHinge;
+    appState.defaultDoorHinge = defaultDoorHinge;
     syncDoorButtons();
     doRedraw();
   });
@@ -95,6 +98,7 @@ export function initPlanner(domRefs) {
     const btn = e.target.closest('[data-default-door-swing]');
     if (!btn) return;
     defaultDoorSwing = Number(btn.dataset.defaultDoorSwing);
+    appState.defaultDoorSwing = defaultDoorSwing;
     syncDoorButtons();
     doRedraw();
   });
@@ -141,6 +145,13 @@ export function initPlanner(domRefs) {
     inp.addEventListener('change', () => {
       if (Number(inp.value) < Number(inp.min || 0)) inp.value = inp.min || 0;
       if (inp === dom.inpWallHeight) setWallHeight(parseFloat(inp.value) || 2700);
+      // Сохраняем значение в appState
+      if (inp === dom.inpWallThick)    appState.inpWallThick    = Number(inp.value);
+      if (inp === dom.inpWallHeight)   appState.inpWallHeight   = Number(inp.value);
+      if (inp === dom.inpWindowWidth)  appState.inpWindowWidth  = Number(inp.value);
+      if (inp === dom.inpWindowHeight) appState.inpWindowHeight = Number(inp.value);
+      if (inp === dom.inpDoorWidth)    appState.inpDoorWidth    = Number(inp.value);
+      if (inp === dom.inpDoorHeight)   appState.inpDoorHeight   = Number(inp.value);
       EventBus.emit('walls:changed');
       doRedraw();
     });
@@ -170,6 +181,25 @@ export function initPlanner(domRefs) {
   setTool('select');
   syncDoorButtons();
   clearHistory();
+
+  // ── Восстанавливаем UI-параметры из appState ──────────────────────
+  if (dom.inpWallThick)    dom.inpWallThick.value    = appState.inpWallThick    ?? 200;
+  if (dom.inpWallHeight)   dom.inpWallHeight.value   = appState.inpWallHeight   ?? 2700;
+  if (dom.inpWindowWidth)  dom.inpWindowWidth.value  = appState.inpWindowWidth  ?? 1200;
+  if (dom.inpWindowHeight) dom.inpWindowHeight.value = appState.inpWindowHeight ?? 1500;
+  if (dom.inpDoorWidth)    dom.inpDoorWidth.value    = appState.inpDoorWidth    ?? 900;
+  if (dom.inpDoorHeight)   dom.inpDoorHeight.value   = appState.inpDoorHeight   ?? 2100;
+  setWallHeight(appState.inpWallHeight ?? 2700);
+
+  // Привязка стены — активируем нужную кнопку
+  if (dom.offsetBtns) {
+    dom.offsetBtns.querySelectorAll('.offset-btn').forEach(b => b.classList.remove('active'));
+    const activeOffsetBtn = dom.offsetBtns.querySelector(`[data-offset="${wallOffset}"]`);
+    if (activeOffsetBtn) activeOffsetBtn.classList.add('active');
+  }
+
+  // Петли и открывание двери уже подхвачены через syncDoorButtons()
+
   doRedraw();
 }
 
