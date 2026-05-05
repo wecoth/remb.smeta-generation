@@ -14,7 +14,7 @@ import {
   getWallContourPoint, updateWallGeometry, getWallLength,
   invalidateJointCache,
 } from '../wall.js';
-import { hitTestWallResizeHandle, getOpeningScreenBounds } from '../render.js';
+import { hitTestWallResizeHandle, getOpeningScreenBounds, getDimensionHitTest } from '../render.js';
 import { isPointInPolygon } from '../geometry.js';
 import { EventBus } from '../eventBus.js';
 
@@ -74,6 +74,7 @@ export class SelectTool extends BaseTool {
     this.selectClickCandidate = null;
     this.hoverItem = null;
     this.dragMeasureState = null;   // { measureId, startOffset, startWorld, measure }
+    this.dragDimState = null;       // { key, startScreenX, startScreenY, startOffDx, startOffDy }
   }
 
   activate() {
@@ -93,6 +94,7 @@ export class SelectTool extends BaseTool {
     this.selectClickCandidate = null;
     this.hoverItem = null;
     this.dragMeasureState = null;
+    this.dragDimState = null;
   }
 
   getCursor() {
@@ -108,6 +110,24 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseDown(pos, world, e) {
+    // ── Drag размерной подписи ────────────────────────────────────
+    const dimHit = getDimensionHitTest(pos);
+    if (dimHit) {
+      const offsets = appState.dimensionOffsets || {};
+      const cur = offsets[dimHit.key] || { dx: 0, dy: 0 };
+      this.dragDimState = {
+        key: dimHit.key,
+        startScreenX: pos.x,
+        startScreenY: pos.y,
+        startOffDx: cur.dx,
+        startOffDy: cur.dy,
+        defaultWorldX: dimHit.defaultWorldX,
+        defaultWorldY: dimHit.defaultWorldY,
+      };
+      this.ui.canvas.style.cursor = 'grabbing';
+      return true;
+    }
+
     // Проверка: не тянем ли маркер размера
     const selectedMeasure = this.ui.selectedItems.length === 1 && this.ui.selectedItems[0].type === 'measure'
       ? appState.measures.find(m => m.id === this.ui.selectedItems[0].id)
@@ -176,6 +196,29 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseMove(pos, world, e) {
+    // ── Drag размерной подписи ────────────────────────────────────
+    if (this.dragDimState) {
+      const scale = this.ui.scale || 0.12;
+      // Перевод смещения экрана (px) в мировые мм
+      const dxPx = pos.x - this.dragDimState.startScreenX;
+      const dyPx = pos.y - this.dragDimState.startScreenY;
+      const dxMm = dxPx / scale;
+      const dyMm = dyPx / scale;
+      const newDx = this.dragDimState.startOffDx + dxMm;
+      const newDy = this.dragDimState.startOffDy + dyMm;
+      // Сбрасываем смещение если вернулись близко к дефолту
+      const offsets = { ...(appState.dimensionOffsets || {}) };
+      if (Math.hypot(newDx, newDy) < 5) {
+        delete offsets[this.dragDimState.key];
+      } else {
+        offsets[this.dragDimState.key] = { dx: newDx, dy: newDy };
+      }
+      appState.dimensionOffsets = offsets;
+      this.ui.canvas.style.cursor = 'grabbing';
+      this.ui.doRedraw();
+      return true;
+    }
+
     // Перетаскивание размера
     if (this.dragMeasureState) {
       const m = this.dragMeasureState.measure;
@@ -237,10 +280,18 @@ export class SelectTool extends BaseTool {
     }
 
     // Обновление hover при движении
-    if (!this.selectBoxStart && !this.wallResizeState && !this.dragState && !this.dragMeasureState) {
+    if (!this.selectBoxStart && !this.wallResizeState && !this.dragState && !this.dragMeasureState && !this.dragDimState) {
+      // Курсор grab если наводим на размерную подпись
+      const dimHover = getDimensionHitTest(pos);
+      if (dimHover) {
+        this.ui.canvas.style.cursor = 'grab';
+        if (this.hoverItem) { this.hoverItem = null; this.ui.doRedraw(); }
+        return false;
+      }
       const hit = this.hitTestObject(world.x, world.y, pos);
       if (hit?.type !== this.hoverItem?.type || hit?.id !== this.hoverItem?.id) {
         this.hoverItem = hit;
+        this.ui.canvas.style.cursor = 'default';
         this.ui.doRedraw();
       }
     } else {
@@ -261,6 +312,16 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseUp(pos, world, e) {
+    // ── Завершение drag размерной подписи ─────────────────────────
+    if (this.dragDimState) {
+      this.dragDimState = null;
+      this.ui.canvas.style.cursor = 'default';
+      // Автосохраняем смещения
+      EventBus.emit('dimensionOffsets:changed');
+      this.ui.doRedraw();
+      return true;
+    }
+
     // Завершение перетаскивания размера
     if (this.dragMeasureState) {
       const { measureId, startOffset } = this.dragMeasureState;
