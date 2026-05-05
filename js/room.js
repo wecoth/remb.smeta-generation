@@ -786,6 +786,16 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
     opsByWall.set(wall.id, wOps);
   }
 
+  // ── DEBUG ──────────────────────────────────────────────────────────
+  console.log('[calcNarrowSections] uniqueWalls:',
+    uniqueWalls.map(u => ({ id: u.wall.id, fullLen: Math.round(u.fullLen) })));
+  console.log('[calcNarrowSections] opsByWall:',
+    [...opsByWall.entries()].map(([id, ops]) => ({
+      id,
+      ops: ops.map(o => ({ start: Math.round(o.startMm), end: Math.round(o.endMm), type: o.op.type }))
+    })));
+  // ── /DEBUG ─────────────────────────────────────────────────────────
+
   // Проход 1: простенки между проёмами на стенах с проёмами
   for (const { wall, fullLen } of uniqueWalls) {
     const wOps = opsByWall.get(wall.id) || [];
@@ -833,12 +843,14 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
 
     if (edgeWalls.length > 0) {
       const hasOps = edgeWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
+      console.log('[pass2] короткое ребро', Math.round(edgeLenMm), 'мм, edgeWalls:', edgeWalls.map(w=>w.id), 'hasOps:', hasOps);
       if (hasOps) continue; // уже обработано в проходе 1
       // Нет проёмов, короткий участок стены — в погонаж
       narrowWallsLm   += heightM;
       narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
       continue;
     }
+    console.log('[pass2] потенциальный открытый торец', Math.round(edgeLenMm), 'мм');
 
     // Коллинеарных стен нет — потенциально открытый торец перегородки.
     // Проверяем, что он не закрыт перпендикулярной стеной
@@ -867,6 +879,7 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
     if (closedByWall) continue;
 
     // Открытый торец — в погонаж
+    console.log('[pass2] открытый торец ДОБАВЛЕН', Math.round(edgeLenMm), 'мм → +', heightM, 'пм');
     narrowWallsLm   += heightM;
     narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
   }
