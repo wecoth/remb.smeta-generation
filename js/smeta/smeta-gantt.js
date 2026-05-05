@@ -158,6 +158,9 @@ export function setGanttMode(mode) {
   document.getElementById('ganttBtnWorks')?.classList.toggle('active',  mode === 'works');
   const clearBtn = document.getElementById('ganttClearBtn');
   if (clearBtn) clearBtn.style.display = mode === 'works' ? '' : 'none';
+  // При переключении на «По этапам» — пересчитываем авто-длительности
+  // из актуальных workDays (которые могли измениться в режиме «По работам»)
+  if (mode === 'stages') recalcAllStageDaysAuto();
   renderGantt();
 }
 
@@ -207,34 +210,47 @@ function _renderGanttStages(wrap) {
   }
 
   recalcAllStageDaysAuto();
-  const totalDays = Math.max(appState.totalDays || 0, 7);
 
-  // Позиционируем с учётом parallelWithPrev
+  // Эффективная длительность: ручная (daysOverride) или авто из работ
+  appState.stages.forEach(s => {
+    s._dur = s.daysOverride != null ? s.daysOverride : (s.daysAuto || 0);
+  });
+
+  // Позиционирование с учётом parallelWithPrev
   let cursor = 0;
   appState.stages.forEach((s, i) => {
-    const dur   = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
     const start = (s.parallelWithPrev && i > 0) ? (appState.stages[i - 1]._startDay || 0) : cursor;
     s._startDay = start;
-    if (!s.parallelWithPrev) cursor = start + dur;
+    if (!s.parallelWithPrev) cursor = start + s._dur;
   });
+
+  // totalDays = максимальный конец этапов, минимум 7
+  const stagesEnd = appState.stages.reduce((m, s) => Math.max(m, s._startDay + s._dur), 0);
+  const totalDays = Math.max(stagesEnd, appState.worksRealEnd || 0, 7);
+  appState.totalDays = totalDays;
+  const sliderEl = document.getElementById('totalDaysSlider');
+  if (sliderEl) sliderEl.value = stagesEnd > 0 ? stagesEnd : (appState.worksRealEnd || '');
+  const valEl = document.getElementById('totalDaysVal');
+  if (valEl) valEl.textContent = stagesEnd > 0 ? stagesEnd : (appState.worksRealEnd || '');
 
   wrap.innerHTML = '';
 
   appState.stages.forEach((s, idx) => {
-    const hasAuto    = (s.daysAuto || 0) > 0;
-    const dur        = s.daysOverride != null ? s.daysOverride : (s.daysAuto || 0);
-    const startDay   = s._startDay || 0;
-    const pct        = totalDays > 0 ? (startDay / totalDays * 100) : s.pct;
-    const wPct       = totalDays > 0 && dur > 0 ? (dur / totalDays * 100) : s.w;
-    const isOverride = s.daysOverride != null;
+    const dur      = s._dur;
+    const startDay = s._startDay || 0;
+    const pct      = totalDays > 0 ? (startDay / totalDays * 100) : 0;
+    const wPct     = totalDays > 0 && dur > 0 ? (dur / totalDays * 100) : 0;
+    s.pct = pct;
+    s.w   = wPct;
+
     const isParallel = s.parallelWithPrev && idx > 0;
 
     const row = document.createElement('div');
     row.className = 'gantt-row';
 
-    const ticksHtml = dur > 0 ? Array.from({length: dur + 1}, (_, ti) => {
-      return `<div class="gantt-tick-mark" style="left:${(ti / dur * 100).toFixed(2)}%"></div>`;
-    }).join('') : '';
+    const ticksHtml = dur > 0 ? Array.from({length: dur + 1}, (_, ti) =>
+      `<div class="gantt-tick-mark" style="left:${(ti / dur * 100).toFixed(2)}%"></div>`
+    ).join('') : '';
 
     row.innerHTML = `
       <div class="gantt-row-label">
@@ -243,94 +259,47 @@ function _renderGanttStages(wrap) {
           : '<span style="width:22px;display:inline-block"></span>'}
         <span class="gantt-stage-dot" style="background:${s.color}"></span>
         <span class="gantt-stage-name" contenteditable="true" data-idx="${idx}">${esc(s.name)}</span>
-        ${hasAuto && !isOverride
-          ? `<span class="gantt-stage-days" title="Автоматически из работ">🔒 ${dur} дн.</span>
-             <button class="gantt-unlock-btn" data-sidx="${idx}" title="Задать вручную">✏️</button>`
-          : `<input type="number" min="1" max="999" class="gantt-stage-days-inp" data-sidx="${idx}" value="${dur || ''}" placeholder="0"
+        <input type="number" min="1" max="999" class="gantt-stage-days-inp" data-sidx="${idx}"
+               value="${dur || ''}" placeholder="${s.daysAuto || 0}"
+               title="Авто: ${s.daysAuto || 0} дн. Оставьте пустым для авторасчёта"
                style="width:42px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-1);font-size:11px;
                       text-align:center;background:var(--bg-card);color:var(--text-1);font-family:var(--font-mono);
                       -moz-appearance:textfield;appearance:textfield;outline:none;">
-             <span style="font-size:10px;color:var(--text-3)">дн.</span>
-             ${hasAuto ? `<button class="gantt-lock-btn" data-sidx="${idx}" title="Вернуть авторасчёт">🔓</button>` : ''}`
-        }
+        <span style="font-size:10px;color:var(--text-3)">дн.</span>
       </div>
       <div class="gantt-track-wrap">
         <div class="gantt-track">
-          ${wPct > 0 ? `<div class="gantt-bar" data-idx="${idx}" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${s.color};${!isOverride && hasAuto ? 'opacity:0.85;' : ''}">
-            ${!isOverride && hasAuto ? '' : `<div class="gantt-handle gantt-handle-l" data-idx="${idx}" data-edge="left"></div>`}
+          ${wPct > 0 ? `<div class="gantt-bar" data-idx="${idx}" style="left:${pct.toFixed(2)}%;width:${wPct.toFixed(2)}%;background:${s.color}">
             <div class="gantt-ticks">${ticksHtml}</div>
             <span class="gantt-bar-label">${dur} дн.</span>
-            ${!isOverride && hasAuto ? '' : `<div class="gantt-handle gantt-handle-r" data-idx="${idx}" data-edge="right"></div>`}
           </div>` : ''}
         </div>
       </div>`;
     wrap.appendChild(row);
 
-    // Редактирование названия
+    // Редактирование названия этапа
     row.querySelector('.gantt-stage-name').addEventListener('blur', () => {
       appState.stages[idx].name = row.querySelector('.gantt-stage-name').textContent.trim();
       _onStageRenamed();
     });
 
-    // Параллельность
+    // Параллельность с предыдущим этапом
     row.querySelector('.gantt-parallel-btn[data-sidx]')?.addEventListener('click', () => {
       appState.stages[idx].parallelWithPrev = !appState.stages[idx].parallelWithPrev;
-      recalcTotalDaysAuto();
       renderGantt();
       _onDurationChanged();
     });
 
-    // ✏️ → ручной режим
-    row.querySelector('.gantt-unlock-btn')?.addEventListener('click', () => {
-      appState.stages[idx].daysOverride = appState.stages[idx].daysAuto || 0;
-      renderGantt();
-    });
-
-    // 🔓 → авто
-    row.querySelector('.gantt-lock-btn')?.addEventListener('click', () => {
-      appState.stages[idx].daysOverride = null;
-      recalcTotalDaysAuto();
-      renderGantt();
-    });
-
-    // Инпут ручных дней
-    row.querySelector('.gantt-stage-days-inp')?.addEventListener('input', e => {
-      const val = Math.max(0, parseInt(e.target.value) || 0);
+    // Числовой инпут: если пусто — авторасчёт, если введено — переопределяет
+    row.querySelector('.gantt-stage-days-inp').addEventListener('input', e => {
+      const val = parseInt(e.target.value) || 0;
       appState.stages[idx].daysOverride = val > 0 ? val : null;
-      recalcTotalDaysAuto();
+      renderGantt();
       _renderGanttRuler();
       _onDurationChanged();
     });
-
-    // Drag-handles (только при override или без auto)
-    if (isOverride || !hasAuto) {
-      row.querySelectorAll('.gantt-handle').forEach(h => {
-        h.addEventListener('mousedown', e => {
-          e.preventDefault(); e.stopPropagation();
-          const track  = h.closest('.gantt-track');
-          const trackW = track.getBoundingClientRect().width;
-          _dragging = { idx, type: h.dataset.edge, startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
-          document.body.style.cursor = 'ew-resize';
-          document.body.style.userSelect = 'none';
-        });
-      });
-
-      const bar = row.querySelector('.gantt-bar');
-      if (bar) {
-        bar.addEventListener('mousedown', e => {
-          if (e.target.classList.contains('gantt-handle')) return;
-          e.preventDefault();
-          const track  = bar.closest('.gantt-track');
-          const trackW = track.getBoundingClientRect().width;
-          _dragging = { idx, type: 'bar', startX: e.clientX, origPct: s.pct, origW: s.w, trackW };
-          document.body.style.cursor = 'grabbing';
-          document.body.style.userSelect = 'none';
-        });
-      }
-    }
   });
 }
-
 // ── Режим «По работам» ─────────────────────────────────────────────
 
 function _renderGanttWorks(wrap) {
