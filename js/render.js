@@ -1257,30 +1257,26 @@ function drawRoomDimensions() {
       _ctx.lineTo(sB.x, sB.y);
       if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
       _ctx.stroke();
-      // Выноска: attach → диагональ → горизонтальная полочка → подпись
+      // Выноска: attach → диагональ → горизонтальная полочка → подпись ниже
       // Стиль как у окон/дверей: сплошная линия с изломом
       const leaderColor = isOpening ? '#e07020' : '#6b7280';
-      // Направление полочки: вправо если подпись правее anchor, влево если левее
       const shelfDir = sText.x >= attachScreen.x ? 1 : -1;
-      // Диагональ: от anchor к уровню подписи по Y, с горизонтальным сдвигом
-      const diagEndX = attachScreen.x + shelfDir * Math.abs(sText.y - attachScreen.y) * 0.7;
-      const diagEndY = sText.y;
-      // Горизонтальная полочка до подписи
-      const shelfEndX = sText.x;
+      const LABEL_GAP_PX = 8; // зазор между полочкой и центром текста
+      const shelfY = sText.y - LABEL_GAP_PX;
+      const diagEndX = attachScreen.x + shelfDir * Math.abs(shelfY - attachScreen.y) * 0.7;
       _ctx.strokeStyle = leaderColor;
       _ctx.lineWidth = 0.8;
       _ctx.setLineDash([]);
       _ctx.beginPath();
       _ctx.moveTo(attachScreen.x, attachScreen.y);
-      _ctx.lineTo(diagEndX, diagEndY);
-      _ctx.lineTo(shelfEndX, diagEndY);
+      _ctx.lineTo(diagEndX, shelfY);
+      _ctx.lineTo(sText.x, shelfY);
       _ctx.stroke();
-      // Точка-кружок на anchor
       _ctx.beginPath();
       _ctx.arc(attachScreen.x, attachScreen.y, 2, 0, Math.PI * 2);
       _ctx.fillStyle = leaderColor;
       _ctx.fill();
-      // Угол текста: 0 (горизонтально) — низ букв всегда вниз экрана
+      // Текст горизонтально, ниже полочки
       drawAlignedTextBox(label, sText, 0, {
         font: '500 13px Merriweather, Onest, Inter, sans-serif',
         background: 'rgba(255,255,255,0.95)',
@@ -1569,24 +1565,24 @@ function drawWallDimensions() {
           _ctx.lineTo(sB.x, sB.y);
           if (off) { drawTick45(sA, angle); drawTick45(sB, angle); }
           _ctx.stroke();
-          // Выноска: anchor → диагональ → горизонтальная полочка → подпись
-          // Стиль как у окон/дверей: сплошная линия с изломом
+          // Выноска: anchor → диагональ → горизонтальная полочка → подпись ниже
+          const LABEL_GAP_PX = 8;
           const shelfDir = sText.x >= anchorScreen.x ? 1 : -1;
-          const diagEndX = anchorScreen.x + shelfDir * Math.abs(sText.y - anchorScreen.y) * 0.7;
-          const diagEndY = sText.y;
+          const shelfY = sText.y - LABEL_GAP_PX;
+          const diagEndX = anchorScreen.x + shelfDir * Math.abs(shelfY - anchorScreen.y) * 0.7;
           _ctx.strokeStyle = '#6b7280';
           _ctx.lineWidth = 0.8;
           _ctx.setLineDash([]);
           _ctx.beginPath();
           _ctx.moveTo(anchorScreen.x, anchorScreen.y);
-          _ctx.lineTo(diagEndX, diagEndY);
-          _ctx.lineTo(sText.x, diagEndY);
+          _ctx.lineTo(diagEndX, shelfY);
+          _ctx.lineTo(sText.x, shelfY);
           _ctx.stroke();
           _ctx.beginPath();
           _ctx.arc(anchorScreen.x, anchorScreen.y, 2, 0, Math.PI * 2);
           _ctx.fillStyle = '#6b7280';
           _ctx.fill();
-          // Угол текста: 0 — горизонтально, низ букв всегда вниз экрана
+          // Текст горизонтально, ниже полочки
           drawAlignedTextBox(label, sText, 0, {
             font: '500 13px Merriweather, Onest, Inter, sans-serif',
             background: 'rgba(255,255,255,0.95)',
