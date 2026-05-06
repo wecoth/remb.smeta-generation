@@ -264,7 +264,21 @@ export class MeasureTool extends BaseTool {
   // Базовая привязка
   let end;
   if (this.currentObjectSnap) {
-    end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
+    const distToStart = Math.hypot(
+      this.currentObjectSnap.x - this.drawStart.x,
+      this.currentObjectSnap.y - this.drawStart.y
+    );
+    if (distToStart > 1) {   // больше 1 мм — это не стартовая точка
+      end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
+    } else {
+      // снап указывает на ту же точку, что и начало — используем позицию мыши
+      end = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        includePerpendicular: false,
+        includeWallPoint: true,
+        tolerance: 24,
+      });
+    }
   } else {
     end = snap(world.x, world.y, {
       screenPoint: screenPt,
