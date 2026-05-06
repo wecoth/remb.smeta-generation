@@ -7,6 +7,8 @@ import {
   snap, setModifiers, findObjectSnapCandidate, findGuideCandidate,
   shouldKeepGuideLine, getNearestGuideLineAxis, projectPointToGuideLineWorld,
 } from '../snapping.js';
+import { getWallSnapSegments } from '../wall.js';
+import { projectPointOntoSegment } from '../geometry.js';
 
 export class DividerTool extends BaseTool {
   constructor(ui) {
@@ -47,7 +49,7 @@ export class DividerTool extends BaseTool {
       drawEnd: this.drawEnd,
       currentObjectSnap: this.currentObjectSnap,
       currentGuideLine: this.currentGuideLine,
-      wallOffset: 'center', // не важно
+      wallOffset: 'center',
       tool: this.name,
     };
   }
@@ -110,81 +112,115 @@ export class DividerTool extends BaseTool {
   }
 
   updateGuideLine(world, screenPoint) {
-  if (!this.isDrawing || !this.drawStart) {
-    this.currentGuideLine = null;
-    return;
-  }
-
-  // Если уже есть объектная направляющая — проверяем, не пора ли её сбросить
-  if (this.currentGuideLine && this.currentGuideLine.id !== 'divider:start-axis') {
-    if (shouldKeepGuideLine(screenPoint, this.currentGuideLine, 36, 48)) {
+    if (!this.isDrawing || !this.drawStart) {
+      this.currentGuideLine = null;
       return;
+    }
+
+    if (this.currentGuideLine && this.currentGuideLine.id !== 'divider:start-axis') {
+      if (shouldKeepGuideLine(screenPoint, this.currentGuideLine, 36, 48)) {
+        return;
+      } else {
+        this.currentGuideLine = null;
+      }
+    }
+
+    const candidate = findGuideCandidate(screenPoint);
+    if (candidate) {
+      this.currentGuideLine = candidate;
     } else {
       this.currentGuideLine = null;
     }
   }
 
-  // Ищем только реальные объектные направляющие (стены, проёмы, другие рулетки)
-  const candidate = findGuideCandidate(screenPoint);
-  if (candidate) {
-    this.currentGuideLine = candidate;
-  } else {
-    this.currentGuideLine = null;   // НЕ создаём автоматическую ось
-  }
-}
+  /**
+   * Принудительно притягивает точку к ближайшей грани стены,
+   * если расстояние до неё меньше snapRadiusMm (в мировых мм).
+   * Используется как fallback когда objectSnap не сработал.
+   */
+  _snapToNearestWallFace(point, snapRadiusMm = 150) {
+    let bestDist = snapRadiusMm;
+    let bestPt = null;
 
-  getDividerEnd(world) {
-  const screenPt = this.ui.mouseScreen || toScreen(world.x, world.y);
-  
-  let end;
-  if (this.currentObjectSnap) {
-    end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
-  } else {
-    const snapped = snap(world.x, world.y, {
-      screenPoint: screenPt,
-      includePerpendicular: false,
-      includeWallPoint: true,
-      tolerance: 24,
-    });
-    end = { x: snapped.x, y: snapped.y };
-  }
-
-  const hardSnap = this.currentObjectSnap && 
-    (this.currentObjectSnap.type === 'endpoint' || 
-     this.currentObjectSnap.type === 'corner' || 
-     this.currentObjectSnap.type === 'intersection');
-
-  // ⭐ ОРТОГОНАЛЬНАЯ ПРИВЯЗКА (как в WallTool)
-  if (!hardSnap && !this.ui.shiftDown && this.drawStart) {
-    const dx = end.x - this.drawStart.x;
-    const dy = end.y - this.drawStart.y;
-    const len = Math.hypot(dx, dy);
-    if (len > 1) {
-      let angle = Math.atan2(dy, dx);
-      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const diff = Math.abs(angle - sa);
-        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
-          angle = sa;
-          end = {
-            x: this.drawStart.x + Math.cos(angle) * len,
-            y: this.drawStart.y + Math.sin(angle) * len,
-          };
-          break;
+    for (const wall of appState.walls) {
+      for (const entry of getWallSnapSegments(wall)) {
+        // Снапимся только к граням (wallFace), не к оси
+        if (entry.type !== 'wallFace') continue;
+        const proj = projectPointOntoSegment(point, entry.segment);
+        if (proj.t < 0 || proj.t > 1) continue;
+        const dist = Math.hypot(point.x - proj.x, point.y - proj.y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPt = { x: proj.x, y: proj.y };
         }
       }
     }
+
+    return bestPt; // null если ничего не нашли в радиусе
   }
 
-  // Применение объектной направляющей
-  if (this.currentGuideLine && !hardSnap && screenPt) {
-    if (this.currentGuideLine.id !== 'divider:start-axis') {
-      const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
-      end = projectPointToGuideLineWorld(end, axisGuide);
+  getDividerEnd(world) {
+    const screenPt = this.ui.mouseScreen || toScreen(world.x, world.y);
+
+    let end;
+    if (this.currentObjectSnap) {
+      end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
+    } else {
+      const snapped = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        includePerpendicular: false,
+        includeWallPoint: true,
+        tolerance: 24,
+      });
+      end = { x: snapped.x, y: snapped.y };
     }
-  }
 
-  return end;
-}
+    const hardSnap = this.currentObjectSnap &&
+      (this.currentObjectSnap.type === 'endpoint' ||
+       this.currentObjectSnap.type === 'corner' ||
+       this.currentObjectSnap.type === 'intersection' ||
+       this.currentObjectSnap.type === 'wallFace');
+
+    // Ортогональная привязка
+    if (!hardSnap && !this.ui.shiftDown && this.drawStart) {
+      const dx = end.x - this.drawStart.x;
+      const dy = end.y - this.drawStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len > 1) {
+        let angle = Math.atan2(dy, dx);
+        for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+          const diff = Math.abs(angle - sa);
+          if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
+            angle = sa;
+            end = {
+              x: this.drawStart.x + Math.cos(angle) * len,
+              y: this.drawStart.y + Math.sin(angle) * len,
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    // Применение объектной направляющей
+    if (this.currentGuideLine && !hardSnap && screenPt) {
+      if (this.currentGuideLine.id !== 'divider:start-axis') {
+        const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
+        end = projectPointToGuideLineWorld(end, axisGuide);
+      }
+    }
+
+    // Принудительный снап к грани стены если objectSnap не сработал.
+    // Гарантирует что конечная точка всегда на грани, а не внутри стены или на оси.
+    if (!hardSnap) {
+      const wallFaceSnap = this._snapToNearestWallFace(end);
+      if (wallFaceSnap) {
+        end = wallFaceSnap;
+      }
+    }
+
+    return end;
+  }
 
   intersectInfiniteLineWithSegment(origin, dir, a, b) {
     const sx = b.x - a.x;
@@ -202,53 +238,10 @@ export class DividerTool extends BaseTool {
   }
 
   extendDividerToWalls(start, end) {
-  const len = Math.hypot(end.x - start.x, end.y - start.y);
-  if (len < 10 || !Array.isArray(appState.walls) || appState.walls.length < 1) return null;
-
-  const dir = { x: (end.x - start.x) / len, y: (end.y - start.y) / len };
-
-  // Собираем все пересечения луча с осями стен (базовыми линиями cx/cy)
-  const rawTs = [];
-  for (const wall of appState.walls) {
-    const a = { x: wall.cx1 ?? wall.x1, y: wall.cy1 ?? wall.y1 };
-    const b = { x: wall.cx2 ?? wall.x2, y: wall.cy2 ?? wall.y2 };
-    const hit = this.intersectInfiniteLineWithSegment(start, dir, a, b);
-    if (hit) rawTs.push(hit.t);
+    // Снап уже привязал start и end к нужным точкам на гранях стен.
+    // Не пересчитываем координаты через оси стен — просто валидируем длину.
+    const len = Math.hypot(end.x - start.x, end.y - start.y);
+    if (len < 50) return null;
+    return { start, end };
   }
-
-  if (rawTs.length < 2) return null;
-
-  // Убираем дубликаты (близкие t)
-  rawTs.sort((a, b) => a - b);
-  const ts = [];
-  for (const t of rawTs) {
-    if (ts.length === 0 || t - ts[ts.length - 1] > 2) ts.push(t);
-  }
-
-  // Определяем, привязан ли start к какой-либо стене (t ≈ 0)
-  const startOnWall = ts.some(t => Math.abs(t) < 2);
-
-  let forward  = ts.filter(t => t > 2).sort((a, b) => a - b);   // t > 2 мм вперёд
-  let backward = ts.filter(t => t < -2).sort((a, b) => b - a);  // t < -2 мм назад
-
-  // Если старт не на стене, ослабляем допуск: ищем ближайшее положительное и отрицательное
-  if (!startOnWall) {
-    forward  = ts.filter(t => t > 0).sort((a, b) => a - b);
-    backward = ts.filter(t => t < 0).sort((a, b) => b - a);
-  }
-
-  // Нужно хотя бы одно пересечение вперёд и одно назад
-  if (!forward.length || !backward.length) return null;
-
-  const t1 = backward[0]; // ближайшее сзади (отрицательное)
-  const t2 = forward[0];  // ближайшее спереди (положительное)
-
-  const segLen = (t2 - t1) * len;
-  if (segLen < 50) return null; // слишком короткий
-
-  return {
-    start: { x: start.x + dir.x * t1, y: start.y + dir.y * t1 },
-    end:   { x: start.x + dir.x * t2, y: start.y + dir.y * t2 },
-  };
 }
-}  
