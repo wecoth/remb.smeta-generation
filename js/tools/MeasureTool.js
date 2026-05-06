@@ -5,7 +5,7 @@ import { CreateMeasureCommand } from '../commands/CreateMeasureCommand.js';
 import {
   snap, setModifiers, findObjectSnapCandidate, toScreen, toWorld,
   findGuideCandidate, getNearestGuideLineAxis, projectPointToGuideLineWorld,
-  shouldKeepGuideLine,
+  shouldKeepGuideLine, getTrackingLines, snapToTrackingLines,
 } from '../snapping.js';
 
 export class MeasureTool extends BaseTool {
@@ -21,6 +21,11 @@ export class MeasureTool extends BaseTool {
     // Поля для ввода точной длины
     this.lengthInput = '';
     this.lengthMode = false;
+
+    // Поля для tracking-линий
+    this.activeTrackingPoint = null;
+    this._snapHoverTimer = null;
+    this._snapHoverKey = null;
   }
 
   activate() {
@@ -40,10 +45,36 @@ export class MeasureTool extends BaseTool {
     this.currentGuideLine = null;
     this.lengthInput = '';
     this.lengthMode = false;
+    this.activeTrackingPoint = null;
+    clearTimeout(this._snapHoverTimer);
+    this._snapHoverTimer = null;
+    this._snapHoverKey = null;
   }
 
   getCursor() {
     return 'crosshair';
+  }
+
+  updateTrackingState(snap) {
+    const trackable = snap && (
+      snap.type === 'endpoint' || snap.type === 'corner' ||
+      snap.type === 'intersection' || snap.type === 'midpoint'
+    );
+    if (!trackable) {
+      clearTimeout(this._snapHoverTimer);
+      this._snapHoverTimer = null;
+      this._snapHoverKey = null;
+      this.activeTrackingPoint = null;
+      return;
+    }
+    const key = `${snap.type}:${Math.round(snap.x)},${Math.round(snap.y)}`;
+    if (key === this._snapHoverKey) return;
+    clearTimeout(this._snapHoverTimer);
+    this._snapHoverKey = key;
+    this._snapHoverTimer = setTimeout(() => {
+      this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type };
+      this.ui.doRedraw();
+    }, 400);
   }
 
   getRenderState() {
@@ -56,6 +87,8 @@ export class MeasureTool extends BaseTool {
       lengthMode: this.lengthMode,
       lengthInput: this.lengthInput,
       tool: this.name,
+      activeTrackingPoint: this.activeTrackingPoint,
+      trackingLines: this.activeTrackingPoint ? getTrackingLines(this.activeTrackingPoint) : [],
     };
   }
 
@@ -111,6 +144,7 @@ export class MeasureTool extends BaseTool {
     });
 
     this.updateGuideLine(world, pos);
+    this.updateTrackingState(this.currentObjectSnap);
 
     if (this.isDrawing && this.drawStart) {
       this.drawEnd = this.getMeasureEnd(world);
@@ -230,6 +264,15 @@ export class MeasureTool extends BaseTool {
           break;
         }
       }
+    }
+  }
+
+  // Привязка к tracking-линиям
+  if (this.activeTrackingPoint) {
+    const tLines = getTrackingLines(this.activeTrackingPoint);
+    const tSnap = snapToTrackingLines(end, screenPt, tLines, 24);
+    if (tSnap) {
+      end = { x: tSnap.x, y: tSnap.y };
     }
   }
 
