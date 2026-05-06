@@ -63,7 +63,7 @@ export class DividerTool extends BaseTool {
       this.ui.doRedraw();
     } else {
       const end = this.getDividerEnd(world);
-      const extended = this.extendDividerToWalls(this.drawStart, end);
+      const extended = this.(this.drawStart, end);
       const finalStart = extended ? extended.start : this.drawStart;
       const finalEnd = extended ? extended.end : end;
       const len = Math.hypot(finalEnd.x - finalStart.x, finalEnd.y - finalStart.y);
@@ -202,41 +202,53 @@ export class DividerTool extends BaseTool {
   }
 
   extendDividerToWalls(start, end) {
-    const len = Math.hypot(end.x - start.x, end.y - start.y);
-    if (len < 10 || !Array.isArray(appState.walls) || appState.walls.length < 1) return null;
+  const len = Math.hypot(end.x - start.x, end.y - start.y);
+  if (len < 10 || !Array.isArray(appState.walls) || appState.walls.length < 1) return null;
 
-    const dir = { x: (end.x - start.x) / len, y: (end.y - start.y) / len };
-    const ts = [];
+  const dir = { x: (end.x - start.x) / len, y: (end.y - start.y) / len };
 
-    for (const wall of appState.walls) {
-      const a = { x: wall.cx1 ?? wall.x1, y: wall.cy1 ?? wall.y1 };
-      const b = { x: wall.cx2 ?? wall.x2, y: wall.cy2 ?? wall.y2 };
-      const hit = this.intersectInfiniteLineWithSegment(start, dir, a, b);
-      if (!hit) continue;
-      ts.push(hit.t);
-    }
-
-    if (ts.length < 2) return null;
-    ts.sort((a, b) => a - b);
-
-    const dedup = [];
-    for (const t of ts) {
-      if (!dedup.length || Math.abs(dedup[dedup.length - 1] - t) > 2) dedup.push(t);
-    }
-    if (dedup.length < 2) return null;
-
-    const mid = len / 2;
-    const left = dedup.filter(t => t <= mid + 1);
-    const right = dedup.filter(t => t >= mid - 1);
-    if (!left.length || !right.length) return null;
-
-    const t1 = left[left.length - 1];
-    const t2 = right[0];
-    if (!Number.isFinite(t1) || !Number.isFinite(t2) || (t2 - t1) < 50) return null;
-
-    return {
-      start: { x: start.x + dir.x * t1, y: start.y + dir.y * t1 },
-      end: { x: start.x + dir.x * t2, y: start.y + dir.y * t2 },
-    };
+  // Собираем все пересечения луча с осями стен (базовыми линиями cx/cy)
+  const rawTs = [];
+  for (const wall of appState.walls) {
+    const a = { x: wall.cx1 ?? wall.x1, y: wall.cy1 ?? wall.y1 };
+    const b = { x: wall.cx2 ?? wall.x2, y: wall.cy2 ?? wall.y2 };
+    const hit = this.intersectInfiniteLineWithSegment(start, dir, a, b);
+    if (hit) rawTs.push(hit.t);
   }
+
+  if (rawTs.length < 2) return null;
+
+  // Убираем дубликаты (близкие t)
+  rawTs.sort((a, b) => a - b);
+  const ts = [];
+  for (const t of rawTs) {
+    if (ts.length === 0 || t - ts[ts.length - 1] > 2) ts.push(t);
+  }
+
+  // Определяем, привязан ли start к какой-либо стене (t ≈ 0)
+  const startOnWall = ts.some(t => Math.abs(t) < 2);
+
+  let forward  = ts.filter(t => t > 2).sort((a, b) => a - b);   // t > 2 мм вперёд
+  let backward = ts.filter(t => t < -2).sort((a, b) => b - a);  // t < -2 мм назад
+
+  // Если старт не на стене, ослабляем допуск: ищем ближайшее положительное и отрицательное
+  if (!startOnWall) {
+    forward  = ts.filter(t => t > 0).sort((a, b) => a - b);
+    backward = ts.filter(t => t < 0).sort((a, b) => b - a);
+  }
+
+  // Нужно хотя бы одно пересечение вперёд и одно назад
+  if (!forward.length || !backward.length) return null;
+
+  const t1 = backward[0]; // ближайшее сзади (отрицательное)
+  const t2 = forward[0];  // ближайшее спереди (положительное)
+
+  const segLen = (t2 - t1) * len;
+  if (segLen < 50) return null; // слишком короткий
+
+  return {
+    start: { x: start.x + dir.x * t1, y: start.y + dir.y * t1 },
+    end:   { x: start.x + dir.x * t2, y: start.y + dir.y * t2 },
+  };
 }
+  
