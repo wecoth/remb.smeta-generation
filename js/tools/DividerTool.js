@@ -63,7 +63,7 @@ export class DividerTool extends BaseTool {
       this.ui.doRedraw();
     } else {
       const end = this.getDividerEnd(world);
-      const extended = this.(this.drawStart, end);
+      const extended = this.extendDividerToWalls(this.drawStart, end);
       const finalStart = extended ? extended.start : this.drawStart;
       const finalEnd = extended ? extended.end : end;
       const len = Math.hypot(finalEnd.x - finalStart.x, finalEnd.y - finalStart.y);
@@ -251,4 +251,4 @@ export class DividerTool extends BaseTool {
     end:   { x: start.x + dir.x * t2, y: start.y + dir.y * t2 },
   };
 }
-  
+}  
