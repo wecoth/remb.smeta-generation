@@ -294,7 +294,7 @@ export class MeasureTool extends BaseTool {
      this.currentObjectSnap.type === 'intersection');
 
   // ⭐ ОРТОГОНАЛЬНАЯ ПРИВЯЗКА (как в WallTool)
-  if (!hardSnap && !this.ui.shiftDown && this.drawStart) {
+  if (!hardSnap && this.ui.shiftDown && this.drawStart) {
     const dx = end.x - this.drawStart.x;
     const dy = end.y - this.drawStart.y;
     const len = Math.hypot(dx, dy);
