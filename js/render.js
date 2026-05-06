@@ -248,7 +248,7 @@ export function redraw(ps) {
   }
   if (ps.hoverItem) drawHoverHighlight(ps.hoverItem, ps.selectedItems, ps.defaultDoorHinge, ps.defaultDoorSwing);
   if (ps.hoverOpening) drawOpening(ps.hoverOpening, ps.hoverOpening.wall, true, false, ps.defaultDoorHinge, ps.defaultDoorSwing);
-  if (ps.tool === 'wall' && ps.trackingLines?.length) {
+  if ((ps.tool === 'wall' || ps.tool === 'measure') && ps.trackingLines?.length) {
     drawTrackingLines(ps.activeTrackingPoint, ps.trackingLines);
   }
   if (ps.tool === 'wall' && ps.isDrawing && ps.drawStart && ps.drawEnd) drawTempWall(ps);
