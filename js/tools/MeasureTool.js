@@ -26,6 +26,11 @@ export class MeasureTool extends BaseTool {
     this.activeTrackingPoint = null;
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
+
+    // Накопленное направление движения мыши (для ортогональной привязки)
+    this._mouseDirX = 0;
+    this._mouseDirY = 0;
+    this._lastMouseWorld = null;
   }
 
   activate() {
@@ -49,6 +54,9 @@ export class MeasureTool extends BaseTool {
     clearTimeout(this._snapHoverTimer);
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
+    this._mouseDirX = 0;
+    this._mouseDirY = 0;
+    this._lastMouseWorld = null;
   }
 
   getCursor() {
@@ -132,6 +140,19 @@ export class MeasureTool extends BaseTool {
 
   onMouseMove(pos, world, e) {
     setModifiers(this.ui.shiftDown, this.ui.ctrlDown);
+
+    // Накапливаем направление движения мыши (экспоненциальное сглаживание)
+    if (this._lastMouseWorld) {
+      const dx = world.x - this._lastMouseWorld.x;
+      const dy = world.y - this._lastMouseWorld.y;
+      const moved = Math.hypot(dx, dy);
+      if (moved > 0.5) {
+        const alpha = 0.25; // степень сглаживания
+        this._mouseDirX = this._mouseDirX * (1 - alpha) + (dx / moved) * alpha;
+        this._mouseDirY = this._mouseDirY * (1 - alpha) + (dy / moved) * alpha;
+      }
+    }
+    this._lastMouseWorld = { x: world.x, y: world.y };
     
     this.currentObjectSnap = findObjectSnapCandidate(world, pos, {
       includeEndpoint: true,
@@ -265,17 +286,35 @@ export class MeasureTool extends BaseTool {
     const len = Math.hypot(dx, dy);
     if (len > 1) {
       const angle = Math.atan2(dy, dx);
+
+      // Выбираем ближайшую ортогональную ось
       let bestAngle = null;
       let bestDiff = Infinity;
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        // Правильная разность углов — всегда в диапазоне [-π, π]
         const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
         if (diff < 0.15 && diff < bestDiff) {
           bestDiff = diff;
           bestAngle = sa;
         }
       }
-      if (bestAngle !== null) {
+
+      // Если две оси одинаково близки (угол ~45°) — выбираем по направлению движения мыши
+      if (bestAngle === null) {
+        // Не попали в зону привязки — оставляем свободный угол
+      } else {
+        // Проверяем: не противоречит ли выбранная ось направлению движения мыши
+        // Например, угол конечной точки 175° → округлился до 180° (влево),
+        // но мышь двигалась вправо (_mouseDirX > 0) — тогда берём 0° (вправо)
+        const mdLen = Math.hypot(this._mouseDirX, this._mouseDirY);
+        if (mdLen > 0.01) {
+          const moveAngle = Math.atan2(this._mouseDirY, this._mouseDirX);
+          const diffWithMove = Math.abs(Math.atan2(Math.sin(bestAngle - moveAngle), Math.cos(bestAngle - moveAngle)));
+          if (diffWithMove > Math.PI / 2) {
+            // Выбранная ось противоположна направлению движения — берём противоположный угол
+            bestAngle = bestAngle > 0 ? bestAngle - Math.PI : bestAngle + Math.PI;
+          }
+        }
+
         end = {
           x: this.drawStart.x + Math.cos(bestAngle) * len,
           y: this.drawStart.y + Math.sin(bestAngle) * len,
@@ -330,6 +369,15 @@ export class MeasureTool extends BaseTool {
           if (diff < 0.15 && diff < bestDiff) {
             bestDiff = diff;
             bestAngle = sa;
+          }
+        }
+        // Корректируем по направлению движения мыши
+        const mdLen = Math.hypot(this._mouseDirX, this._mouseDirY);
+        if (mdLen > 0.01) {
+          const moveAngle = Math.atan2(this._mouseDirY, this._mouseDirX);
+          const diffWithMove = Math.abs(Math.atan2(Math.sin(bestAngle - moveAngle), Math.cos(bestAngle - moveAngle)));
+          if (diffWithMove > Math.PI / 2) {
+            bestAngle = bestAngle > 0 ? bestAngle - Math.PI : bestAngle + Math.PI;
           }
         }
         dir = { x: Math.cos(bestAngle), y: Math.sin(bestAngle) };
