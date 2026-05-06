@@ -17,7 +17,7 @@ export class MeasureTool extends BaseTool {
     this.drawEnd = null;
     this.currentObjectSnap = null;
     this.currentGuideLine = null;
-    
+
     // Поля для ввода точной длины
     this.lengthInput = '';
     this.lengthMode = false;
@@ -27,10 +27,8 @@ export class MeasureTool extends BaseTool {
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
 
-    // Накопленное направление движения мыши (для ортогональной привязки)
-    this._mouseDirX = 0;
-    this._mouseDirY = 0;
-    this._lastMouseWorld = null;
+    // Зафиксированная ортогональная ось (null пока не выбрана)
+    this._lockedOrthoAngle = null;
   }
 
   activate() {
@@ -54,9 +52,7 @@ export class MeasureTool extends BaseTool {
     clearTimeout(this._snapHoverTimer);
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
-    this._mouseDirX = 0;
-    this._mouseDirY = 0;
-    this._lastMouseWorld = null;
+    this._lockedOrthoAngle = null;
   }
 
   getCursor() {
@@ -101,67 +97,45 @@ export class MeasureTool extends BaseTool {
   }
 
   onMouseDown(pos, world, e) {
-  if (!this.isDrawing) {
-    let startPoint;
-    if (this.currentObjectSnap) {
-      startPoint = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
-    } else {
-      const snapped = snap(world.x, world.y, { screenPoint: pos, tolerance: 24 });
-      startPoint = { x: snapped.x, y: snapped.y };
-    }
-    this.isDrawing = true;
-    this.drawStart = startPoint;
-    this.drawEnd = { ...startPoint };
-    this.lengthInput = '';
-    this.lengthMode = false;
-    // Сбрасываем накопленное направление — начинаем отслеживать заново
-    this._mouseDirX = 0;
-    this._mouseDirY = 0;
-    this._lastMouseWorld = null;
-    this.ui.doRedraw();
-  } else {
-    let endPoint = this.getMeasureEnd(world);
-    const len = Math.hypot(endPoint.x - this.drawStart.x, endPoint.y - this.drawStart.y);
-    if (len > 1) {
-      executeCommand(new CreateMeasureCommand(
-        this.drawStart.x, this.drawStart.y,
-        endPoint.x, endPoint.y
-      ));
-      // Цепной режим: начинаем следующее измерение от конечной точки
-      this.drawStart = { x: endPoint.x, y: endPoint.y };
-      this.drawEnd = { x: endPoint.x, y: endPoint.y };
+    if (!this.isDrawing) {
+      let startPoint;
+      if (this.currentObjectSnap) {
+        startPoint = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
+      } else {
+        const snapped = snap(world.x, world.y, { screenPoint: pos, tolerance: 24 });
+        startPoint = { x: snapped.x, y: snapped.y };
+      }
+      this.isDrawing = true;
+      this.drawStart = startPoint;
+      this.drawEnd = { ...startPoint };
       this.lengthInput = '';
       this.lengthMode = false;
-      // Сбрасываем направление для следующего отрезка
-      this._mouseDirX = 0;
-      this._mouseDirY = 0;
-      this._lastMouseWorld = null;
-      // isDrawing остаётся true
+      this._lockedOrthoAngle = null;
+      this.ui.doRedraw();
     } else {
-      // Если длина нулевая, просто сбрасываем
-      this.reset();
+      let endPoint = this.getMeasureEnd(world);
+      const len = Math.hypot(endPoint.x - this.drawStart.x, endPoint.y - this.drawStart.y);
+      if (len > 1) {
+        executeCommand(new CreateMeasureCommand(
+          this.drawStart.x, this.drawStart.y,
+          endPoint.x, endPoint.y
+        ));
+        this.drawStart = { x: endPoint.x, y: endPoint.y };
+        this.drawEnd = { x: endPoint.x, y: endPoint.y };
+        this.lengthInput = '';
+        this.lengthMode = false;
+        this._lockedOrthoAngle = null;
+      } else {
+        this.reset();
+      }
+      this.ui.doRedraw();
     }
-    this.ui.doRedraw();
+    return true;
   }
-  return true;
-}
 
   onMouseMove(pos, world, e) {
     setModifiers(this.ui.shiftDown, this.ui.ctrlDown);
 
-    // Накапливаем направление движения мыши (экспоненциальное сглаживание)
-    if (this._lastMouseWorld) {
-      const dx = world.x - this._lastMouseWorld.x;
-      const dy = world.y - this._lastMouseWorld.y;
-      const moved = Math.hypot(dx, dy);
-      if (moved > 0.5) {
-        const alpha = 0.25; // степень сглаживания
-        this._mouseDirX = this._mouseDirX * (1 - alpha) + (dx / moved) * alpha;
-        this._mouseDirY = this._mouseDirY * (1 - alpha) + (dy / moved) * alpha;
-      }
-    }
-    this._lastMouseWorld = { x: world.x, y: world.y };
-    
     this.currentObjectSnap = findObjectSnapCandidate(world, pos, {
       includeEndpoint: true,
       includeCorner: true,
@@ -188,6 +162,48 @@ export class MeasureTool extends BaseTool {
     }
 
     if (this.isDrawing && this.drawStart) {
+      // Фиксируем ортогональную ось только когда курсор отошёл >= 30px от старта.
+      // Это исключает нестабильность угла вблизи стартовой точки.
+      const startScreen = toScreen(this.drawStart.x, this.drawStart.y);
+      const screenDist = Math.hypot(pos.x - startScreen.x, pos.y - startScreen.y);
+
+      if (screenDist >= 30) {
+        const dx = world.x - this.drawStart.x;
+        const dy = world.y - this.drawStart.y;
+        const angle = Math.atan2(dy, dx);
+
+        // Находим ближайшую ортогональную ось
+        let bestAngle = null;
+        let bestDiff = Infinity;
+        for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+          const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestAngle = sa;
+          }
+        }
+
+        if (this._lockedOrthoAngle === null) {
+          // Первая фиксация — берём лучшую ось если угол < 0.3 рад (~17°)
+          if (bestDiff < 0.3) {
+            this._lockedOrthoAngle = bestAngle;
+          }
+        } else {
+          // Уже зафиксирована — переключаем только если курсор явно ушёл
+          // в другую ось (порог 0.25 рад защищает от дрожания на границе)
+          const lockedDiff = Math.abs(Math.atan2(
+            Math.sin(angle - this._lockedOrthoAngle),
+            Math.cos(angle - this._lockedOrthoAngle)
+          ));
+          if (bestAngle !== this._lockedOrthoAngle && lockedDiff > 0.25 && bestDiff < 0.25) {
+            this._lockedOrthoAngle = bestAngle;
+          }
+        }
+      } else {
+        // Близко к старту — ось не фиксируем
+        this._lockedOrthoAngle = null;
+      }
+
       this.drawEnd = this.getMeasureEnd(world);
     }
 
@@ -199,7 +215,6 @@ export class MeasureTool extends BaseTool {
   onKeyDown(e) {
     if (!this.isDrawing) return false;
 
-    // Ввод длины с клавиатуры
     if (/^[0-9]$/.test(e.key)) {
       this.lengthMode = true;
       this.lengthInput += e.key;
@@ -238,162 +253,106 @@ export class MeasureTool extends BaseTool {
 
   // ─── Направляющие (оси) ─────────────────────────────────────────
   updateGuideLine(world, screenPoint) {
-  if (!this.isDrawing || !this.drawStart) {
-    this.currentGuideLine = null;
-    return;
-  }
-
-  // Если уже есть объектная направляющая — проверяем, не пора ли её сбросить
-  if (this.currentGuideLine && this.currentGuideLine.id !== 'measure:start-axis') {
-    if (shouldKeepGuideLine(screenPoint, this.currentGuideLine, 36, 48)) {
+    if (!this.isDrawing || !this.drawStart) {
+      this.currentGuideLine = null;
       return;
+    }
+
+    if (this.currentGuideLine && this.currentGuideLine.id !== 'measure:start-axis') {
+      if (shouldKeepGuideLine(screenPoint, this.currentGuideLine, 36, 48)) {
+        return;
+      } else {
+        this.currentGuideLine = null;
+      }
+    }
+
+    const candidate = findGuideCandidate(screenPoint);
+    if (candidate) {
+      this.currentGuideLine = candidate;
     } else {
       this.currentGuideLine = null;
     }
   }
 
-  // Ищем только реальные объектные направляющие (стены, проёмы, другие рулетки)
-  const candidate = findGuideCandidate(screenPoint);
-  if (candidate) {
-    this.currentGuideLine = candidate;
-  } else {
-    this.currentGuideLine = null;   // НЕ создаём автоматическую ось
-  }
-}
-
   getMeasureEnd(world) {
-  // Если вводим длину, используем её для вычисления конечной точки
-  if (this.lengthMode && this.lengthInput) {
-    return this.computeEndFromLength(parseFloat(this.lengthInput));
-  }
+    if (this.lengthMode && this.lengthInput) {
+      return this.computeEndFromLength(parseFloat(this.lengthInput));
+    }
 
-  const screenPt = this.ui.mouseScreen || toScreen(world.x, world.y);
-  
-  // Базовая привязка
-  let end;
-  if (this.currentObjectSnap) {
-    end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
-  } else {
-    end = snap(world.x, world.y, {
-      screenPoint: screenPt,
-      includePerpendicular: false,
-      includeWallPoint: true,
-      tolerance: 24,
-    });
-  }
-  
-  const hardSnap = this.currentObjectSnap && 
-    (this.currentObjectSnap.type === 'endpoint' || 
-     this.currentObjectSnap.type === 'corner' || 
-     this.currentObjectSnap.type === 'intersection');
+    const screenPt = this.ui.mouseScreen || toScreen(world.x, world.y);
 
-  // ⭐ ОРТОГОНАЛЬНАЯ ПРИВЯЗКА (как в WallTool)
-  if (!hardSnap && !this.ui.shiftDown && this.drawStart) {
-    const dx = end.x - this.drawStart.x;
-    const dy = end.y - this.drawStart.y;
-    const len = Math.hypot(dx, dy);
-    if (len > 1) {
-      const angle = Math.atan2(dy, dx);
+    // Базовая привязка
+    let end;
+    if (this.currentObjectSnap) {
+      end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
+    } else {
+      end = snap(world.x, world.y, {
+        screenPoint: screenPt,
+        includePerpendicular: false,
+        includeWallPoint: true,
+        tolerance: 24,
+      });
+    }
 
-      // Выбираем ближайшую ортогональную ось
-      let bestAngle = null;
-      let bestDiff = Infinity;
-      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
-        if (diff < 0.15 && diff < bestDiff) {
-          bestDiff = diff;
-          bestAngle = sa;
-        }
-      }
+    const hardSnap = this.currentObjectSnap &&
+      (this.currentObjectSnap.type === 'endpoint' ||
+       this.currentObjectSnap.type === 'corner' ||
+       this.currentObjectSnap.type === 'intersection');
 
-      // Если две оси одинаково близки (угол ~45°) — выбираем по направлению движения мыши
-      if (bestAngle === null) {
-        // Не попали в зону привязки — оставляем свободный угол
-      } else {
-        // Проверяем: не противоречит ли выбранная ось направлению движения мыши
-        // Например, угол конечной точки 175° → округлился до 180° (влево),
-        // но мышь двигалась вправо (_mouseDirX > 0) — тогда берём 0° (вправо)
-        const mdLen = Math.hypot(this._mouseDirX, this._mouseDirY);
-        if (mdLen > 0.01) {
-          const moveAngle = Math.atan2(this._mouseDirY, this._mouseDirX);
-          const diffWithMove = Math.abs(Math.atan2(Math.sin(bestAngle - moveAngle), Math.cos(bestAngle - moveAngle)));
-          if (diffWithMove > Math.PI / 2) {
-            // Выбранная ось противоположна направлению движения — берём противоположный угол
-            bestAngle = bestAngle > 0 ? bestAngle - Math.PI : bestAngle + Math.PI;
-          }
-        }
-
+    // ⭐ ОРТОГОНАЛЬНАЯ ПРИВЯЗКА — применяем зафиксированную ось
+    // Ось фиксируется в onMouseMove после того как курсор отошёл >= 30px.
+    // Это исключает перекидывание на противоположную сторону вблизи старта.
+    if (!hardSnap && !this.ui.shiftDown && this.drawStart && this._lockedOrthoAngle !== null) {
+      const dx = end.x - this.drawStart.x;
+      const dy = end.y - this.drawStart.y;
+      const len = Math.hypot(dx, dy);
+      if (len > 1) {
         end = {
-          x: this.drawStart.x + Math.cos(bestAngle) * len,
-          y: this.drawStart.y + Math.sin(bestAngle) * len,
+          x: this.drawStart.x + Math.cos(this._lockedOrthoAngle) * len,
+          y: this.drawStart.y + Math.sin(this._lockedOrthoAngle) * len,
         };
       }
     }
-  }
 
-  // Привязка к tracking-линиям
-  if (this.activeTrackingPoint) {
-    const tLines = getTrackingLines(this.activeTrackingPoint);
-    const tSnap = snapToTrackingLines(end, screenPt, tLines, 24);
-    if (tSnap) {
-      end = { x: tSnap.x, y: tSnap.y };
+    // Привязка к tracking-линиям
+    if (this.activeTrackingPoint) {
+      const tLines = getTrackingLines(this.activeTrackingPoint);
+      const tSnap = snapToTrackingLines(end, screenPt, tLines, 24);
+      if (tSnap) {
+        end = { x: tSnap.x, y: tSnap.y };
+      }
     }
-  }
 
-  // Применение объектной направляющей (если есть)
-  if (this.currentGuideLine) {
-    // Применяем только объектные направляющие, не автоматическую ось
-    if (this.currentGuideLine.id !== 'measure:start-axis') {
+    // Применение объектной направляющей
+    if (this.currentGuideLine && this.currentGuideLine.id !== 'measure:start-axis') {
       const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
       const proj = projectPointToGuideLineWorld(end, axisGuide);
       end = { x: proj.x, y: proj.y };
     }
+
+    return end;
   }
-  
-  return end;
-}
 
   // Вычисляет конечную точку на основе заданной длины
   computeEndFromLength(targetLen) {
     if (!this.drawStart) return this.drawEnd || { x: 0, y: 0 };
     if (targetLen <= 0) return { ...this.drawStart };
-    
+
     let dir;
     if (this.currentGuideLine) {
       dir = this.currentGuideLine.dir;
+    } else if (this._lockedOrthoAngle !== null) {
+      // Используем зафиксированную ось — она уже указывает в правильную сторону
+      dir = { x: Math.cos(this._lockedOrthoAngle), y: Math.sin(this._lockedOrthoAngle) };
     } else {
-      // Используем текущее направление от старта к мыши
+      // Ось ещё не зафиксирована — берём сырое направление к мыши
       const world = this.ui.mouseScreen ? toWorld(this.ui.mouseScreen.x, this.ui.mouseScreen.y) : this.drawEnd;
       const dx = world.x - this.drawStart.x;
       const dy = world.y - this.drawStart.y;
       const len = Math.hypot(dx, dy);
-      if (len > 1) {
-        // Применяем ортогональную привязку к направлению
-        const angle = Math.atan2(dy, dx);
-        let bestAngle = angle;
-        let bestDiff = Infinity;
-        for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-          const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
-          if (diff < 0.15 && diff < bestDiff) {
-            bestDiff = diff;
-            bestAngle = sa;
-          }
-        }
-        // Корректируем по направлению движения мыши
-        const mdLen = Math.hypot(this._mouseDirX, this._mouseDirY);
-        if (mdLen > 0.01) {
-          const moveAngle = Math.atan2(this._mouseDirY, this._mouseDirX);
-          const diffWithMove = Math.abs(Math.atan2(Math.sin(bestAngle - moveAngle), Math.cos(bestAngle - moveAngle)));
-          if (diffWithMove > Math.PI / 2) {
-            bestAngle = bestAngle > 0 ? bestAngle - Math.PI : bestAngle + Math.PI;
-          }
-        }
-        dir = { x: Math.cos(bestAngle), y: Math.sin(bestAngle) };
-      } else {
-        dir = { x: 1, y: 0 };
-      }
+      dir = len > 1 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 };
     }
-    
+
     return {
       x: this.drawStart.x + dir.x * targetLen,
       y: this.drawStart.y + dir.y * targetLen,
@@ -401,18 +360,18 @@ export class MeasureTool extends BaseTool {
   }
 
   applyLength(targetLen) {
-  if (!this.drawStart) return;
-  const end = this.computeEndFromLength(targetLen);
-  executeCommand(new CreateMeasureCommand(
-    this.drawStart.x, this.drawStart.y,
-    end.x, end.y
-  ));
-  // Цепной режим: продолжаем от конечной точки
-  this.drawStart = { x: end.x, y: end.y };
-  this.drawEnd = { x: end.x, y: end.y };
-  this.lengthInput = '';
-  this.lengthMode = false;
-  this.isDrawing = true;
-  this.ui.doRedraw();
+    if (!this.drawStart) return;
+    const end = this.computeEndFromLength(targetLen);
+    executeCommand(new CreateMeasureCommand(
+      this.drawStart.x, this.drawStart.y,
+      end.x, end.y
+    ));
+    this.drawStart = { x: end.x, y: end.y };
+    this.drawEnd = { x: end.x, y: end.y };
+    this.lengthInput = '';
+    this.lengthMode = false;
+    this._lockedOrthoAngle = null;
+    this.isDrawing = true;
+    this.ui.doRedraw();
   }
 }
