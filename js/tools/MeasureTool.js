@@ -146,6 +146,18 @@ export class MeasureTool extends BaseTool {
     this.updateGuideLine(world, pos);
     this.updateTrackingState(this.currentObjectSnap);
 
+    // Сбрасываем activeTrackingPoint если курсор далеко от него
+    if (this.activeTrackingPoint) {
+      const s = toScreen(this.activeTrackingPoint.x, this.activeTrackingPoint.y);
+      const d = Math.hypot(pos.x - s.x, pos.y - s.y);
+      if (d > 120) {
+        this.activeTrackingPoint = null;
+        clearTimeout(this._snapHoverTimer);
+        this._snapHoverTimer = null;
+        this._snapHoverKey = null;
+      }
+    }
+
     if (this.isDrawing && this.drawStart) {
       this.drawEnd = this.getMeasureEnd(world);
     }
@@ -253,17 +265,17 @@ export class MeasureTool extends BaseTool {
     const len = Math.hypot(dx, dy);
     if (len > 1) {
       let angle = Math.atan2(dy, dx);
-     for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-  const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
-  if (diff < 0.15) {
-    angle = sa;
-    end = {
-      x: this.drawStart.x + Math.cos(angle) * len,
-      y: this.drawStart.y + Math.sin(angle) * len,
-    };
-    break;
-  }
-}
+      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        const diff = Math.abs(angle - sa);
+        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
+          angle = sa;
+          end = {
+            x: this.drawStart.x + Math.cos(angle) * len,
+            y: this.drawStart.y + Math.sin(angle) * len,
+          };
+          break;
+        }
+      }
     }
   }
 
