@@ -114,6 +114,10 @@ export class MeasureTool extends BaseTool {
     this.drawEnd = { ...startPoint };
     this.lengthInput = '';
     this.lengthMode = false;
+    // Сбрасываем накопленное направление — начинаем отслеживать заново
+    this._mouseDirX = 0;
+    this._mouseDirY = 0;
+    this._lastMouseWorld = null;
     this.ui.doRedraw();
   } else {
     let endPoint = this.getMeasureEnd(world);
@@ -128,6 +132,10 @@ export class MeasureTool extends BaseTool {
       this.drawEnd = { x: endPoint.x, y: endPoint.y };
       this.lengthInput = '';
       this.lengthMode = false;
+      // Сбрасываем направление для следующего отрезка
+      this._mouseDirX = 0;
+      this._mouseDirY = 0;
+      this._lastMouseWorld = null;
       // isDrawing остаётся true
     } else {
       // Если длина нулевая, просто сбрасываем
