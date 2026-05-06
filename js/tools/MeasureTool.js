@@ -254,90 +254,81 @@ export class MeasureTool extends BaseTool {
 }
 
   getMeasureEnd(world) {
-  // Если вводим длину, используем её для вычисления конечной точки
+  // ── Ввод точной длины с клавиатуры ──────────────────────────
   if (this.lengthMode && this.lengthInput) {
     return this.computeEndFromLength(parseFloat(this.lengthInput));
   }
 
   const screenPt = this.ui.mouseScreen || toScreen(world.x, world.y);
-  
-  // Базовая привязка
+
+  // ── Жёсткий снап (угол, конец, пересечение) — абсолютный приоритет ──
+  const objSnap = snap(world.x, world.y, { screenPoint: screenPt, tolerance: 24 });
+  const hardSnap = objSnap.snapType === 'endpoint' ||
+                   objSnap.snapType === 'corner' ||
+                   objSnap.snapType === 'intersection';
+  if (hardSnap) {
+    return { x: objSnap.x, y: objSnap.y };
+  }
+
+  // ── Сырая точка без объектных снапов (как в WallTool) ───────
+  const rawGrid = snap(world.x, world.y, {
+    screenPoint: screenPt,
+    skipObject: true,
+    forceNoEndpoint: true,
+    tolerance: 24,
+  });
+
   let end;
-  if (this.currentObjectSnap) {
-    const distToStart = Math.hypot(
-      this.currentObjectSnap.x - this.drawStart.x,
-      this.currentObjectSnap.y - this.drawStart.y
-    );
-    if (distToStart > 1) {   // больше 1 мм — это не стартовая точка
-      end = { x: this.currentObjectSnap.x, y: this.currentObjectSnap.y };
+
+  // ── Ортогональная привязка (без Shift, как у стен) ──────────
+  if (this.drawStart) {
+    const dx = rawGrid.x - this.drawStart.x;
+    const dy = rawGrid.y - this.drawStart.y;
+    const dist = Math.hypot(dx, dy);
+    const distPx = dist * (this.ui._scale ?? 0.12);
+
+    if (distPx > 8) {
+      const angle = Math.atan2(dy, dx);
+      const ANGLE_THRESHOLD = 0.09;  // ~5°
+      const AXIS_SNAP_PX = 14;       // пикселей
+
+      let lockedAngle = null;
+      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        let diff = angle - sa;
+        diff = diff - Math.round(diff / (2 * Math.PI)) * (2 * Math.PI);
+        if (Math.abs(diff) < ANGLE_THRESHOLD) {
+          const cosA = Math.cos(sa), sinA = Math.sin(sa);
+          const crossPx = Math.abs(-sinA * dx + cosA * dy) * (this.ui._scale ?? 0.12);
+          if (crossPx <= AXIS_SNAP_PX) {
+            lockedAngle = sa;
+          }
+          break;
+        }
+      }
+
+      if (lockedAngle !== null) {
+        end = {
+          x: this.drawStart.x + Math.cos(lockedAngle) * dist,
+          y: this.drawStart.y + Math.sin(lockedAngle) * dist,
+        };
+      } else {
+        // Ось не нашлась — обычный snap с объектами
+        end = snap(world.x, world.y, {
+          screenPoint: screenPt,
+          includePerpendicular: false,
+          includeWallPoint: true,
+          tolerance: 24,
+        });
+      }
     } else {
-      // снап указывает на ту же точку, что и начало — используем позицию мыши
-      end = snap(world.x, world.y, {
-        screenPoint: screenPt,
-        includePerpendicular: false,
-        includeWallPoint: true,
-        tolerance: 24,
-      });
+      // Слишком близко к началу — rawGrid без снапа
+      end = rawGrid;
     }
   } else {
-    end = snap(world.x, world.y, {
-      screenPoint: screenPt,
-      includePerpendicular: false,
-      includeWallPoint: true,
-      tolerance: 24,
-    });
-  }
-  
-  const hardSnap = this.currentObjectSnap && 
-    (this.currentObjectSnap.type === 'endpoint' || 
-     this.currentObjectSnap.type === 'corner' || 
-     this.currentObjectSnap.type === 'intersection');
-
-  // ⭐ ОРТОГОНАЛЬНАЯ ПРИВЯЗКА (как в WallTool)
-  if (!hardSnap && this.ui.shiftDown && this.drawStart) {
-    const dx = end.x - this.drawStart.x;
-    const dy = end.y - this.drawStart.y;
-    const len = Math.hypot(dx, dy);
-    if (len > 1) {
-      const angle = Math.atan2(dy, dx);
-
-      // Выбираем ближайшую ортогональную ось
-      let bestAngle = null;
-      let bestDiff = Infinity;
-      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
-        if (diff < 0.15 && diff < bestDiff) {
-          bestDiff = diff;
-          bestAngle = sa;
-        }
-      }
-
-      // Если две оси одинаково близки (угол ~45°) — выбираем по направлению движения мыши
-      if (bestAngle === null) {
-        // Не попали в зону привязки — оставляем свободный угол
-      } else {
-        // Проверяем: не противоречит ли выбранная ось направлению движения мыши
-        // Например, угол конечной точки 175° → округлился до 180° (влево),
-        // но мышь двигалась вправо (_mouseDirX > 0) — тогда берём 0° (вправо)
-        const mdLen = Math.hypot(this._mouseDirX, this._mouseDirY);
-        if (mdLen > 0.01) {
-          const moveAngle = Math.atan2(this._mouseDirY, this._mouseDirX);
-          const diffWithMove = Math.abs(Math.atan2(Math.sin(bestAngle - moveAngle), Math.cos(bestAngle - moveAngle)));
-          if (diffWithMove > Math.PI / 2) {
-            // Выбранная ось противоположна направлению движения — берём противоположный угол
-            bestAngle = bestAngle > 0 ? bestAngle - Math.PI : bestAngle + Math.PI;
-          }
-        }
-
-        end = {
-          x: this.drawStart.x + Math.cos(bestAngle) * len,
-          y: this.drawStart.y + Math.sin(bestAngle) * len,
-        };
-      }
-    }
+    end = rawGrid;
   }
 
-  // Привязка к tracking-линиям
+  // ── Tracking-линии (фиолетовые лучи) ────────────────────────
   if (this.activeTrackingPoint) {
     const tLines = getTrackingLines(this.activeTrackingPoint);
     const tSnap = snapToTrackingLines(end, screenPt, tLines, 24);
@@ -346,16 +337,15 @@ export class MeasureTool extends BaseTool {
     }
   }
 
-  // Применение объектной направляющей (если есть)
+  // ── Объектные направляющие (guide lines) ────────────────────
   if (this.currentGuideLine) {
-    // Применяем только объектные направляющие, не автоматическую ось
     if (this.currentGuideLine.id !== 'measure:start-axis') {
       const axisGuide = getNearestGuideLineAxis(screenPt, this.currentGuideLine);
       const proj = projectPointToGuideLineWorld(end, axisGuide);
       end = { x: proj.x, y: proj.y };
     }
   }
-  
+
   return end;
 }
 
