@@ -253,17 +253,17 @@ export class MeasureTool extends BaseTool {
     const len = Math.hypot(dx, dy);
     if (len > 1) {
       let angle = Math.atan2(dy, dx);
-      for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const diff = Math.abs(angle - sa);
-        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
-          angle = sa;
-          end = {
-            x: this.drawStart.x + Math.cos(angle) * len,
-            y: this.drawStart.y + Math.sin(angle) * len,
-          };
-          break;
-        }
-      }
+     for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+  const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
+  if (diff < 0.15) {
+    angle = sa;
+    end = {
+      x: this.drawStart.x + Math.cos(angle) * len,
+      y: this.drawStart.y + Math.sin(angle) * len,
+    };
+    break;
+  }
+}
     }
   }
 
