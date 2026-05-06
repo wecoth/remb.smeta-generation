@@ -264,17 +264,22 @@ export class MeasureTool extends BaseTool {
     const dy = end.y - this.drawStart.y;
     const len = Math.hypot(dx, dy);
     if (len > 1) {
-      let angle = Math.atan2(dy, dx);
+      const angle = Math.atan2(dy, dx);
+      let bestAngle = null;
+      let bestDiff = Infinity;
       for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const diff = Math.abs(angle - sa);
-        if (diff < 0.15 || Math.abs(diff - 2 * Math.PI) < 0.15) {
-          angle = sa;
-          end = {
-            x: this.drawStart.x + Math.cos(angle) * len,
-            y: this.drawStart.y + Math.sin(angle) * len,
-          };
-          break;
+        // Правильная разность углов — всегда в диапазоне [-π, π]
+        const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
+        if (diff < 0.15 && diff < bestDiff) {
+          bestDiff = diff;
+          bestAngle = sa;
         }
+      }
+      if (bestAngle !== null) {
+        end = {
+          x: this.drawStart.x + Math.cos(bestAngle) * len,
+          y: this.drawStart.y + Math.sin(bestAngle) * len,
+        };
       }
     }
   }
@@ -316,7 +321,18 @@ export class MeasureTool extends BaseTool {
       const dy = world.y - this.drawStart.y;
       const len = Math.hypot(dx, dy);
       if (len > 1) {
-        dir = { x: dx / len, y: dy / len };
+        // Применяем ортогональную привязку к направлению
+        const angle = Math.atan2(dy, dx);
+        let bestAngle = angle;
+        let bestDiff = Infinity;
+        for (const sa of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+          const diff = Math.abs(Math.atan2(Math.sin(angle - sa), Math.cos(angle - sa)));
+          if (diff < 0.15 && diff < bestDiff) {
+            bestDiff = diff;
+            bestAngle = sa;
+          }
+        }
+        dir = { x: Math.cos(bestAngle), y: Math.sin(bestAngle) };
       } else {
         dir = { x: 1, y: 0 };
       }
