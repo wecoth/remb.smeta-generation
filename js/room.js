@@ -760,8 +760,9 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
   let narrowWallAreaM2 = 0;
   let narrowWallsLm = 0;
 
-  // Устраняем дублирование стен: одна стена может быть разбита примыканием
-  // перегородки на несколько сегментов. Объединяем их по wallId.
+  // ── Устраняем дублирование стен: одна стена может быть разбита примыканием ──
+  //    перегородки на несколько сегментов. Объединяем их по wallId.
+  //    Полная длина стены в комнате вычисляется через wallLengthInRoomMm.
   const uniqueWalls = [];
   const seenWallIds = new Set();
   for (const w of boundaryWalls) {
@@ -772,7 +773,7 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
     uniqueWalls.push({ wall: w, fullLen });
   }
 
-  // Карта проёмов для каждой стены
+  // Карта проёмов для каждой настоящей стены (ключ: wallId)
   const opsByWall = new Map();
   for (const { wall, fullLen } of uniqueWalls) {
     const wOps = openings
@@ -819,14 +820,48 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
     }
   }
 
-  // Проход 2: короткие рёбра полигона без проёмов (открытые торцы).
-  // Торец считается открытым, если его концы НЕ лежат оба на оси одной стены.
+  // Проход 2: короткие рёбра полигона < NARROW_WALL_THRESHOLD_MM без проёмов
+  //
+  // Торец перегородки, упирающийся в другую стену — короткое ребро полигона,
+  // но считать его НЕ нужно: физически поверхность закрыта примыкающей стеной.
+  // Признак закрытого торца: findAllWallsForEdge найдёт КОЛЛИНЕАРНУЮ стену.
+  // Открытый торец — перпендикулярен всем стенам → коллинеарных стен нет.
+  //
+  // ВАЖНО: findAllWallsForEdge может вернуть стену, которая лишь проходит
+  // РЯДОМ с торцом (например, стена с дверью), но не коллинеарна ему.
+  // Поэтому после вызова проверяем реальную коллинеарность: dot-продукт
+  // единичных векторов ребра и стены должен быть > 0.95.
   for (let k = 0; k < polygon.length; k++) {
     const a = polygon[k], b = polygon[(k + 1) % polygon.length];
     const edgeLenMm = Math.hypot(b.x - a.x, b.y - a.y);
     if (edgeLenMm >= NARROW_WALL_THRESHOLD_MM) continue;
 
-    // Проверяем, закрыт ли торец перпендикулярной стеной
+    const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
+
+    const edgeWalls = findAllWallsForEdge(a.x, a.y, b.x, b.y, [...boundaryWalls]);
+
+    // Фильтруем: оставляем только стены, реально коллинеарные ребру
+    const collinearWalls = edgeWalls.filter(w => {
+      const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
+      const wx2 = w.cx2 ?? w.x2, wy2 = w.cy2 ?? w.y2;
+      const wLen = Math.hypot(wx2 - wx1, wy2 - wy1);
+      if (wLen < 1) return false;
+      const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
+      return Math.abs(edUX * wUX + edUY * wUY) > 0.95;
+    });
+
+    if (collinearWalls.length > 0) {
+      const hasOps = collinearWalls.some(w => (opsByWall.get(w.id) || []).length > 0);
+      if (hasOps) continue; // уже обработано в проходе 1
+      // Нет проёмов, короткий участок стены — в погонаж
+      narrowWallsLm   += heightM;
+      narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
+      continue;
+    }
+
+    // Коллинеарных стен нет — потенциально открытый торец перегородки.
+    // Проверяем, что он не закрыт перпендикулярной стеной
+    // (обе вершины ребра лежат на оси одной и той же стены).
     let closedByWall = false;
     for (const w of boundaryWalls) {
       const wx1 = w.cx1 ?? w.x1, wy1 = w.cy1 ?? w.y1;
@@ -835,26 +870,23 @@ function calcNarrowSections(boundaryWalls, polygon, openings, heightM) {
       if (wLen < 1) continue;
       const wUX = (wx2 - wx1) / wLen, wUY = (wy2 - wy1) / wLen;
       const edUX = (b.x - a.x) / edgeLenMm, edUY = (b.y - a.y) / edgeLenMm;
-      // Ребро должно быть примерно перпендикулярно стене
-      if (Math.abs(edUX * wUX + edUY * wUY) > 0.15) continue;
+      if (Math.abs(edUX * wUX + edUY * wUY) > 0.1) continue; // ребро должно быть ⊥ стене
       const epsAlong = 5;
-      const epsPerp  = 5;
+      const epsPerp  = 5; // жёсткий допуск — w.thickness здесь давал false positive
       const checkPt = (px, py) => {
         const dx = px - wx1, dy = py - wy1;
         const along = dx * wUX + dy * wUY;
         const perp = Math.abs(dx * (-wUY) + dy * wUX);
         return along >= -epsAlong && along <= wLen + epsAlong && perp <= epsPerp;
       };
-      // Торец закрыт, если ОБЕ вершины лежат на одной стене
       if (checkPt(a.x, a.y) && checkPt(b.x, b.y)) {
         closedByWall = true;
         break;
       }
     }
+    if (closedByWall) continue;
 
-    if (closedByWall) continue;   // закрытый торец — не учитываем
-
-    // Открытый торец — добавляем в погонаж
+    // Открытый торец — в погонаж
     narrowWallsLm   += heightM;
     narrowWallAreaM2 += (edgeLenMm / 1000) * heightM;
   }
