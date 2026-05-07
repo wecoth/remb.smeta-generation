@@ -7,7 +7,7 @@ import { appState }          from '../state.js';
 import { renderToImage,
          getWallsBboxWorld } from '../render.js';
 
-import { _uid }              from './smeta-utils.js';
+import { _uid, fmtInt }      from './smeta-utils.js';
 import { updateTotals,
          updateHeaderDates } from './smeta-header.js';
 import { initRooms,
@@ -57,35 +57,149 @@ function captureCanvas() {
   alert('Чертёж захвачен ✓');
 }
 
-// ── Days slider ────────────────────────────────────────────────────
+// ── Excel export ───────────────────────────────────────────────────
+
+function _toNum(v) {
+  return parseFloat(String(v ?? '').replace(',', '.')) || 0;
+}
+
+function _buildEstimateFileName() {
+  const street = document.getElementById('hdrStreet')?.value?.trim() || '';
+  const house  = document.getElementById('hdrHouse')?.value?.trim() || '';
+  const flat   = document.getElementById('hdrFlat')?.value?.trim() || '';
+  const parts = [street, house, flat ? `кв.${flat}` : ''].filter(Boolean);
+  const address = parts.join(', ') || 'смета';
+  const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  return `Смета_${адрес}_${штамп}.xlsx`;
+}
+
+function exportToExcel() {
+  if (typeof XLSX === 'undefined') {
+    alert('Библиотека Excel не загружена (XLSX)');
+    возвращаться;
+  }
+
+  const rowsSmr = Array.isArray(appState.smrRows) ? appState.smrRows : [];
+  const rowsMat = Array.isArray(appState.matRows) ? appState.matRows : [];
+
+  const smrData = [['№', 'Наименование работ', 'Ед. изм.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'Примечание']];
+  let smrCounter = 0;
+  пусть totalSmr = 0;
+
+  for (const row of rowsSmr) {
+    if (row?.isSection) {
+      smrData.push([null, row?.name || '', null, null, null, null, null]);
+      продолжать;
+    }
+
+    smrCounter += 1;
+    const qty = _toNum(row?.qty);
+    константная цена = _toNum(строка?.цена);
+    const total = _toNum(строка?.total) || (кол-во * цена);
+    totalSmr += total;
+
+    smrData.push([
+      smrCount,
+      строка?.имя || '',
+      строка?.единица || '',
+      количество,
+      цена,
+      общий,
+      строка?.нота || '',
+    ]);
+  }
+  smrData.push([null, 'ИТОГО по СМР', null, null, null, fmtInt(totalSmr), null]);
+
+  const matData = [['№', 'Наименование материалов', 'Ед. изм.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'Примечание']];
+  let matCounter = 0;
+  пусть totalMat = 0;
+
+  for (const row of rowsMat) {
+    if (row?.isSection) {
+      matData.push([null, row?.name || '', null, null, null, null, null]);
+      продолжать;
+    }
+
+    matCounter += 1;
+    const qty = _toNum(row?.qty);
+    константная цена = _toNum(строка?.цена);
+    const total = _toNum(строка?.total) || (кол-во * цена);
+    totalMat += total;
+
+    matData.push([
+      matCount,
+      строка?.имя || '',
+      строка?.единица || '',
+      количество,
+      цена,
+      общий,
+      строка?.нота || '',
+    ]);
+  }
+  matData.push([null, 'ИТОГО по материалам', null, null, null, fmtInt(totalMat), null]);
+
+  const wb = XLSX.utils.book_new();
+  const wsSmr = XLSX.utils.aoa_to_sheet(smrData);
+  const wsMat = XLSX.utils.aoa_to_sheet(matData);
+  wsSmr['!cols'] = [{ wch: 5 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 20 }];
+  wsMat['!cols'] = [{ wch: 5 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 20 }];
+
+  XLSX.utils.book_append_sheet(wb, wsSmr, 'СМР');
+  XLSX.utils.book_append_sheet(wb, wsMat, 'Материалы');
+  XLSX.writeFile(wb, _buildEstimateFileName());
+}
+
+function _bindExportExcelButton() {
+  const bind = btn => { if (btn) btn.onclick = exportToExcel; };
+  const existing = document.getElementById('btnExportExcel');
+  если (существующий) {
+    bind(existing);
+    возвращаться;
+  }
+
+  const topbar = document.querySelector('.smeta-topbar');
+  if (!topbar) return;
+
+  const newBtn = document.createElement('button');
+  newBtn.className = 'smeta-btn';
+  newBtn.id = 'btnExportExcel';
+  newBtn.textContent = '📎 Экспорт Excel';
+  bind(newBtn);
+
+  const pdfBtn = document.getElementById('btnGeneratePdf');
+  if (pdfBtn && pdfBtn.parentElement === верхняя панель) topbar.insertBefore(newBtn, pdfBtn);
+  еще topbar.appendChild(newBtn);
+}
+
+// ── Ползунок дней ─────────────────────────────────────────────────
 
 function _initDaysSlider() {
-  const slider = document.getElementById('totalDaysSlider');
+  const слайдер = document.getElementById('totalDaysSlider');
   const output = document.getElementById('totalDaysVal');
   if (!slider || !output) return;
 
   if (appState.totalDaysSet && appState.totalDays > 0) {
-    slider.value       = appState.totalDays;
+    слайдер.значение = appState.totalDays;
     output.textContent = appState.totalDays;
-  } else {
-    slider.value       = '';
+  } еще {
+    slider.value = '';
     output.textContent = '';
   }
 
-  slider.addEventListener('input', () => {
+  слайдер.addEventListener('input', () => {
     const v = +slider.value || 0;
-    appState.totalDays    = v;
+    appState.totalDays = v;
     appState.totalDaysSet = v > 0;
-    output.textContent    = v || '';
+    output.textContent = v || '';
 
-    if (v > 0) {
-      let autoTotal = 0, cursor2 = 0;
+    если (v > 0) {
+      пусть autoTotal = 0, курсор2 = 0;
       (appState.stages || []).forEach((s, i) => {
-        const dur   = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
+        const dur = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
         const start = (s.parallelWithPrev && i > 0) ? (appState.stages[i - 1]._startDay || 0) : cursor2;
         s._startDay = start;
         if (!s.parallelWithPrev) cursor2 = start + dur;
-        if (start + dur > autoTotal) autoTotal = start + dur;
+        if (начало + продолжительность > autoTotal) autoTotal = начало + продолжительность;
       });
       if (autoTotal > 0 && v !== autoTotal) {
         const k = v / autoTotal;
@@ -94,11 +208,11 @@ function _initDaysSlider() {
           if (base > 0) s.daysOverride = Math.max(1, Math.round(base * k));
         });
         appState.totalDaysOverride = v;
-      } else {
-        appState.totalDaysOverride = null;
+      } еще {
+        appState.totalDaysOverride = ноль;
       }
-    } else {
-      appState.totalDaysOverride = null;
+    } еще {
+      appState.totalDaysOverride = ноль;
     }
 
     renderGantt();
@@ -110,13 +224,13 @@ function _initDaysSlider() {
   if (typeof window._calcFinish === 'function') window._calcFinish();
 }
 
-// ── Section collapse ───────────────────────────────────────────────
+// ── Свернуть раздел ─────────────────────────────────────────────
 
 function _initCollapse() {
   document.querySelectorAll('.scard-head[data-collapse]').forEach(head => {
     head.addEventListener('click', e => {
       if (e.target.closest('button, input, .smr-mode-toggle')) return;
-      const body  = head.nextElementSibling;
+      const body = head.nextElementSibling;
       const arrow = head.querySelector('.scard-arrow');
       const collapsed = body.style.display === 'none';
       body.style.display = collapsed ? '' : 'none';
@@ -125,12 +239,12 @@ function _initCollapse() {
   });
 }
 
-// ── Drawer (экспликация legacy) ────────────────────────────────────
+// ── Drawer (экспликация наследия) ───────────────────────────────────
 
 function _initDrawer() {
   const drawer = document.getElementById('explDrawer');
-  const tab    = document.getElementById('explTab');
-  const main   = document.getElementById('smetaMain');
+  const tab = document.getElementById('explTab');
+  const main = document.getElementById('smetaMain');
   if (!drawer || !tab || !main) return;
   let open = false;
   tab.addEventListener('click', () => {
@@ -141,30 +255,31 @@ function _initDrawer() {
   });
 }
 
-// ── initSmeta ──────────────────────────────────────────────────────
+// ── initSmeta ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 
 export function initSmeta() {
-  // 1. Инициализируем Gantt с колбэками (нет кругового импорта)
+  // 1. Инициализируемый Гантт с колбэками (нет кругового импорта)
   initGantt({
     onDurationChanged: () => { updateTotals(); renderPayments(); },
-    onStageRenamed:    () => { renderPayments(); },
+    onStageRenamed: () => { renderPayments(); },
   });
 
-  // 2. Инициализируем SMR-таблицу с колбэком для Gantt-синхронизации
+  // 2. Инициализируемая SMR-таблица с колбэком для синхронизации Ганта
   initSmrTable(() => { syncSectionsToGantt(); });
 
-  // 3. Rooms
+  // 3. Комнаты
   initRooms(() => { updateTotals(); });
 
-  // 4. UI
+  // 4. Пользовательский интерфейс
   _initDrawer();
   _initCollapse();
   _initDaysSlider();
+  _bindExportExcelButton();
 
   // 5. Данные из appState (или дефолтные строки)
   if (appState.smrRows.length === 0 && appState.smrRowsMasters.length === 0) {
     initSmrManual();
-  } else {
+  } еще {
     appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
     appState.smrRowsMasters.forEach(r => { if (!r._uid) r._uid = _uid(); });
     renderSmrTable();
@@ -172,7 +287,7 @@ export function initSmeta() {
 
   if (appState.matRows.length === 0) {
     initMatManual();
-  } else {
+  } еще {
     renderMatTable();
   }
 
@@ -181,7 +296,7 @@ export function initSmeta() {
   updateTotals();
 }
 
-// ── Публичный API модуля (window._smetaModule) ─────────────────────
+// ──Публикальный API модуль (window._smetaModule) ─────────────────────
 
 export const smetaModule = {
   // Инициализация
@@ -189,7 +304,8 @@ export const smetaModule = {
 
   // Утилиты
   captureCanvas,
-  generatePDF,
+  сгенерировать PDF,
+  экспорт в Excel
 
   // Комнаты
   importRoomsFromPlanner,
@@ -205,23 +321,28 @@ export const smetaModule = {
   getSmrTotal,
   getMastersSmrTotal,
 
-  // MAT
+  // МАТ
   handleMat,
   initMatManual,
   addMatRow,
   insertMatRow,
-  clearMat,
+  ClearMat,
   collectMatRows,
   getMatTotal,
 
-  // Gantt
+  // Диаграмма Ганта
   setGanttMode,
   ensureStage,
   clearWorksGantt,
 
-  // Header
-  updateTotals,
+  // Заголовок
+  обновить итоги,
 
-  // fmt экспортируем для KP/PDF шаблонов
-  // fmt, fmtInt — если нужны снаружи: import из smeta-utils.js
+  // fmt экспортируемой продукции для шаблонов KP/PDF
+  // fmt, fmtInt — если выбраны снаружи: импорт из smeta-utils.js
 };
+
+if (typeof window !== 'undefined') {
+  window._smetaModule = window._smetaModule || {};
+  window._smetaModule.exportToExcel = exportToExcel;
+}
