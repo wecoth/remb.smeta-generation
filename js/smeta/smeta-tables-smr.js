@@ -16,16 +16,16 @@ export function initSmrTable(syncSectionsToGanttFn) {
   _syncSectionsToGantt = syncSectionsToGanttFn;
 }
 
-// ──Публикационный API ───────────────────────────────────────────────
+// ── Публичный API ───────────────────────────────────────────────
 
 export function handleSmr(e) {
   const f = e.target.files[0]; if (!f) return;
   parseExcelFile(f, (rows, err) => {
-    if (err) { alert('Ошибка чтения файла'); возвращаться; }
+    if (err) { alert('Ошибка чтения файла'); return; }
     if (appState.smrMode === 'masters') {
       rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
       appState.smrRowsMasters = rows;
-    } еще {
+    } else {
       rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
       appState.smrRows = rows;
       appState.smrRowsMasters = rows.map(r => structuredClone(r));
@@ -51,7 +51,7 @@ export function addSmrRow(isSection = false) {
   const newRow = _makeSmrRow(isSection);
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters.push(newRow);
-  } еще {
+  } else {
     appState.smrRows.push(newRow);
     appState.smrRowsMasters.push(structuredClone(newRow));
   }
@@ -68,7 +68,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
   const newRow = _makeSmrRow(isSection);
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
-  } еще {
+  } else {
     appState.smrRows.splice(afterIdx + 1, 0, newRow);
     appState.smrRowsMasters.splice(afterIdx + 1, 0, structuredClone(newRow));
   }
@@ -82,7 +82,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
       if (tr.classList.contains('tr-insert-zone')) continue;
       if (+tr.dataset.rowIdx === afterIdx + 1) {
         tr.querySelector('input.inp-name, input.inp-section')?.focus();
-        перерыв;
+        break;
       }
     }
   }, 30);
@@ -91,7 +91,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
 export function clearSmr() {
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters = [];
-  } еще {
+  } else {
     appState.smrRows = [];
     appState.smrRowsMasters = [];
   }
@@ -118,14 +118,14 @@ export function collectSmrRows() { return appState.smrRows; }
 export function getSmrTotal() { return _sumRows(appState.smrRows); }
 export function getMastersSmrTotal(){ return _sumRows(appState.smrRowsMasters); }
 
-// ── Рендер ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                              
+// ── Рендер ─────────────────────────────────────────────
 
 export function renderSmrTable() {
   const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
   const tbody = document.getElementById('smrTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
-  пусть idx = 0;
+  let idx = 0;
 
   rows.forEach((r, i) => {
     tbody.appendChild(buildInsertZoneTr(i, 'smr'));
@@ -138,14 +138,14 @@ export function renderSmrTable() {
       tr.className = 'row-section';
       tr.innerHTML = `
         <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" Placeholder="Название раздела" data-i="${i}" data-f="name"></td>
+        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
         <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
-    } еще {
+    } else {
       idx++;
       tr.innerHTML = `
-        <td class="td-drag" title="Перетянуть">⠿</td>
+        <td class="td-drag" title="Перетащить">⠿</td>
         <td class="td-num">${idx}</td>
-        <td><input class="inp-name" value="${esc(r.name)}" Placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
+        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
         <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="м²" data-i="${i}" data-f="unit"></td>
         <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
@@ -164,7 +164,7 @@ export function renderSmrTable() {
     const newRow = _makeSmrRow(isSection);
     if (appState.smrMode === 'masters') {
       appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
-    } еще {
+    } else {
       appState.smrRows.splice(beforeIdx, 0, newRow);
       appState.smrRowsMasters.splice(beforeIdx, 0, structuredClone(newRow));
     }
@@ -208,7 +208,7 @@ function _bindSmrEvents(tbody) {
         _syncSectionsToGantt();
       }
 
-      // Синхронизируемся в мастерах в клиентском режиме
+      // Синхронизируем в мастерах в клиентском режиме
       if (appState.smrMode === 'client' && activeRows[i]?._uid !== undefined) {
         const masterRow = appState.smrRowsMasters.find(r => r._uid === activeRows[i]._uid);
         if (masterRow) {
@@ -236,7 +236,7 @@ function _bindSmrEvents(tbody) {
           const mi = appState.smrRowsMasters.findIndex(r => r._uid === row._uid);
           if (mi !== -1) appState.smrRowsMasters.splice(mi, 1);
         }
-      } еще {
+      } else {
         appState.smrRowsMasters.splice(i, 1);
       }
       renderSmrTable();
@@ -246,7 +246,7 @@ function _bindSmrEvents(tbody) {
   });
 }
 
-// ── Приватные хелперы ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ‑
+// ── Приватные хелперы ─────────────────────────────────────────────
 
 function _makeSmrRow(isSection) {
   return isSection
@@ -254,6 +254,6 @@ function _makeSmrRow(isSection) {
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
 }
 
-функция _sumRows(rows) {
+function _sumRows(rows) {
   return rows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
