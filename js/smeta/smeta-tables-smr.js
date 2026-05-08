@@ -1,4 +1,4 @@
-// ─── smeta-tables-smr.js ─────────────────────────────────────────
+
 // Блок 2: Таблица работ (СМР).
 // Режимы: клиент/мастера. Двойной массив: smrRows + smrRowsMasters.
 
@@ -117,7 +117,7 @@ export function collectSmrRows() { return appState.smrRows; }
 export function getSmrTotal() { return _sumRows(appState.smrRows); }
 export function getMastersSmrTotal(){ return _sumRows(appState.smrRowsMasters); }
 
-// ── Рендер ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                            
+// ── Рендер ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                              
 
 export function renderSmrTable() {
   const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
@@ -197,7 +197,8 @@ function _bindSmrEvents(tbody) {
       if (f === 'qty' || f === 'price') {
         const r = activeRows[i];
         r.total = (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0);
-        const td = e.target.closest('tr')?.querySelector('.td-total');
+        const tr = e.target.closest('tr');
+        const td = tr ? tr.querySelector('.td-total') : null;
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         updateTotals();
       }
