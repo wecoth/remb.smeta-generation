@@ -1,15 +1,15 @@
-// ─── smeta-init.js ─────────────────────────────────────────────────
+
 // Точка входа сметы. Заменяет initSmeta() из монолитного smeta.js.
 // Инициализирует все модули, подписывает их на события, запускает первый рендер.
 // index.html импортирует только этот файл + экспортирует window._smetaModule.
 
-import { appState }          from '../state.js';
-import { renderToImage,
-         getWallsBboxWorld } from '../render.js';
+import { appState } from '../state.js';
+импорт { renderToImage,
+         getWallsBboxWorld } из '../render.js';
 
-import { _uid, fmtInt }      from './smeta-utils.js';
+import { _uid, fmtInt } from './smeta-utils.js';
 import { updateTotals,
-         updateHeaderDates } from './smeta-header.js';
+         updateHeaderDates } из './smeta-header.js';
 import { initRooms,
          importRoomsFromPlanner } from './smeta-rooms.js';
 import { initSmrTable,
@@ -18,65 +18,65 @@ import { initSmrTable,
          addSmrRow, insertSmrRow, clearSmr,
          setSmrMode,
          collectSmrRows, getSmrTotal, getMastersSmrTotal,
-         renderSmrTable }    from './smeta-tables-smr.js';
+         renderSmrTable } from './smeta-tables-smr.js';
 import { handleMat,
          initMatManual,
          addMatRow, insertMatRow, clearMat,
          collectMatRows, getMatTotal,
-         renderMatTable }    from './smeta-tables-mat.js';
+         renderMatTable } from './smeta-tables-mat.js';
 import { initGantt,
          renderGantt,
          setGanttMode,
          ensureStage,
          syncSectionsToGantt,
          recalcTotalDaysAuto,
-         clearWorksGantt } from './smeta-gantt.js';
-import { renderPayments }    from './smeta-payments.js';
-import { generatePDF }       from './smeta-pdf.js';
+         clearWorksGantt } из './smeta-gantt.js';
+import { renderPayments } from './smeta-payments.js';
+import { generatePDF } from './smeta-pdf.js';
 
-// ── Plan capture ──────────────────────────────────────────────────
+// ── Захват плана ──────────────────────────────────────────────
 
 function captureCanvas() {
   const walls = window._appState?.walls ?? appState?.walls ?? [];
-  if (!walls.length) { alert('Нарисуйте план перед захватом'); return; }
-  const cleanImg  = renderToImage(800, 600, false);
-  const bbox      = getWallsBboxWorld();
-  const drawingW  = bbox ? (bbox.maxX - bbox.minX) : 1;
-  const drawingH  = bbox ? (bbox.maxY - bbox.minY) : 1;
-  const isPortrait = drawingH > drawingW;
+  if (!walls.length) { alert('Нарисуйте план перед захватом'); возвращаться; }
+  const cleanImg = renderToImage(800, 600, false);
+  const bbox = getWallsBboxWorld();
+  const drawingW = bbox ? (bbox.maxX - bbox.minX) : 1;
+  const drawingH = bbox ? (bbox.maxY - bbox.minY) : 1;
+  const isPortrait = DrawingH > DrawingW;
   appState.bpPortrait = isPortrait;
-  if (window._appState) window._appState.bpPortrait = isPortrait;
+  если (window._appState) window._appState.bpPortrait = isPortrait;
   const fullImg = isPortrait ? renderToImage(1754, 2480, true) : renderToImage(2480, 1754, true);
-  if (!cleanImg) { alert('Не удалось захватить чертёж'); return; }
-  appState.planData     = cleanImg;
+  if (!cleanImg) { alert('Не удалось захватить чертёж'); возвращаться; }
+  appState.planData = cleanImg;
   appState.planDataFull = fullImg;
   if (window._appState) {
-    window._appState.planData     = cleanImg;
+    window._appState.planData = cleanImg;
     window._appState.planDataFull = fullImg;
   }
   alert('Чертёж захвачен ✓');
 }
 
-// ── Excel export ───────────────────────────────────────────────────
+// ── Экспорт в Excel ────────────────────────────────────────────────
 
-function _toNum(v) {
+функция _toNum(v) {
   return parseFloat(String(v ?? '').replace(',', '.')) || 0;
 }
 
 function _buildEstimateFileName() {
   const street = document.getElementById('hdrStreet')?.value?.trim() || '';
-  const house  = document.getElementById('hdrHouse')?.value?.trim() || '';
-  const flat   = document.getElementById('hdrFlat')?.value?.trim() || '';
-  const parts  = [street, house, flat ? `кв.${flat}` : ''].filter(Boolean);
+  const house = document.getElementById('hdrHouse')?.value?.trim() || '';
+  const flat = document.getElementById('hdrFlat')?.value?.trim() || '';
+  const parts = [street, house, flat ? `кв.${flat}` : ''].filter(Boolean);
   const address = parts.join(', ') || 'смета';
   const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-  return `Смета_${address}_${stamp}.xlsx`;
+  return `Смета_${адрес}_${штамп}.xlsx`;
 }
 
 function exportToExcel() {
   if (typeof XLSX === 'undefined') {
     alert('Библиотека Excel не загружена (XLSX)');
-    return;
+    возвращаться;
   }
 
   const rowsSmr = Array.isArray(appState.smrRows) ? appState.smrRows : [];
@@ -84,56 +84,56 @@ function exportToExcel() {
 
   const smrData = [['№', 'Наименование работ', 'Ед. изм.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'Примечание']];
   let smrCounter = 0;
-  let totalSmr = 0;
+  пусть totalSmr = 0;
 
   for (const row of rowsSmr) {
     if (row?.isSection) {
       smrData.push([null, row?.name || '', null, null, null, null, null]);
-      continue;
+      продолжать;
     }
 
     smrCounter += 1;
     const qty = _toNum(row?.qty);
-    const price = _toNum(row?.price);
-    const total = _toNum(row?.total) || (qty * price);
+    константная цена = _toNum(строка?.цена);
+    const total = _toNum(строка?.total) || (кол-во * цена);
     totalSmr += total;
 
     smrData.push([
-      smrCounter,
-      row?.name || '',
-      row?.unit || '',
-      qty,
-      price,
-      total,
-      row?.note || '',
+      smrCount,
+      строка?.имя || '',
+      строка?.единица || '',
+      количество,
+      цена,
+      общий,
+      строка?.нота || '',
     ]);
   }
   smrData.push([null, 'ИТОГО по СМР', null, null, null, fmtInt(totalSmr), null]);
 
   const matData = [['№', 'Наименование материалов', 'Ед. изм.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'Примечание']];
   let matCounter = 0;
-  let totalMat = 0;
+  пусть totalMat = 0;
 
   for (const row of rowsMat) {
     if (row?.isSection) {
       matData.push([null, row?.name || '', null, null, null, null, null]);
-      continue;
+      продолжать;
     }
 
     matCounter += 1;
     const qty = _toNum(row?.qty);
-    const price = _toNum(row?.price);
-    const total = _toNum(row?.total) || (qty * price);
+    константная цена = _toNum(строка?.цена);
+    const total = _toNum(строка?.total) || (кол-во * цена);
     totalMat += total;
 
     matData.push([
-      matCounter,
-      row?.name || '',
-      row?.unit || '',
-      qty,
-      price,
-      total,
-      row?.note || '',
+      matCount,
+      строка?.имя || '',
+      строка?.единица || '',
+      количество,
+      цена,
+      общий,
+      строка?.нота || '',
     ]);
   }
   matData.push([null, 'ИТОГО по материалам', null, null, null, fmtInt(totalMat), null]);
@@ -152,9 +152,9 @@ function exportToExcel() {
 function _bindExportExcelButton() {
   const bind = btn => { if (btn) btn.onclick = exportToExcel; };
   const existing = document.getElementById('btnExportExcel');
-  if (existing) {
+  если (существующий) {
     bind(existing);
-    return;
+    возвращаться;
   }
 
   const topbar = document.querySelector('.smeta-topbar');
@@ -167,39 +167,39 @@ function _bindExportExcelButton() {
   bind(newBtn);
 
   const pdfBtn = document.getElementById('btnGeneratePdf');
-  if (pdfBtn && pdfBtn.parentElement === topbar) topbar.insertBefore(newBtn, pdfBtn);
-  else topbar.appendChild(newBtn);
+  if (pdfBtn && pdfBtn.parentElement === верхняя панель) topbar.insertBefore(newBtn, pdfBtn);
+  еще topbar.appendChild(newBtn);
 }
 
-// ── Days slider ────────────────────────────────────────────────────
+// ── Ползунок дней ─────────────────────────────────────────────────
 
 function _initDaysSlider() {
-  const slider = document.getElementById('totalDaysSlider');
+  const слайдер = document.getElementById('totalDaysSlider');
   const output = document.getElementById('totalDaysVal');
   if (!slider || !output) return;
 
   if (appState.totalDaysSet && appState.totalDays > 0) {
-    slider.value       = appState.totalDays;
+    слайдер.значение = appState.totalDays;
     output.textContent = appState.totalDays;
-  } else {
-    slider.value       = '';
+  } еще {
+    slider.value = '';
     output.textContent = '';
   }
 
-  slider.addEventListener('input', () => {
+  слайдер.addEventListener('input', () => {
     const v = +slider.value || 0;
-    appState.totalDays    = v;
+    appState.totalDays = v;
     appState.totalDaysSet = v > 0;
-    output.textContent    = v || '';
+    output.textContent = v || '';
 
-    if (v > 0) {
-      let autoTotal = 0, cursor2 = 0;
+    если (v > 0) {
+      пусть autoTotal = 0, курсор2 = 0;
       (appState.stages || []).forEach((s, i) => {
-        const dur   = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
+        const dur = (s.daysOverride != null ? s.daysOverride : s.daysAuto) || 0;
         const start = (s.parallelWithPrev && i > 0) ? (appState.stages[i - 1]._startDay || 0) : cursor2;
         s._startDay = start;
         if (!s.parallelWithPrev) cursor2 = start + dur;
-        if (start + dur > autoTotal) autoTotal = start + dur;
+        if (начало + продолжительность > autoTotal) autoTotal = начало + продолжительность;
       });
       if (autoTotal > 0 && v !== autoTotal) {
         const k = v / autoTotal;
@@ -208,11 +208,11 @@ function _initDaysSlider() {
           if (base > 0) s.daysOverride = Math.max(1, Math.round(base * k));
         });
         appState.totalDaysOverride = v;
-      } else {
-        appState.totalDaysOverride = null;
+      } еще {
+        appState.totalDaysOverride = ноль;
       }
-    } else {
-      appState.totalDaysOverride = null;
+    } еще {
+      appState.totalDaysOverride = ноль;
     }
 
     renderGantt();
@@ -224,13 +224,13 @@ function _initDaysSlider() {
   if (typeof window._calcFinish === 'function') window._calcFinish();
 }
 
-// ── Section collapse ───────────────────────────────────────────────
+// ── Свернуть раздел ─────────────────────────────────────────────
 
 function _initCollapse() {
   document.querySelectorAll('.scard-head[data-collapse]').forEach(head => {
     head.addEventListener('click', e => {
       if (e.target.closest('button, input, .smr-mode-toggle')) return;
-      const body  = head.nextElementSibling;
+      const body = head.nextElementSibling;
       const arrow = head.querySelector('.scard-arrow');
       const collapsed = body.style.display === 'none';
       body.style.display = collapsed ? '' : 'none';
@@ -239,12 +239,12 @@ function _initCollapse() {
   });
 }
 
-// ── Drawer (экспликация legacy) ────────────────────────────────────
+// ── Drawer (экспликация наследия) ───────────────────────────────────
 
 function _initDrawer() {
   const drawer = document.getElementById('explDrawer');
-  const tab    = document.getElementById('explTab');
-  const main   = document.getElementById('smetaMain');
+  const tab = document.getElementById('explTab');
+  const main = document.getElementById('smetaMain');
   if (!drawer || !tab || !main) return;
   let open = false;
   tab.addEventListener('click', () => {
@@ -255,22 +255,22 @@ function _initDrawer() {
   });
 }
 
-// ── initSmeta ──────────────────────────────────────────────────────
+// ── initSmeta ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 
 export function initSmeta() {
-  // 1. Инициализируем Gantt с колбэками (нет кругового импорта)
+  // 1. Инициализируемый Гантт с колбэками (нет кругового импорта)
   initGantt({
     onDurationChanged: () => { updateTotals(); renderPayments(); },
-    onStageRenamed:    () => { renderPayments(); },
+    onStageRenamed: () => { renderPayments(); },
   });
 
-  // 2. Инициализируем SMR-таблицу с колбэком для Gantt-синхронизации
+  // 2. Инициализируемая SMR-таблица с колбэком для синхронизации Ганта
   initSmrTable(() => { syncSectionsToGantt(); });
 
-  // 3. Rooms
+  // 3. Комнаты
   initRooms(() => { updateTotals(); });
 
-  // 4. UI
+  // 4. Пользовательский интерфейс
   _initDrawer();
   _initCollapse();
   _initDaysSlider();
@@ -279,15 +279,15 @@ export function initSmeta() {
   // 5. Данные из appState (или дефолтные строки)
   if (appState.smrRows.length === 0 && appState.smrRowsMasters.length === 0) {
     initSmrManual();
-  } else {
+  } еще {
     appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
-    appState.smrRowsMasters.forEach(r => { if (!r._uid) r._uid = _uid(); });
+    appState.smrRowsMasters.forEach((r, i) => { if (!r._uid) r._uid = appState.smrRows[i]?._uid || _uid(); });
     renderSmrTable();
   }
 
   if (appState.matRows.length === 0) {
     initMatManual();
-  } else {
+  } еще {
     renderMatTable();
   }
 
@@ -296,7 +296,7 @@ export function initSmeta() {
   updateTotals();
 }
 
-// ── Публичный API модуля (window._smetaModule) ─────────────────────
+// ──Публикальный API модуль (window._smetaModule) ─────────────────────
 
 export const smetaModule = {
   // Инициализация
@@ -304,8 +304,8 @@ export const smetaModule = {
 
   // Утилиты
   captureCanvas,
-  generatePDF,
-  exportToExcel,
+  сгенерировать PDF,
+  экспорт в Excel
 
   // Комнаты
   importRoomsFromPlanner,
@@ -321,25 +321,25 @@ export const smetaModule = {
   getSmrTotal,
   getMastersSmrTotal,
 
-  // MAT
+  // МАТ
   handleMat,
   initMatManual,
   addMatRow,
   insertMatRow,
-  clearMat,
+  ClearMat,
   collectMatRows,
   getMatTotal,
 
-  // Gantt
+  // Диаграмма Ганта
   setGanttMode,
   ensureStage,
   clearWorksGantt,
 
-  // Header
-  updateTotals,
+  // Заголовок
+  обновить итоги,
 
-  // fmt экспортируем для KP/PDF шаблонов
-  // fmt, fmtInt — если нужны снаружи: import из smeta-utils.js
+  // fmt экспортируемой продукции для шаблонов KP/PDF
+  // fmt, fmtInt — если выбраны снаружи: импорт из smeta-utils.js
 };
 
 if (typeof window !== 'undefined') {
