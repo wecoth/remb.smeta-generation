@@ -117,7 +117,7 @@ export function collectSmrRows() { return appState.smrRows; }
 export function getSmrTotal() { return _sumRows(appState.smrRows); }
 export function getMastersSmrTotal(){ return _sumRows(appState.smrRowsMasters); }
 
-// ── Рендер ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                              
+// ── Рендер ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                            
 
 export function renderSmrTable() {
   const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
