@@ -1,4 +1,4 @@
-// ─── STORAGE.JS ───────────────────────────────────────────────
+// ─── STORAGE.JS ───────────────────────────────────────────────────
 import { appState } from './state.js';
 
 const LS_KEY = 'remb_project_v1';
@@ -19,73 +19,73 @@ export function saveProject() {
   const measures = (appState.measures || []).map(m => ({ ...m }));
 
   const data = {
-    стены,
-    вступления,
-    разделители,
-    меры,
+    walls,
+    openings,
+    dividers,
+    measures,
     roomNameOverrides: { ...appState.roomNameOverrides },
     dimensionOffsets: { ...(appState.dimensionOffsets || {}) },
-    idWall: appState.idWall ?? nextId(walls, 'id', 1),
-    idOpen: appState.idOpen ?? nextId(openings, 'id', 1),
-    idDivider: appState.idDivider ?? nextId(разделители, 'id', 1),
-    idMeasure: appState.idMeasure ?? nextId(measures, 'id', 1),
+    idWall:            appState.idWall ?? nextId(walls, 'id', 1),
+    idOpen:            appState.idOpen ?? nextId(openings, 'id', 1),
+    idDivider:         appState.idDivider ?? nextId(dividers, 'id', 1),
+    idMeasure:         appState.idMeasure ?? nextId(measures, 'id', 1),
     // ── Смета ──
-    smrRows: (appState.smrRows || []).map(r => ({ ...r })),
+    smrRows:        (appState.smrRows || []).map(r => ({ ...r })),
     smrRowsMasters: (appState.smrRowsMasters || []).map(r => ({ ...r })),
-    smrMode: appState.smrMode || 'client',
-    matRows: (appState.matRows || []).map(r => ({ ...r })),
-    этапы: (appState.stages || []).map(s => ({ ...s })),
-    payments: (appState.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] })),
-    totalDays: appState.totalDays ?? 60,
-    stageCounter: appState.stageCounter ?? 0,
-    payCounter: appState.payCounter ?? 0,
+    smrMode:        appState.smrMode || 'client',
+    matRows:        (appState.matRows || []).map(r => ({ ...r })),
+    stages:         (appState.stages || []).map(s => ({ ...s })),
+    payments:       (appState.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] })),
+    totalDays:      appState.totalDays ?? 60,
+    stageCounter:   appState.stageCounter ?? 0,
+    payCounter:     appState.payCounter ?? 0,
     // ── UI-параметры ──
-    wallOffset: appState.wallOffset ?? 'left',
-    defaultDoorHinge: appState.defaultDoorHinge ?? 'start',
-    defaultDoorSwing: appState.defaultDoorSwing ?? 1,
-    inpWallThick: appState.inpWallThick ?? 200,
-    inpWallHeight: appState.inpWallHeight ?? 2700,
-    inpWindowWidth: appState.inpWindowWidth ?? 1200,
-    inpWindowHeight: appState.inpWindowHeight ?? 1500,
-    inpDoorWidth: appState.inpDoorWidth ?? 900,
-    inpDoorHeight: appState.inpDoorHeight ?? 2100,
-    savedAt: Date.now(),
+    wallOffset:        appState.wallOffset        ?? 'left',
+    defaultDoorHinge:  appState.defaultDoorHinge  ?? 'start',
+    defaultDoorSwing:  appState.defaultDoorSwing  ?? 1,
+    inpWallThick:      appState.inpWallThick      ?? 200,
+    inpWallHeight:     appState.inpWallHeight     ?? 2700,
+    inpWindowWidth:    appState.inpWindowWidth    ?? 1200,
+    inpWindowHeight:   appState.inpWindowHeight   ?? 1500,
+    inpDoorWidth:      appState.inpDoorWidth      ?? 900,
+    inpDoorHeight:     appState.inpDoorHeight     ?? 2100,
+    savedAt:        Date.now(),
   };
   return JSON.stringify(data);
 }
 
-export function loadProject(jsonStr {
+export function loadProject(jsonStr) {
   const data = JSON.parse(jsonStr);
-  appState.walls = (data.walls || []).map(w => ({ ...w }));
-  appState.openings = (data.openings || []).map(o => ({ ...o }));
-  appState.dividers = (data.dividers || []).map(d => ({ ...d }));
-  appState.measures = (data.measures || []).map(m => ({ ...m }));
+  appState.walls             = (data.walls || []).map(w => ({ ...w }));
+  appState.openings          = (data.openings || []).map(o => ({ ...o }));
+  appState.dividers          = (data.dividers || []).map(d => ({ ...d }));
+  appState.measures          = (data.measures || []).map(m => ({ ...m }));
   appState.roomNameOverrides = data.roomNameOverrides || {};
-  appState.dimensionOffsets = data.dimensionOffsets || {};
-  appState.idWall = Number.isFinite(Number(data.idWall)) ? Number(data.idWall) : nextId(appState.walls, 'id', 1);
-  appState.idOpen = Number.isFinite(Number(data.idOpen)) ? Number(data.idOpen) : nextId(appState.openings, 'id', 1);
-  appState.idDivider = Number.isFinite(Number(data.idDivider))? Number(data.idDivider): nextId(appState.dividers, 'id', 1);
-  appState.idMeasure = Number.isFinite(Number(data.idMeasure)) ? Number(data.idMeasure) : nextId(appState.measures, 'id', 1);
+  appState.dimensionOffsets  = data.dimensionOffsets  || {};
+  appState.idWall            = Number.isFinite(Number(data.idWall)) ? Number(data.idWall) : nextId(appState.walls, 'id', 1);
+  appState.idOpen            = Number.isFinite(Number(data.idOpen)) ? Number(data.idOpen) : nextId(appState.openings, 'id', 1);
+  appState.idDivider         = Number.isFinite(Number(data.idDivider)) ? Number(data.idDivider) : nextId(appState.dividers, 'id', 1);
+  appState.idMeasure         = Number.isFinite(Number(data.idMeasure)) ? Number(data.idMeasure) : nextId(appState.measures, 'id', 1);
   // ── Смета ──
-  if (data.smrRows !== undefined) appState.smrRows = (data.smrRows || []).map(r => ({ ...r }));
+  if (data.smrRows        !== undefined) appState.smrRows        = (data.smrRows || []).map(r => ({ ...r }));
   if (data.smrRowsMasters !== undefined) appState.smrRowsMasters = (data.smrRowsMasters || []).map(r => ({ ...r }));
-  if (data.smrMode !== undefined) appState.smrMode = data.smrMode || 'client';
-  if (data.matRows !== undefined) appState.matRows = (data.matRows || []).map(r => ({ ...r }));
-  if (data.stages !== undefined) appState.stages = (data.stages || []).map(s => ({ ...s }));
-  if (data.payments !== undefined) appState.payments = (data.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] }));
-  if (data.totalDays !== не определено) appState.totalDays = data.totalDays ?? 60;
-  if (data.stageCounter !== undefined) appState.stageCounter = data.stageCounter ?? 0;
-  if (data.payCounter !== undefined) appState.payCounter = data.payCounter ?? 0;
+  if (data.smrMode        !== undefined) appState.smrMode        = data.smrMode || 'client';
+  if (data.matRows        !== undefined) appState.matRows        = (data.matRows || []).map(r => ({ ...r }));
+  if (data.stages         !== undefined) appState.stages         = (data.stages || []).map(s => ({ ...s }));
+  if (data.payments       !== undefined) appState.payments       = (data.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] }));
+  if (data.totalDays      !== undefined) appState.totalDays      = data.totalDays ?? 60;
+  if (data.stageCounter   !== undefined) appState.stageCounter   = data.stageCounter ?? 0;
+  if (data.payCounter     !== undefined) appState.payCounter     = data.payCounter ?? 0;
   // ── UI-параметры ──
-  appState.wallOffset = data.wallOffset ?? 'left';
-  appState.defaultDoorHinge = data.defaultDoorHinge ?? 'start';
-  appState.defaultDoorSwing = data.defaultDoorSwing ?? 1;
-  appState.inpWallThick = data.inpWallThick ?? 200;
-  appState.inpWallHeight = data.inpWallHeight ?? 2700;
-  appState.inpWindowWidth = data.inpWindowWidth ?? 1200;
-  appState.inpWindowHeight = data.inpWindowHeight ?? 1500;
-  appState.inpDoorWidth = data.inpDoorWidth ?? 900;
-  appState.inpDoorHeight = data.inpDoorHeight ?? 2100;
+  appState.wallOffset        = data.wallOffset        ?? 'left';
+  appState.defaultDoorHinge  = data.defaultDoorHinge  ?? 'start';
+  appState.defaultDoorSwing  = data.defaultDoorSwing  ?? 1;
+  appState.inpWallThick      = data.inpWallThick      ?? 200;
+  appState.inpWallHeight     = data.inpWallHeight     ?? 2700;
+  appState.inpWindowWidth    = data.inpWindowWidth    ?? 1200;
+  appState.inpWindowHeight   = data.inpWindowHeight   ?? 1500;
+  appState.inpDoorWidth      = data.inpDoorWidth      ?? 900;
+  appState.inpDoorHeight     = data.inpDoorHeight     ?? 2100;
 }
 
 export function autosaveToLocalStorage() {
@@ -93,18 +93,18 @@ export function autosaveToLocalStorage() {
 }
 
 export function loadFromLocalStorage() {
-  пытаться {
+  try {
     const data = localStorage.getItem(LS_KEY);
     if (data) { loadProject(data); return true; }
-  } ловить {}
-  вернуть false;
+  } catch {}
+  return false;
 }
 
 export function downloadProject() {
   // Собираем адрес объекта из полей сметы
   const street = document.getElementById('hdrStreet')?.value?.trim() || '';
-  const house = document.getElementById('hdrHouse')?.value?.trim() || '';
-  const flat = document.getElementById('hdrFlat')?.value?.trim() || '';
+  const house  = document.getElementById('hdrHouse')?.value?.trim()  || '';
+  const flat   = document.getElementById('hdrFlat')?.value?.trim()   || '';
   const addressParts = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean);
   const address = addressParts.join(', ');
 
@@ -118,11 +118,11 @@ export function downloadProject() {
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
-  если (адрес) {
+  if (address) {
     // Адрес заполнен — сразу сохраняем под ним
-    _doDownload('Проект — ' + адрес);
-  } еще {
-    // Адрес не заполнен — запрашиваем название файла через модальное окно
+    _doDownload('Проект — ' + address);
+  } else {
+    // Адрес не заполнен — спрашиваем название файла через модальное окно
     _promptFilename(name => {
       if (name !== null) _doDownload(name || 'remb_project');
     });
@@ -130,7 +130,7 @@ export function downloadProject() {
 }
 
 function _promptFilename(callback) {
-  // Удаляем старую модал, если вдруг остался
+  // Удаляем старый модал если вдруг остался
   document.getElementById('_rembSaveModal')?.remove();
 
   const overlay = document.createElement('div');
@@ -151,7 +151,7 @@ function _promptFilename(callback) {
   box.innerHTML = `
     <div style="font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:6px">Сохранить проект</div>
     <div style="font-size:12px;color:#888;margin-bottom:16px">Укажите название файла</div>
-    <input id="_rembSaveInput" type="text" Placeholder="Название проекта"
+    <input id="_rembSaveInput" type="text" placeholder="Название проекта"
       style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;
              border-radius:8px;font-size:14px;outline:none;font-family:inherit;
              transition:border-color .15s;" />
@@ -164,7 +164,7 @@ function _promptFilename(callback) {
       <button id="_rembSaveOk"
         style="padding:8px 22px;border-radius:8px;border:none;
                background:#1a1a2e;color:#fff;font-size:13px;font-family:inherit;cursor:pointer">
-        чувак
+        Сохранить
       </button>
     </div>
   `;
@@ -180,7 +180,7 @@ function _promptFilename(callback) {
 
   // Стиль фокуса инпута
   inp.addEventListener('focus', () => inp.style.borderColor = '#4a6fe3');
-  inp.addEventListener('blur', () => inp.style.borderColor = '#d1d5db');
+  inp.addEventListener('blur',  () => inp.style.borderColor = '#d1d5db');
 
   function _close(result) {
     overlay.remove();
