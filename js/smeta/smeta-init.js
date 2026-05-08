@@ -211,7 +211,7 @@ function _initDaysSlider() {
       } еще {
         appState.totalDaysOverride = ноль;
       }
-    } еще {
+    } else {
       appState.totalDaysOverride = ноль;
     }
 
