@@ -1,4 +1,4 @@
-
+// ─── STORAGE.JS ───────────────────────────────────────────────
 import { appState } from './state.js';
 
 const LS_KEY = 'remb_project_v1';
@@ -10,15 +10,6 @@ function nextId(items, field = 'id', min = 1) {
     if (Number.isFinite(v) && v > maxId) maxId = v;
   }
   return Math.max(min, maxId + 1);
-}
-
-function nextSmrUid(rowsA = [], rowsB = []) {
-  пусть maxUid = 0;
-  for (const row of [...(rowsA || []), ...(rowsB || [])]) {
-    const v = Number(row?._uid);
-    if (Number.isFinite(v) && v > maxUid) maxUid = v;
-  }
-  return maxUid + 1;
 }
 
 export function saveProject() {
@@ -81,10 +72,19 @@ export function loadProject(jsonStr {
   if (data.smrRows !== undefined || data.smrRowsMasters !== undefined) {
     const clientRows = Array.isArray(appState.smrRows) ? appState.smrRows : [];
     const masterRows = Array.isArray(appState.smrRowsMasters) ? appState.smrRowsMasters : [];
-    let smrUid = nextSmrUid(clientRows, masterRows);
+    let smrUid = 1;
+
+    for (let i = 0; i < clientRows.length; i++) {
+      const v = Number(clientRows[i] && clientRows[i]._uid);
+      if (Number.isFinite(v) && v >= smrUid) smrUid = v + 1;
+    }
+    for (let i = 0; i < masterRows.length; i++) {
+      const v = Number(masterRows[i] && masterRows[i]._uid);
+      if (Number.isFinite(v) && v >= smrUid) smrUid = v + 1;
+    }
 
     clientRows.forEach(r => { if (!r._uid) r._uid = smrUid++; });
-    masterRows.forEach((r, i) => { if (!r._uid) r._uid = clientRows[i]?._uid || smrUid++; });
+    masterRows.forEach((r, i) => { if (!r._uid) r._uid = (clientRows[i] && clientRows[i]._uid) || smrUid++; });
   }
   if (data.smrMode !== undefined) appState.smrMode = data.smrMode || 'client';
   if (data.matRows !== undefined) appState.matRows = (data.matRows || []).map(r => ({ ...r }));
