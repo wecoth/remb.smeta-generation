@@ -1,5 +1,6 @@
 // ─── STORAGE.JS ───────────────────────────────────────────────────
 import { appState } from './state.js';
+import { _uid } from './smeta/smeta-utils.js';
 
 const LS_KEY = 'remb_project_v1';
 
@@ -69,6 +70,13 @@ export function loadProject(jsonStr) {
   // ── Смета ──
   if (data.smrRows        !== undefined) appState.smrRows        = (data.smrRows || []).map(r => ({ ...r }));
   if (data.smrRowsMasters !== undefined) appState.smrRowsMasters = (data.smrRowsMasters || []).map(r => ({ ...r }));
+  if (data.smrRows !== undefined || data.smrRowsMasters !== undefined) {
+    const clientRows = Array.isArray(appState.smrRows) ? appState.smrRows : [];
+    const masterRows = Array.isArray(appState.smrRowsMasters) ? appState.smrRowsMasters : [];
+
+    clientRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
+    masterRows.forEach((r, i) => { if (!r._uid) r._uid = clientRows[i]?._uid || _uid(); });
+  }
   if (data.smrMode        !== undefined) appState.smrMode        = data.smrMode || 'client';
   if (data.matRows        !== undefined) appState.matRows        = (data.matRows || []).map(r => ({ ...r }));
   if (data.stages         !== undefined) appState.stages         = (data.stages || []).map(s => ({ ...s }));
