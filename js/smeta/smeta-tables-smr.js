@@ -1,31 +1,31 @@
-// ─── smeta-tables-smr.js ───────────────────────────────────────────
+// ─── smeta-tables-smr.js ─────────────────────────────────────────
 // Блок 2: Таблица работ (СМР).
-// Режимы: client / masters. Двойной массив: smrRows + smrRowsMasters.
+// Режимы: клиент/мастера. Двойной массив: smrRows + smrRowsMasters.
 
-import { appState }                         from '../state.js';
+import { appState } from '../state.js';
 import { _uid, esc, fmtInt,
          initRowDnd, initInsertZones,
-         buildInsertZoneTr }                from './smeta-utils.js';
-import { parseExcelFile }                   from './smeta-excel.js';
-import { updateTotals }                     from './smeta-header.js';
+         buildInsertZoneTr } from './smeta-utils.js';
+import { parseExcelFile } from './smeta-excel.js';
+import { updateTotals } from './smeta-header.js';
 
-// Зависимость на Gantt — передаётся через init, чтобы избежать кругового импорта
+// Зависимость от Ганта — передаётся через init, чтобы избежать кругового импорта
 let _syncSectionsToGantt = () => {};
 
 export function initSmrTable(syncSectionsToGanttFn) {
   _syncSectionsToGantt = syncSectionsToGanttFn;
 }
 
-// ── Публичный API ──────────────────────────────────────────────────
+// ──Публикационный API ───────────────────────────────────────────────
 
 export function handleSmr(e) {
   const f = e.target.files[0]; if (!f) return;
   parseExcelFile(f, (rows, err) => {
-    if (err) { alert('Ошибка чтения файла'); return; }
+    if (err) { alert('Ошибка чтения файла'); возвращаться; }
     if (appState.smrMode === 'masters') {
       rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
       appState.smrRowsMasters = rows;
-    } else {
+    } еще {
       rows.forEach(r => { if (!r._uid) r._uid = _uid(); });
       appState.smrRows = rows;
       appState.smrRowsMasters = rows.map(r => structuredClone(r));
@@ -38,7 +38,7 @@ export function handleSmr(e) {
 
 export function initSmrManual() {
   appState.smrRows = [
-    { name: '', isSection: true,  _uid: _uid() },
+    { name: '', isSection: true, _uid: _uid() },
     { name: '', unit: 'м²', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() },
   ];
   appState.smrRowsMasters = [];
@@ -50,7 +50,7 @@ export function addSmrRow(isSection = false) {
   const newRow = _makeSmrRow(isSection);
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters.push(newRow);
-  } else {
+  } еще {
     appState.smrRows.push(newRow);
     appState.smrRowsMasters.push(structuredClone(newRow));
   }
@@ -67,7 +67,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
   const newRow = _makeSmrRow(isSection);
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters.splice(afterIdx + 1, 0, newRow);
-  } else {
+  } еще {
     appState.smrRows.splice(afterIdx + 1, 0, newRow);
     appState.smrRowsMasters.splice(afterIdx + 1, 0, structuredClone(newRow));
   }
@@ -81,7 +81,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
       if (tr.classList.contains('tr-insert-zone')) continue;
       if (+tr.dataset.rowIdx === afterIdx + 1) {
         tr.querySelector('input.inp-name, input.inp-section')?.focus();
-        break;
+        перерыв;
       }
     }
   }, 30);
@@ -90,7 +90,7 @@ export function insertSmrRow(afterIdx, isSection = false) {
 export function clearSmr() {
   if (appState.smrMode === 'masters') {
     appState.smrRowsMasters = [];
-  } else {
+  } еще {
     appState.smrRows = [];
     appState.smrRowsMasters = [];
   }
@@ -105,26 +105,26 @@ export function setSmrMode(mode) {
     appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
     appState.smrRowsMasters = appState.smrRows.map(r => structuredClone(r));
   }
-  const btnClient  = document.getElementById('smrBtnClient');
+  const btnClient = document.getElementById('smrBtnClient');
   const btnMasters = document.getElementById('smrBtnMasters');
-  if (btnClient)  btnClient.classList.toggle('active',  mode === 'client');
+  if (btnClient) btnClient.classList.toggle('active', mode === 'client');
   if (btnMasters) btnMasters.classList.toggle('active', mode === 'masters');
   renderSmrTable();
   updateTotals();
 }
 
-export function collectSmrRows()    { return appState.smrRows; }
-export function getSmrTotal()       { return _sumRows(appState.smrRows); }
+export function collectSmrRows() { return appState.smrRows; }
+export function getSmrTotal() { return _sumRows(appState.smrRows); }
 export function getMastersSmrTotal(){ return _sumRows(appState.smrRowsMasters); }
 
-// ── Рендер ─────────────────────────────────────────────────────────
+// ── Рендер ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                              
 
 export function renderSmrTable() {
-  const rows  = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
+  const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
   const tbody = document.getElementById('smrTbody');
   if (!tbody) return;
   tbody.innerHTML = '';
-  let idx = 0;
+  пусть idx = 0;
 
   rows.forEach((r, i) => {
     tbody.appendChild(buildInsertZoneTr(i, 'smr'));
@@ -137,14 +137,14 @@ export function renderSmrTable() {
       tr.className = 'row-section';
       tr.innerHTML = `
         <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
+        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" Placeholder="Название раздела" data-i="${i}" data-f="name"></td>
         <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
-    } else {
+    } еще {
       idx++;
       tr.innerHTML = `
-        <td class="td-drag" title="Перетащить">⠿</td>
+        <td class="td-drag" title="Перетянуть">⠿</td>
         <td class="td-num">${idx}</td>
-        <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
+        <td><input class="inp-name" value="${esc(r.name)}" Placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
         <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="м²" data-i="${i}" data-f="unit"></td>
         <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
@@ -155,7 +155,7 @@ export function renderSmrTable() {
     tbody.appendChild(tr);
   });
 
-  // Insert-zone после последней строки
+  // Вставка зоны после последней строки
   tbody.appendChild(buildInsertZoneTr(rows.length, 'smr'));
 
   _bindSmrEvents(tbody);
@@ -163,7 +163,7 @@ export function renderSmrTable() {
     const newRow = _makeSmrRow(isSection);
     if (appState.smrMode === 'masters') {
       appState.smrRowsMasters.splice(beforeIdx, 0, newRow);
-    } else {
+    } еще {
       appState.smrRows.splice(beforeIdx, 0, newRow);
       appState.smrRowsMasters.splice(beforeIdx, 0, structuredClone(newRow));
     }
@@ -181,21 +181,23 @@ export function renderSmrTable() {
   initRowDnd(tbody, rows, () => { renderSmrTable(); updateTotals(); _syncSectionsToGantt(); });
 }
 
-// ── Привязка событий ───────────────────────────────────────────────
+// ── Привязка событий ─────────────────────────────────────────────
 
 function _bindSmrEvents(tbody) {
   const activeRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
 
   tbody.querySelectorAll('input, select').forEach(inp => {
-    inp.addEventListener('input', e => {
+    const onEdit = e => {
       const i = +e.target.dataset.i;
       const f = e.target.dataset.f;
+      if (!activeRows[i] || !f) return;
+
       activeRows[i][f] = e.target.value;
 
       if (f === 'qty' || f === 'price') {
         const r = activeRows[i];
         r.total = (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0);
-        const td = e.target.closest('tr').querySelector('.td-total');
+        const td = e.target.closest('tr')?.querySelector('.td-total');
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         updateTotals();
       }
@@ -204,7 +206,7 @@ function _bindSmrEvents(tbody) {
         _syncSectionsToGantt();
       }
 
-      // Синхронизируем в мастеров при клиентском режиме
+      // Синхронизируемся в мастерах в клиентском режиме
       if (appState.smrMode === 'client' && activeRows[i]?._uid !== undefined) {
         const masterRow = appState.smrRowsMasters.find(r => r._uid === activeRows[i]._uid);
         if (masterRow) {
@@ -212,7 +214,10 @@ function _bindSmrEvents(tbody) {
           if (f === 'qty' || f === 'price') masterRow.total = activeRows[i].total;
         }
       }
-    });
+    };
+
+    inp.addEventListener('input', onEdit);
+    inp.addEventListener('change', onEdit);
   });
 
   tbody.querySelectorAll('.btn-row-del').forEach(btn => {
@@ -229,7 +234,7 @@ function _bindSmrEvents(tbody) {
           const mi = appState.smrRowsMasters.findIndex(r => r._uid === row._uid);
           if (mi !== -1) appState.smrRowsMasters.splice(mi, 1);
         }
-      } else {
+      } еще {
         appState.smrRowsMasters.splice(i, 1);
       }
       renderSmrTable();
@@ -239,7 +244,7 @@ function _bindSmrEvents(tbody) {
   });
 }
 
-// ── Приватные хелперы ──────────────────────────────────────────────
+// ── Приватные хелперы ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ‑
 
 function _makeSmrRow(isSection) {
   return isSection
@@ -247,6 +252,6 @@ function _makeSmrRow(isSection) {
     : { name: '', unit: '', qty: '', price: '', total: 0, note: '', isSection: false, _uid: _uid() };
 }
 
-function _sumRows(rows) {
+функция _sumRows(rows) {
   return rows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
