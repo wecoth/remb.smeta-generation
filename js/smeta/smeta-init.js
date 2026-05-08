@@ -255,22 +255,22 @@ function _initDrawer() {
   });
 }
 
-// ── initSmeta ──────────────────────────────────────────────────────
+// ── initSmeta ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 
 export function initSmeta() {
-  // 1. Инициализируем Gantt с колбэками (нет кругового импорта)
+  // 1. Инициализируемый Гантт с колбэками (нет кругового импорта)
   initGantt({
     onDurationChanged: () => { updateTotals(); renderPayments(); },
-    onStageRenamed:    () => { renderPayments(); },
+    onStageRenamed: () => { renderPayments(); },
   });
 
-  // 2. Инициализируем SMR-таблицу с колбэком для Gantt-синхронизации
+  // 2. Инициализируемая SMR-таблица с колбэком для синхронизации Ганта
   initSmrTable(() => { syncSectionsToGantt(); });
 
-  // 3. Rooms
+  // 3. Комнаты
   initRooms(() => { updateTotals(); });
 
-  // 4. UI
+  // 4. Пользовательский интерфейс
   _initDrawer();
   _initCollapse();
   _initDaysSlider();
@@ -279,7 +279,7 @@ export function initSmeta() {
   // 5. Данные из appState (или дефолтные строки)
   if (appState.smrRows.length === 0 && appState.smrRowsMasters.length === 0) {
     initSmrManual();
-  } else {
+  } еще {
     appState.smrRows.forEach(r => { if (!r._uid) r._uid = _uid(); });
     appState.smrRowsMasters.forEach((r, i) => { if (!r._uid) r._uid = (appState.smrRows[i] && appState.smrRows[i]._uid) || _uid(); });
     renderSmrTable();
@@ -287,7 +287,7 @@ export function initSmeta() {
 
   if (appState.matRows.length === 0) {
     initMatManual();
-  } else {
+  } еще {
     renderMatTable();
   }
 
@@ -296,7 +296,7 @@ export function initSmeta() {
   updateTotals();
 }
 
-// ── Публичный API модуля (window._smetaModule) ─────────────────────
+// ──Публикальный API модуль (window._smetaModule) ─────────────────────
 
 export const smetaModule = {
   // Инициализация
@@ -304,8 +304,8 @@ export const smetaModule = {
 
   // Утилиты
   captureCanvas,
-  generatePDF,
-  exportToExcel,
+  сгенерировать PDF,
+  экспорт в Excel
 
   // Комнаты
   importRoomsFromPlanner,
@@ -321,25 +321,25 @@ export const smetaModule = {
   getSmrTotal,
   getMastersSmrTotal,
 
-  // MAT
+  // МАТ
   handleMat,
   initMatManual,
   addMatRow,
   insertMatRow,
-  clearMat,
+  ClearMat,
   collectMatRows,
   getMatTotal,
 
-  // Gantt
+  // Диаграмма Ганта
   setGanttMode,
   ensureStage,
   clearWorksGantt,
 
-  // Header
-  updateTotals,
+  // Заголовок
+  обновить итоги,
 
-  // fmt экспортируем для KP/PDF шаблонов
-  // fmt, fmtInt — если нужны снаружи: import из smeta-utils.js
+  // fmt экспортируемой продукции для шаблонов KP/PDF
+  // fmt, fmtInt — если выбраны снаружи: импорт из smeta-utils.js
 };
 
 if (typeof window !== 'undefined') {
