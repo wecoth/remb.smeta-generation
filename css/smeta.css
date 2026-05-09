@@ -358,12 +358,12 @@
   table.smeta-tbl tr:hover .btn-row-del { opacity: .6; }
   table.smeta-tbl .btn-row-del:hover { color: var(--bad); opacity: 1; }
 
-  /* Section rows — white bg, accent text only */
+  /* Section rows — едва заметный зеленоватый фон */
   table.smeta-tbl tr.row-section td {
-    background: var(--bg-card);
+    background: #F2FAF6;
     border-bottom: 1px solid var(--border-2);
   }
-  table.smeta-tbl tr.row-section:hover td { background: var(--bg-soft); }
+  table.smeta-tbl tr.row-section:hover td { background: #eaf6f0; }
   table.smeta-tbl tr.row-section input.inp-section {
     font-weight: 600; font-size: 11px; color: var(--accent); letter-spacing: .4px;
     text-transform: uppercase;
@@ -528,7 +528,7 @@
   /* Левая sticky-колонка */
   .gantt-works-left {
     flex-shrink: 0;
-    width: 320px;
+    width: 420px;
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--border-2);
@@ -647,7 +647,7 @@
     height: 28px;
     padding: 0 8px;
     border-bottom: 1px solid var(--border-2);
-    background: var(--bg-soft);
+    background: #F2FAF6;
     flex-shrink: 0;
   }
   .gantt-works-group-head-left {
@@ -655,7 +655,7 @@
   }
   .gantt-works-group-head-right {
     border-left: none;
-    background: var(--bg-soft);
+    background: #F2FAF6;
     position: relative;
   }
 
@@ -792,7 +792,7 @@
   .obj-photo-hint { font-size: 10px; color: var(--text-3); text-align: center; }
 
   /* ── Gantt Works mode — drag/bar элементы ──────────────── */
-  .gantt-works-row { grid-template-columns: 280px 1fr; }
+  .gantt-works-row { grid-template-columns: 420px 1fr; }
 
   /* Drag-handle на лейбле */
   .gantt-work-drag-handle {
