@@ -20,6 +20,10 @@ export function initSmrTable(syncSectionsToGanttFn) {
   _syncSectionsToGantt = syncSectionsToGanttFn;
 }
 
+// ── Локальные хелперы для форматирования ───────────────────────
+const fmtRub = (n) => (n ? fmtInt(n) + ' ₽' : '');
+const fmtQty = (v) => (v !== undefined && v !== '' ? parseFloat(v).toFixed(2) : '');
+
 // ── Публичный API ───────────────────────────────────────────────
 
 export function handleSmr(e) {
@@ -143,7 +147,7 @@ export function renderSmrTable() {
   if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
   tbody.innerHTML = '';
   let idx = 0;
-  let sectionIdx = 0; // счётчик разделов
+  let sectionIdx = 0;
 
   // Определяем, в каком разделе сейчас находимся (для скрытия строк)
   let currentSectionUid = null;
@@ -167,7 +171,7 @@ export function renderSmrTable() {
     if (r.isSection) {
       const collapsed = appState.smrCollapsed.has(r._uid);
       const secTotal = _sectionTotal(rows, i);
-      const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
+      const secTotalStr = secTotal > 0 ? fmtRub(secTotal) : '';
       const uid = r._uid;
       sectionIdx++;
       const secNum = sectionIdx;
@@ -205,9 +209,9 @@ export function renderSmrTable() {
         <td class="td-num">${idx}</td>
         <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование работы" data-i="${i}" data-f="name"></td>
         <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="м²" data-i="${i}" data-f="unit"></td>
-        <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
+        <td><input class="inp-num" value="${fmtQty(r.qty)}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
-        <td class="td-total">${r.total ? fmtInt(r.total) : ''}</td>
+        <td class="td-total">${r.total ? fmtRub(r.total) : ''}</td>
         <td><input class="inp-note" value="${esc(r.note || '')}" placeholder="Примечание" data-i="${i}" data-f="note"></td>
         <td><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     }
@@ -261,7 +265,7 @@ function _bindSmrEvents(tbody) {
         r.total = (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0);
         const tr = e.target.closest('tr');
         const td = tr ? tr.querySelector('.td-total') : null;
-        if (td) td.textContent = r.total ? fmtInt(r.total) : '';
+        if (td) td.textContent = r.total ? fmtRub(r.total) : '';
         updateTotals();
         // Обновляем badge суммы раздела без полного перерендера
         _updateSectionBadge(tbody, activeRows, i);
@@ -316,7 +320,7 @@ function _updateSectionBadge(tbody, rows, changedIdx) {
   if (sectionIdx === -1) return;
 
   const secTotal = _sectionTotal(rows, sectionIdx);
-  const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
+  const secTotalStr = secTotal > 0 ? fmtRub(secTotal) : '';
 
   for (const tr of tbody.querySelectorAll('tr.row-section')) {
     if (+tr.dataset.rowIdx === sectionIdx) {
