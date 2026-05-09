@@ -33,6 +33,7 @@ const _state = {
   workParallel:   {},      // { [_uid]: bool } — параллельность работ
   stageCounter:   0,       // счётчик id этапов
   payCounter:     0,       // счётчик id платежей
+  defaultAdvancePct: 50,   // глобальный процент аванса по платежам (0–100)
 
   // ── UI ──
   activeTab: 'smeta',  // 'planner' | 'smeta'
