@@ -1,6 +1,7 @@
 // ─── smeta-tables-smr.js ─────────────────────────────────────────
 // Блок 2: Таблица работ (СМР).
 // Режимы: клиент/мастера. Двойной массив: smrRows + smrRowsMasters.
+// v5: сворачиваемые разделы + сумма раздела в заголовке
 
 import { appState } from '../state.js';
 import { _uid, esc, fmtInt,
@@ -11,6 +12,9 @@ import { updateTotals } from './smeta-header.js';
 
 // Зависимость от Ганта — передаётся через init, чтобы избежать кругового импорта
 let _syncSectionsToGantt = () => {};
+
+// Хранилище свёрнутых секций: Set из _uid
+if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
 
 export function initSmrTable(syncSectionsToGanttFn) {
   _syncSectionsToGantt = syncSectionsToGanttFn;
@@ -95,6 +99,7 @@ export function clearSmr() {
     appState.smrRows = [];
     appState.smrRowsMasters = [];
   }
+  appState.smrCollapsed = new Set();
   renderSmrTable();
   updateTotals();
 }
@@ -118,29 +123,70 @@ export function collectSmrRows() { return appState.smrRows; }
 export function getSmrTotal() { return _sumRows(appState.smrRows); }
 export function getMastersSmrTotal(){ return _sumRows(appState.smrRowsMasters); }
 
+// ── Считаем сумму раздела ────────────────────────────────────────
+
+function _sectionTotal(rows, sectionIdx) {
+  let sum = 0;
+  for (let j = sectionIdx + 1; j < rows.length; j++) {
+    if (rows[j].isSection) break;
+    sum += rows[j].total || 0;
+  }
+  return sum;
+}
+
 // ── Рендер ─────────────────────────────────────────────
 
 export function renderSmrTable() {
   const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
   const tbody = document.getElementById('smrTbody');
   if (!tbody) return;
+  if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
   tbody.innerHTML = '';
   let idx = 0;
 
+  // Определяем, в каком разделе сейчас находимся (для скрытия строк)
+  let currentSectionUid = null;
+  let currentSectionCollapsed = false;
+
   rows.forEach((r, i) => {
-    tbody.appendChild(buildInsertZoneTr(i, 'smr'));
+    if (r.isSection) {
+      currentSectionUid = r._uid;
+      currentSectionCollapsed = appState.smrCollapsed.has(r._uid);
+    }
+
+    // Зону вставки показываем только если секция не свёрнута
+    if (!currentSectionCollapsed || r.isSection) {
+      tbody.appendChild(buildInsertZoneTr(i, 'smr'));
+    }
 
     const tr = document.createElement('tr');
     tr.draggable = false;
     tr.dataset.rowIdx = i;
 
     if (r.isSection) {
-      tr.className = 'row-section';
+      const collapsed = appState.smrCollapsed.has(r._uid);
+      const secTotal = _sectionTotal(rows, i);
+      const secTotalStr = secTotal > 0 ? fmtInt(secTotal) + ' ₽' : '';
+      const arrow = collapsed ? '▶' : '▼';
+
+      tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
       tr.innerHTML = `
-        <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
-        <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
+        <td colspan="2" style="width:36px">
+          <button class="btn-section-toggle" data-uid="${r._uid}" title="${collapsed ? 'Развернуть' : 'Свернуть'}">${arrow}</button>
+        </td>
+        <td colspan="4" style="position:relative">
+          <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name">
+          ${secTotalStr ? `<span class="section-total-badge">${secTotalStr}</span>` : ''}
+        </td>
+        <td colspan="2">
+          <button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button>
+        </td>`;
     } else {
+      // Скрываем строки свёрнутого раздела
+      if (currentSectionCollapsed) {
+        tr.style.display = 'none';
+        tr.dataset.hiddenBySection = currentSectionUid;
+      }
       idx++;
       tr.innerHTML = `
         <td class="td-drag" title="Перетащить">⠿</td>
@@ -156,8 +202,10 @@ export function renderSmrTable() {
     tbody.appendChild(tr);
   });
 
-  // Вставка зоны после последней строки
-  tbody.appendChild(buildInsertZoneTr(rows.length, 'smr'));
+  // Зона вставки после последней строки
+  if (!currentSectionCollapsed) {
+    tbody.appendChild(buildInsertZoneTr(rows.length, 'smr'));
+  }
 
   _bindSmrEvents(tbody);
   initInsertZones(tbody, (beforeIdx, isSection) => {
@@ -187,6 +235,21 @@ export function renderSmrTable() {
 function _bindSmrEvents(tbody) {
   const activeRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
 
+  // Кнопки сворачивания секций
+  tbody.querySelectorAll('.btn-section-toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const uid = btn.dataset.uid;
+      if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
+      if (appState.smrCollapsed.has(uid)) {
+        appState.smrCollapsed.delete(uid);
+      } else {
+        appState.smrCollapsed.add(uid);
+      }
+      renderSmrTable();
+    });
+  });
+
   tbody.querySelectorAll('input, select').forEach(inp => {
     const onEdit = e => {
       const i = +e.target.dataset.i;
@@ -202,13 +265,14 @@ function _bindSmrEvents(tbody) {
         const td = tr ? tr.querySelector('.td-total') : null;
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         updateTotals();
+        // Обновляем badge суммы раздела без полного перерендера
+        _updateSectionBadge(tbody, activeRows, i);
       }
 
       if (f === 'name' && activeRows[i].isSection && appState.smrMode === 'client') {
         _syncSectionsToGantt();
       }
 
-      // Синхронизируем в мастерах в клиентском режиме
       if (appState.smrMode === 'client' && activeRows[i]?._uid !== undefined) {
         const masterRow = appState.smrRowsMasters.find(r => r._uid === activeRows[i]._uid);
         if (masterRow) {
@@ -228,7 +292,6 @@ function _bindSmrEvents(tbody) {
       const isClientMode = appState.smrMode === 'client';
       const active = isClientMode ? appState.smrRows : appState.smrRowsMasters;
       const row = active[i];
-      const wasSection = row?.isSection;
 
       if (isClientMode) {
         appState.smrRows.splice(i, 1);
@@ -244,6 +307,37 @@ function _bindSmrEvents(tbody) {
       if (appState.smrMode === 'client') _syncSectionsToGantt();
     });
   });
+}
+
+// Обновить badge суммы раздела у строки-секции без полного перерендера
+function _updateSectionBadge(tbody, rows, changedIdx) {
+  // Найти индекс секции для этой строки
+  let sectionIdx = -1;
+  for (let j = changedIdx; j >= 0; j--) {
+    if (rows[j]?.isSection) { sectionIdx = j; break; }
+  }
+  if (sectionIdx === -1) return;
+
+  const secTotal = _sectionTotal(rows, sectionIdx);
+  const secTotalStr = secTotal > 0 ? fmtInt(secTotal) + ' ₽' : '';
+
+  // Найти TR секции в DOM
+  for (const tr of tbody.querySelectorAll('tr.row-section')) {
+    if (+tr.dataset.rowIdx === sectionIdx) {
+      let badge = tr.querySelector('.section-total-badge');
+      if (secTotalStr) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'section-total-badge';
+          tr.querySelector('td:nth-child(2)')?.appendChild(badge);
+        }
+        badge.textContent = secTotalStr;
+      } else if (badge) {
+        badge.remove();
+      }
+      break;
+    }
+  }
 }
 
 // ── Приватные хелперы ─────────────────────────────────────────────
