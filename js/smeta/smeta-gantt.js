@@ -941,6 +941,7 @@ function _renderGanttWorks(wrap) {
     _setTotalDaysDisplay(realEnd);
     _renderGanttRuler();
   }
+} // end _renderGanttWorks
 
 // ── Ruler ─────────────────────────────────────────────────────────
 
