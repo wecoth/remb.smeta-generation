@@ -302,8 +302,8 @@
     table-layout: fixed;
   }
   table.smeta-tbl th {
-    padding: 9px 12px; text-align: left;
-    background: var(--bg-soft); color: var(--text-3); font-weight: 500;
+    padding: 9px 12px; text-align: center;
+    background: var(--bg-card); color: var(--text-1); font-weight: 600;
     border-bottom: 1px solid var(--border-1); white-space: nowrap;
     font-size: 10.5px; letter-spacing: .3px; text-transform: uppercase;
   }
@@ -369,8 +369,8 @@
     text-transform: uppercase;
   }
   table.smeta-tbl tr.row-section input.inp-section::placeholder {
-    font-weight: 400; font-style: normal; color: var(--accent-mid);
-    letter-spacing: 0; text-transform: none; opacity: .6;
+    font-weight: 500; font-style: normal; color: var(--accent);
+    letter-spacing: 0; text-transform: none; opacity: 1;
   }
   table.smeta-tbl tr.row-section .td-total {
     color: var(--accent); font-weight: 600;
