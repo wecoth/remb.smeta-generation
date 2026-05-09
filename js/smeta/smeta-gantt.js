@@ -456,19 +456,25 @@ function _renderGanttStages(wrap) {
       _onDurationChanged();
     });
 
-    // Ручной ввод дней этапа
-    row.querySelector('.gantt-stage-days-inp').addEventListener('input', e => {
-      const val = parseInt(e.target.value) || 0;
+    // Ручной ввод дней этапа — перерендер только после завершения ввода
+    const stageInp = row.querySelector('.gantt-stage-days-inp');
+    function _commitStageInp() {
+      const val = parseInt(stageInp.value) || 0;
       appState.stages[idx].daysOverride = val > 0 ? val : null;
-      e.target.style.fontWeight = val > 0 ? '700' : '';
-      // Если хоть один этап изменён вручную — нет общего override
-      // (пользователь управляет этапами индивидуально)
-      if (!appState.totalDaysOverride) {
-        appState.totalDaysOverride = null;
-      }
+      stageInp.style.fontWeight = val > 0 ? '700' : '';
       renderGantt();
       _renderGanttRuler();
       _onDurationChanged();
+    }
+    stageInp.addEventListener('input', e => {
+      // Только обновляем данные, DOM не трогаем
+      const val = parseInt(e.target.value) || 0;
+      appState.stages[idx].daysOverride = val > 0 ? val : null;
+      e.target.style.fontWeight = val > 0 ? '700' : '';
+    });
+    stageInp.addEventListener('blur', _commitStageInp);
+    stageInp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); stageInp.blur(); }
     });
   });
 }
@@ -652,8 +658,10 @@ function _renderGanttWorks(wrap) {
   });
 
   // ── Обработка инпутов дней ─────────────────────────────────────
+  // Перерендер только на blur/Enter — иначе DOM убивается при каждом символе
   wrap.querySelectorAll('.gantt-work-days-inp').forEach(inp => {
     inp.addEventListener('mousedown', e => e.stopPropagation());
+    // input: только данные, без перерендера
     inp.addEventListener('input', () => {
       const uid = inp.dataset.uid;
       const val = Math.max(0, parseInt(inp.value) || 0);
@@ -661,13 +669,17 @@ function _renderGanttWorks(wrap) {
       inp.style.fontWeight = val > 0 ? '600' : '400';
       if (!appState.workMovedManually) appState.workMovedManually = {};
       if (val > 0) appState.workMovedManually[uid] = true;
+    });
+    // blur/Enter: полный перерендер
+    function _commitWorkInp() {
       recalcAllStageDaysAuto();
       _renderGanttWorks(wrap);
       _renderGanttRuler();
       _onDurationChanged();
-    });
+    }
+    inp.addEventListener('blur', _commitWorkInp);
     inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') inp.blur();
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
     });
   });
 
