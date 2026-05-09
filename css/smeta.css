@@ -135,7 +135,7 @@
     border-radius: var(--r-lg) var(--r-lg) 0 0; position: relative;
     transition: background .12s;
   }
-  .scard-head:hover { background: var(--bg-soft); }
+  .scard-head:hover { background: var(--bg-card); }
 
   .scard-num {
     width: 26px; height: 26px; border-radius: 8px;
