@@ -32,3 +32,7 @@ export const {
   ensureStage,
   updateTotals,
 } = smetaModule;
+
+// Свернуть/развернуть все разделы — реэкспорт напрямую из таблиц
+export { toggleCollapseAllSmr } from './smeta/smeta-tables-smr.js';
+export { toggleCollapseAllMat } from './smeta/smeta-tables-mat.js';
