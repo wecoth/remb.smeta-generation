@@ -139,14 +139,14 @@
   .scard-head:hover { background: var(--bg-soft); }
 
   .scard-num {
-    width: 22px; height: 22px; border-radius: 50%;
-    background: var(--bg-hover); color: var(--text-3);
-    font-size: 10px; font-weight: 600;
+    width: 26px; height: 26px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; font-weight: 700;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     font-family: var(--font-mono);
   }
   .scard-label {
-    font-size: 13px; font-weight: 600; color: var(--text-1); flex: 1;
+    font-size: 14px; font-weight: 600; color: var(--text-1); flex: 1;
     letter-spacing: .1px;
   }
   .scard-meta { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
@@ -155,13 +155,14 @@
     transition: transform .2s;
   }
   .scard-upload-btn {
-    padding: 4px 11px; border-radius: var(--r-sm);
+    padding: 5px 13px; border-radius: var(--r-sm);
     border: 1px solid var(--border-1); font-size: 11px; font-weight: 500;
     cursor: pointer; background: var(--bg-card); color: var(--text-2);
     font-family: var(--font-ui); margin-right: 4px;
     transition: all .15s; letter-spacing: .1px;
+    display: flex; align-items: center; gap: 6px;
   }
-  .scard-upload-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+  .scard-upload-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-mid); }
 
   /* ── Block 1 — Object header ─────────────────────────── */
   .obj-scard { overflow: visible; }
@@ -359,21 +360,28 @@
   table.smeta-tbl .btn-row-del:hover { color: var(--bad); opacity: 1; }
 
   /* Section rows */
-  table.smeta-tbl tr.row-section td { background: var(--bg-hover); }
+  table.smeta-tbl tr.row-section td {
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--border-1);
+  }
+  table.smeta-tbl tr.row-section:hover td { background: #d4eee3; }
   table.smeta-tbl tr.row-section input.inp-section {
-    font-weight: 600; font-size: 11px; color: var(--text-1); letter-spacing: .2px;
+    font-weight: 600; font-size: 11px; color: var(--accent); letter-spacing: .4px;
     text-transform: uppercase;
   }
   table.smeta-tbl tr.row-section input.inp-section::placeholder {
-    font-weight: 400; font-style: normal; color: var(--text-3);
-    letter-spacing: 0; text-transform: none;
+    font-weight: 400; font-style: normal; color: var(--accent-mid);
+    letter-spacing: 0; text-transform: none; opacity: .7;
+  }
+  table.smeta-tbl tr.row-section .td-total {
+    color: var(--accent); font-weight: 600;
   }
 
   /* Table footer */
   .tbl-footer {
     display: flex; justify-content: space-between; align-items: center;
     padding: 11px 18px; border-top: 1px solid var(--border-2);
-    background: var(--bg-soft); border-radius: 0 0 var(--r-lg) var(--r-lg);
+    background: var(--bg-soft); border-radius: 0;
   }
   .tbl-footer-actions { display: flex; gap: 6px; }
   .tbl-add-btn {
@@ -382,12 +390,15 @@
     font-size: 11px; color: var(--text-2); cursor: pointer;
     font-family: var(--font-ui); transition: all .15s; font-weight: 500;
   }
-  .tbl-add-btn:hover { border-style: solid; border-color: var(--border-1); color: var(--text-1); background: var(--bg-card); }
+  .tbl-add-btn:hover { border-style: solid; border-color: var(--accent-mid); color: var(--accent); background: var(--accent-soft); }
   .tbl-footer-total {
-    font-size: 13px; font-weight: 600; color: var(--text-1);
+    font-size: 15px; font-weight: 700; color: var(--accent);
     font-variant-numeric: tabular-nums; font-family: var(--font-mono);
   }
-  .tbl-footer-total-lbl { font-size: 11px; color: var(--text-3); margin-right: 8px; }
+  .tbl-footer-total-lbl {
+    font-size: 10px; font-weight: 500; letter-spacing: .4px; text-transform: uppercase;
+    color: var(--text-3); margin-right: 10px;
+  }
 
   /* ── Insert row/section ──────────────────────────────── */
   .tr-insert-zone { position: relative; height: 0; overflow: visible; }
