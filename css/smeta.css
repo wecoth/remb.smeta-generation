@@ -478,6 +478,7 @@
   .gantt-handle-l { left: 0; border-radius: 4px 0 0 4px; }
   .gantt-handle-r { right: 0; border-radius: 0 4px 4px 0; }
   .gantt-ruler-top-wrap { display: flex; align-items: flex-end; margin-bottom: 6px; }
+  .gantt-ruler-top-wrap.works-mode { display: none; }
   .gantt-ruler-spacer { width: calc(230px + 14px); flex-shrink: 0; }
   .gantt-ruler { position: relative; height: 18px; flex: 1; }
   .gantt-ruler-top { border-bottom: 1px solid var(--border-2); }
@@ -506,7 +507,7 @@
   /* Левая sticky-колонка */
   .gantt-works-left {
     flex-shrink: 0;
-    width: 290px;
+    width: 320px;
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--border-2);
@@ -514,7 +515,7 @@
     z-index: 2;
   }
   .gantt-works-left-header {
-    height: 28px;
+    height: 32px;
     flex-shrink: 0;
     border-bottom: 1px solid var(--border-2);
     background: var(--bg-soft);
@@ -525,8 +526,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 0 6px 0 4px;
-    height: 34px;
+    padding: 4px 6px 4px 4px;
+    min-height: 36px;
     border-bottom: 1px solid var(--border-2);
     background: var(--bg-card);
   }
@@ -549,7 +550,7 @@
 
   /* Шкала (ruler) */
   .gantt-works-ruler {
-    height: 28px;
+    height: 32px;
     flex-shrink: 0;
     position: relative;
     background: var(--bg-soft);
@@ -583,10 +584,10 @@
     user-select: none;
   }
 
-  /* Ряд трека (обёртка над треком — содержит grid + track) */
+  /* Ряд трека */
   .gantt-works-track-row {
     position: relative;
-    height: 34px;
+    min-height: 36px;
     flex-shrink: 0;
     border-bottom: 1px solid var(--border-2);
     background: var(--bg-card);
@@ -612,7 +613,7 @@
   /* Трек в режиме «по работам» — пиксельный */
   .gantt-works-track-row .gantt-track {
     position: absolute;
-    inset: 4px 0;
+    inset: 5px 0;
     height: auto;
     background: transparent;
     border: none;
@@ -793,7 +794,10 @@
   .gantt-works-label-draggable:hover { background: var(--bg-hover); }
   .gantt-works-label-draggable:active { cursor: grabbing; }
   .gantt-work-name {
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
     font-size: 11px; color: var(--text-1); flex: 1; min-width: 0;
     line-height: 1.3;
   }
