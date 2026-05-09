@@ -1,34 +1,35 @@
 /* ══════════════════════════════════════════════════════════
      SMETA — REFINED UTILITARIAN REDESIGN
-     Palette: warm off-white base · slate neutrals · amber accent
-     Type: DM Sans (UI) + DM Mono (numbers)
+     Palette: clean off-white base · slate neutrals · emerald accent
+     Type: Merriweather (UI + mono)
   ══════════════════════════════════════════════════════════ */
 
   #smetaView {
     /* Palette */
-    --bg-page:   #f5f4f1;
-    --bg-card:   #fefefe;
-    --bg-soft:   #f9f8f5;
-    --bg-hover:  #f2f1ed;
-    --bg-input:  #fafaf8;
+    --bg-page:   #F4F6F4;
+    --bg-card:   #FFFFFF;
+    --bg-soft:   #F0F4F1;
+    --bg-hover:  #E8F0EB;
+    --bg-input:  #FAFCFA;
 
     /* Borders */
-    --border-1:  #e3e0d9;
-    --border-2:  #ece9e3;
+    --border-1:  #D6E0D8;
+    --border-2:  #E2EBE4;
 
     /* Text */
-    --text-1:    #1c1b18;
-    --text-2:    #6b6760;
-    --text-3:    #a8a39a;
+    --text-1:    #1a1f1b;
+    --text-2:    #5a6860;
+    --text-3:    #9aada2;
 
-    /* Accent — amber */
-    --accent:      #c87533;
-    --accent-soft: #fdf3e8;
-    --accent-mid:  #e89a5a;
+    /* Accent — emerald */
+    --accent:      #0F6E56;
+    --accent-soft: #E1F5EE;
+    --accent-mid:  #3A9E7E;
+    --accent-grad: linear-gradient(135deg, #0F6E56 0%, #0A4F3E 100%);
 
     /* Status */
-    --good:  #2e7d52;
-    --warn:  #b07323;
+    --good:  #0F6E56;
+    --warn:  #a06820;
     --bad:   #b83232;
 
     /* Typography */
@@ -83,10 +84,10 @@
   }
   .smeta-btn:hover { background: var(--bg-hover); color: var(--text-1); border-color: var(--border-1); }
   .smeta-btn.primary {
-    background: var(--text-1); color: #fff; border-color: var(--text-1);
+    background: var(--accent-grad); color: #fff; border-color: #0A4F3E;
     letter-spacing: .2px;
   }
-  .smeta-btn.primary:hover { background: #000; }
+  .smeta-btn.primary:hover { background: linear-gradient(135deg, #0d6350 0%, #093d30 100%); border-color: #093d30; }
 
   /* ── Scroll area ─────────────────────────────────────── */
   .smeta-scroll {
@@ -256,7 +257,13 @@
     white-space: nowrap; text-align: right;
     font-variant-numeric: tabular-nums; font-family: var(--font-mono);
   }
-  .obj-meta-val.grand { font-size: 14px; font-weight: 600; }
+  .obj-meta-val.grand {
+    font-size: 14px; font-weight: 700;
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
   .obj-meta-val.accent { font-size: 13px; font-weight: 600; }
   .obj-meta-lbl.accent-lbl { font-size: 11px; font-weight: 600; color: var(--text-1); }
   .obj-meta-val.margin-good { color: var(--good); }
@@ -873,8 +880,8 @@
   gap: 12px;
   padding: 10px 16px;
   margin-bottom: 16px;
-  background: var(--bg-card, #f9f9f9);
-  border: 1px solid var(--color-border-tertiary, #ececec);
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--color-border-tertiary, #E2EBE4);
   border-radius: 10px;
   flex-wrap: wrap;
 }
@@ -915,7 +922,7 @@
 }
 
 .pay-pct-select:focus {
-  border-color: var(--accent, #6366f1);
+  border-color: var(--accent, #0F6E56);
 }
 
 .pay-pct-manual {
@@ -940,7 +947,7 @@
 }
 
 .pay-pct-manual:focus {
-  border-color: var(--accent, #6366f1);
+  border-color: var(--accent, #0F6E56);
 }
 
 /* ── Локальный контрол на карточке платежа ─────────────────────────── */
@@ -948,7 +955,7 @@
 .pay-slot-pct-control {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid var(--color-border-tertiary, #ececec);
+  border-top: 1px solid var(--color-border-tertiary, #E2EBE4);
 }
 
 /* ── Блок сумм: итого / аванс / остаток ────────────────────────────── */
@@ -988,7 +995,7 @@
 }
 
 .pay-slot-advance {
-  color: var(--accent, #6366f1);
+  color: var(--accent, #0F6E56);
 }
 
 .pay-slot-remainder {
