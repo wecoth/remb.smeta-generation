@@ -120,18 +120,24 @@ export function renderMatTable() {
       const collapsed = appState.matCollapsed.has(r._uid);
       const secTotal = _sectionTotal(appState.matRows, i);
       const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
-      const arrow = collapsed ? '▶' : '▼';
+      const uid = r._uid;
 
       tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
-      tr.dataset.uid = r._uid;
+      tr.dataset.uid = uid;
       tr.style.cursor = 'pointer';
+      tr.onclick = function(e) {
+        if (e.target.closest('input') || e.target.closest('.btn-row-del')) return;
+        if (!appState.matCollapsed) appState.matCollapsed = new Set();
+        appState.matCollapsed.has(uid)
+          ? appState.matCollapsed.delete(uid)
+          : appState.matCollapsed.add(uid);
+        renderMatTable();
+      };
       tr.innerHTML = `
         <td colspan="2"></td>
-        <td colspan="3">
-          <span class="section-arrow">${arrow}</span>
-          <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name">
+        <td colspan="4">
+          <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name" style="max-width:420px;width:50%">
         </td>
-        <td></td>
         <td class="td-total section-total-cell">${secTotalStr}</td>
         <td></td>
         <td><button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button></td>`;
@@ -181,22 +187,6 @@ export function renderMatTable() {
 // ── Привязка событий ───────────────────────────────────────────────
 
 function _bindMatEvents(tbody) {
-  // Клик по строке раздела (не по инпуту и не по крестику) — сворачивает
-  tbody.querySelectorAll('tr.row-section').forEach(tr => {
-    tr.addEventListener('click', e => {
-      if (e.target.closest('input') || e.target.closest('.btn-row-del')) return;
-      const uid = tr.dataset.uid;
-      if (!uid) return;
-      if (!appState.matCollapsed) appState.matCollapsed = new Set();
-      if (appState.matCollapsed.has(uid)) {
-        appState.matCollapsed.delete(uid);
-      } else {
-        appState.matCollapsed.add(uid);
-      }
-      renderMatTable();
-    });
-  });
-
   tbody.querySelectorAll('input, select').forEach(inp => {
     inp.addEventListener('input', e => {
       const i = +e.target.dataset.i;
