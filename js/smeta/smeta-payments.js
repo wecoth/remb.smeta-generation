@@ -14,12 +14,6 @@ const PCT_STEP    = 5;
 const PCT_OPTIONS = Array.from({ length: 20 }, (_, i) => (i + 1) * PCT_STEP); // [5,10,...,100]
 const DEFAULT_ADVANCE_PCT = 50;
 
-// ── Инициализация полей state (если ещё нет) ───────────────────────
-
-function _ensureStateFields() {
-  if (appState.defaultAdvancePct == null) appState.defaultAdvancePct = DEFAULT_ADVANCE_PCT;
-}
-
 // ── Приватные хелперы ──────────────────────────────────────────────
 
 function _getStageAmount(stageName) {
@@ -35,21 +29,21 @@ function _getStagesTotalReal() {
   return appState.stages.reduce((s, st) => s + _getStageAmount(st.name), 0);
 }
 
-// Получить эффективный процент аванса для платежа
-// (локальный если задан, иначе глобальный)
+// Получить эффективный процент аванса для платежа:
+// локальный если задан, иначе глобальный из appState
 function _effectivePct(payment) {
   const local = payment.advancePct;
   if (local != null && local >= 0 && local <= 100) return local;
   return appState.defaultAdvancePct ?? DEFAULT_ADVANCE_PCT;
 }
 
-// ── Рендер дропдауна процента ──────────────────────────────────────
-// container — DOM-элемент куда вставляем
-// currentPct — текущее значение
-// onChange(pct) — коллбэк при изменении
-// isGlobal — если true, добавляем особую подпись
+// ── Рендер контрола процента ───────────────────────────────────────
+// container  — DOM-элемент куда вставляем
+// currentPct — текущее значение (null = «по умолчанию» для локального)
+// onChange   — коллбэк при изменении: onChange(pct|null)
+// isGlobal   — если true, рисуем глобальную версию с подписью
 
-function _renderPctControl(container, currentPct, onChange, isGlobal = false) {
+function _renderPctControl(container, currentPct, onChange, isGlobal) {
   const wrap = document.createElement('div');
   wrap.className = 'pay-pct-wrap' + (isGlobal ? ' pay-pct-wrap--global' : '');
 
@@ -60,12 +54,12 @@ function _renderPctControl(container, currentPct, onChange, isGlobal = false) {
     wrap.appendChild(lbl);
   }
 
-  // Кастомный дропдаун-селект
+  // Дропдаун
   const select = document.createElement('select');
   select.className = 'pay-pct-select';
 
   if (!isGlobal) {
-    // Для локального — первый пункт «по умолчанию»
+    // Первый пункт — наследовать глобальный
     const optDefault = document.createElement('option');
     optDefault.value = '';
     const globalPct = appState.defaultAdvancePct ?? DEFAULT_ADVANCE_PCT;
@@ -81,17 +75,17 @@ function _renderPctControl(container, currentPct, onChange, isGlobal = false) {
     select.appendChild(opt);
   });
 
-  // Если текущее значение не кратно 5 — добавить вручную
+  // Если текущее значение нестандартное — добавить отдельным пунктом
   if (currentPct != null && !PCT_OPTIONS.includes(currentPct)) {
     const optCustom = document.createElement('option');
     optCustom.value = currentPct;
-    optCustom.textContent = currentPct + '% (custom)';
+    optCustom.textContent = currentPct + '%';
     optCustom.selected = true;
     select.appendChild(optCustom);
   }
 
   if (!isGlobal && currentPct == null) {
-    select.value = ''; // «по умолчанию»
+    select.value = '';
   } else if (currentPct != null) {
     select.value = String(currentPct);
   }
@@ -105,14 +99,14 @@ function _renderPctControl(container, currentPct, onChange, isGlobal = false) {
 
   // Поле ручного ввода произвольного %
   const manualInp = document.createElement('input');
-  manualInp.className = 'pay-pct-manual';
-  manualInp.type      = 'number';
-  manualInp.min       = '0';
-  manualInp.max       = '100';
-  manualInp.placeholder = 'или введи %';
+  manualInp.className   = 'pay-pct-manual';
+  manualInp.type        = 'number';
+  manualInp.min         = '0';
+  manualInp.max         = '100';
+  manualInp.placeholder = 'или %';
   manualInp.addEventListener('change', e => {
     let v = parseInt(e.target.value);
-    if (isNaN(v)) return;
+    if (isNaN(v)) { e.target.value = ''; return; }
     v = Math.max(0, Math.min(100, v));
     e.target.value = v;
     onChange(v);
@@ -125,21 +119,22 @@ function _renderPctControl(container, currentPct, onChange, isGlobal = false) {
 // ── Публичный API ──────────────────────────────────────────────────
 
 export function renderPayments() {
-  _ensureStateFields();
-
   const wrap = document.getElementById('paymentsWrap');
   if (!wrap) return;
-  const grandTotal = getSmrTotal() + getMatTotal();
 
+  // Инициализируем поле в state если ещё нет
+  if (appState.defaultAdvancePct == null) appState.defaultAdvancePct = DEFAULT_ADVANCE_PCT;
+
+  const grandTotal = getSmrTotal() + getMatTotal();
   wrap.innerHTML = '';
 
-  // ── Глобальная панель настройки аванса ───────────────────────────
+  // ── Глобальная панель аванса ──────────────────────────────────────
   const globalBar = document.createElement('div');
   globalBar.className = 'pay-global-bar';
 
   _renderPctControl(
     globalBar,
-    appState.defaultAdvancePct ?? DEFAULT_ADVANCE_PCT,
+    appState.defaultAdvancePct,
     (pct) => {
       appState.defaultAdvancePct = pct ?? DEFAULT_ADVANCE_PCT;
       renderPayments();
@@ -155,7 +150,7 @@ export function renderPayments() {
   wrap.appendChild(globalBar);
 
   // ── Основной layout ───────────────────────────────────────────────
-  const layout   = document.createElement('div');
+  const layout = document.createElement('div');
   layout.className = 'pay-layout';
 
   // ── Левая колонка: слоты ──────────────────────────────────────────
@@ -163,20 +158,22 @@ export function renderPayments() {
   leftCol.className = 'pay-left';
 
   appState.payments.forEach((p, pi) => {
-    // Номер платежа начинается с 1
-    const payNum    = pi + 1;
     const amount    = p.stageIds.reduce((s, id) => {
       const st = appState.stages.find(x => x.id === id);
       return s + (st ? _getStageAmount(st.name) : 0);
     }, 0);
+
     const totalReal = _getStagesTotalReal() || grandTotal || 1;
-    const pct       = totalReal > 0 ? Math.round(amount / totalReal * 100) : 0;
+    const sharePct  = totalReal > 0 ? Math.round(amount / totalReal * 100) : 0;
 
     // Аванс / остаток
     const advPct    = _effectivePct(p);
     const remPct    = 100 - advPct;
     const advAmount = Math.round(amount * advPct / 100);
     const remAmount = amount - advAmount;
+
+    // Флаг локального переопределения
+    const isLocalPct = p.advancePct != null;
 
     const card = document.createElement('div');
     card.className = 'pay-slot';
@@ -191,20 +188,19 @@ export function renderPayments() {
       </span>`;
     }).join('');
 
-    // Флаг — переопределён ли процент локально
-    const isLocalPct = p.advancePct != null;
-
     card.innerHTML = `
       <div class="pay-slot-head">
         <input class="pay-slot-name" value="${esc(p.name)}" data-pi="${pi}">
         <button class="pay-slot-del" data-pi="${pi}" title="Удалить платёж">×</button>
       </div>
-      <div class="pay-slot-tags" data-pi="${pi}">${tagsHtml || '<span class="pay-slot-empty">Перетащите этапы сюда</span>'}</div>
+      <div class="pay-slot-tags" data-pi="${pi}">
+        ${tagsHtml || '<span class="pay-slot-empty">Перетащите этапы сюда</span>'}
+      </div>
       <div class="pay-slot-totals">
         <div class="pay-slot-total-row pay-slot-total-row--main">
           <span class="pay-slot-total-lbl">Итого</span>
           <span class="pay-slot-total-val">${fmtInt(amount)} ₽</span>
-          <span class="pay-slot-pct">${pct}% от проекта</span>
+          <span class="pay-slot-share-pct">${sharePct}% от проекта</span>
         </div>
         <div class="pay-slot-total-row pay-slot-total-row--advance">
           <span class="pay-slot-total-lbl">Аванс ${advPct}%${isLocalPct ? ' ✎' : ''}</span>
@@ -217,18 +213,21 @@ export function renderPayments() {
       </div>
       <div class="pay-slot-pct-control" data-pi="${pi}"></div>`;
 
-    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
-    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('dragover',  e => { e.preventDefault(); card.classList.add('drag-over'); });
+    card.addEventListener('dragleave', ()  => card.classList.remove('drag-over'));
     card.addEventListener('drop', e => {
       e.preventDefault();
       card.classList.remove('drag-over');
       const sid = e.dataTransfer.getData('stageId');
-      if (sid && !p.stageIds.includes(sid)) { p.stageIds.push(sid); renderPayments(); }
+      if (sid && !p.stageIds.includes(sid)) {
+        p.stageIds.push(sid);
+        renderPayments();
+      }
     });
 
     leftCol.appendChild(card);
 
-    // Вставляем контрол процента внутрь карточки (после рендера innerHTML)
+    // Локальный контрол процента — вставляем после innerHTML
     const pctControlEl = card.querySelector('.pay-slot-pct-control');
     _renderPctControl(
       pctControlEl,
@@ -241,8 +240,9 @@ export function renderPayments() {
     );
   });
 
+  // Кнопка добавления платежа
   const addBtn = document.createElement('button');
-  addBtn.className = 'pay-add-slot-btn';
+  addBtn.className   = 'pay-add-slot-btn';
   addBtn.textContent = '+ Добавить этап оплаты';
   addBtn.addEventListener('click', () => {
     const num = appState.payments.length + 1;
@@ -259,14 +259,15 @@ export function renderPayments() {
   // ── Правая колонка: пул этапов ────────────────────────────────────
   const rightCol = document.createElement('div');
   rightCol.className = 'pay-right';
+
   const rightHead = document.createElement('div');
-  rightHead.className = 'pay-right-head';
+  rightHead.className   = 'pay-right-head';
   rightHead.textContent = 'Этапы работ';
   rightCol.appendChild(rightHead);
 
   if (!appState.stages.length) {
     const empty = document.createElement('div');
-    empty.className = 'pay-right-empty';
+    empty.className   = 'pay-right-empty';
     empty.textContent = 'Добавьте этапы в Ганtt';
     rightCol.appendChild(empty);
   } else {
@@ -274,13 +275,17 @@ export function renderPayments() {
       const stageDays = Math.max(1, Math.round(appState.totalDays * s.w / 100));
       const stageAmt  = _getStageAmount(s.name);
       const pill = document.createElement('div');
-      pill.className = 'pay-stage-pill';
-      pill.draggable = true;
+      pill.className   = 'pay-stage-pill';
+      pill.draggable   = true;
       pill.dataset.sid = s.id;
-      pill.innerHTML = `<span class="pay-stage-pill-dot" style="background:${s.color}"></span>
+      pill.innerHTML   = `
+        <span class="pay-stage-pill-dot" style="background:${s.color}"></span>
         <span class="pay-stage-pill-name">${esc(s.name)}</span>
         <span class="pay-stage-pill-info">${stageDays} дн. · ${fmtInt(stageAmt)} ₽</span>`;
-      pill.addEventListener('dragstart', e => { e.dataTransfer.setData('stageId', s.id); pill.classList.add('dragging'); });
+      pill.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('stageId', s.id);
+        pill.classList.add('dragging');
+      });
       pill.addEventListener('dragend', () => pill.classList.remove('dragging'));
       rightCol.appendChild(pill);
     });
