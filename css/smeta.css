@@ -583,8 +583,9 @@
   }
   .smr-mode-btn.active.masters { color: var(--warn); }
 
-  /* ── Первая insert-зона (над строкой 0) — всегда видима ─ */
-  #smrTbody tr.tr-insert-zone:first-child .tr-insert-btn {
+  /* ── Первая insert-зона (над строкой 0) — по ховеру на thead ─ */
+  .smeta-tbl thead:hover + tbody tr.tr-insert-zone:first-child .tr-insert-btn,
+  #smrTbody tr.tr-insert-zone:first-child:hover .tr-insert-btn {
     opacity: 1;
     pointer-events: auto;
   }
