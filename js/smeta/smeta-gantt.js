@@ -319,7 +319,10 @@ export function setGanttMode(mode) {
   if (clearBtn) clearBtn.style.display = mode === 'works' ? '' : 'none';
   // Прячем верхнюю шкалу в режиме «По работам»
   const rulerWrap = document.getElementById('ganttRulerTopWrap');
-  if (rulerWrap) rulerWrap.classList.toggle('works-mode', mode === 'works');
+  if (rulerWrap) {
+    rulerWrap.classList.toggle('works-mode', mode === 'works');
+    rulerWrap.style.display = (mode === 'works') ? 'none' : '';
+  }
 
   if (mode === 'stages') recalcAllStageDaysAuto();
   renderGantt();
@@ -357,7 +360,10 @@ export function renderGantt() {
 
   // Верхняя шкала — только в режиме «По этапам»
   const rulerWrap = document.getElementById('ganttRulerTopWrap');
-  if (rulerWrap) rulerWrap.classList.toggle('works-mode', mode === 'works');
+  if (rulerWrap) {
+    rulerWrap.classList.toggle('works-mode', mode === 'works');
+    rulerWrap.style.display = (mode === 'works') ? 'none' : '';
+  }
 
   if (mode === 'works') {
     _renderGanttWorks(wrap);
@@ -499,9 +505,11 @@ function _renderGanttStages(wrap) {
 //   • Auto-scroll при drag к правому краю видимой области
 //   • Snap к целым дням (абсолютные пиксели, не проценты)
 
-const PX_PER_DAY = 40;           // пикселей на один день
+const PX_PER_DAY = 22;            // пикселей на один день (уменьшено для компактности)
 const CANVAS_DAYS = 365;          // полотно всегда 365 дней
 const VISIBLE_DAYS_DEFAULT = 30;  // сколько дней видно по умолчанию
+const RULER_H    = 22;            // высота шкалы (px)
+const TRACK_ROW_H = 26;           // высота строки трека (px) — должна совпадать с высотой левой строки
 
 function _ganttScrollContainer() {
   return document.getElementById('ganttScrollArea');
@@ -584,25 +592,48 @@ function _renderGanttWorks(wrap) {
   // Внешний контейнер: левая колонка + скролл-область
   const outer = document.createElement('div');
   outer.className = 'gantt-works-outer';
+  outer.style.display = 'flex';
+  outer.style.alignItems = 'stretch';
+  outer.style.width = '100%';
+  outer.style.position = 'relative';
 
   // ── Левая sticky-колонка ─────────────────────────────────────
   const leftCol = document.createElement('div');
   leftCol.className = 'gantt-works-left';
+  leftCol.style.display = 'flex';
+  leftCol.style.flexDirection = 'column';
+  leftCol.style.flex = '0 0 auto';
+  leftCol.style.background = 'var(--bg-card, #fff)';
+  leftCol.style.zIndex = '2';
+  leftCol.style.borderRight = '1px solid var(--border-1, #d8d8d8)';
 
   // Пустой заголовок (высота = ruler)
   const leftHeader = document.createElement('div');
   leftHeader.className = 'gantt-works-left-header';
+  leftHeader.style.height       = RULER_H + 'px';
+  leftHeader.style.flex         = '0 0 auto';
+  leftHeader.style.borderBottom = '1px solid var(--border-1, #d8d8d8)';
   leftCol.appendChild(leftHeader);
 
   // ── Правая scroll-область ────────────────────────────────────
   const scrollArea = document.createElement('div');
   scrollArea.className = 'gantt-works-scroll';
   scrollArea.id = 'ganttScrollArea';
+  scrollArea.style.flex          = '1 1 auto';
+  scrollArea.style.overflowX     = 'auto';
+  scrollArea.style.overflowY     = 'hidden';
+  scrollArea.style.display       = 'flex';
+  scrollArea.style.flexDirection = 'column';
+  scrollArea.style.minWidth      = '0';
 
   // Шкала (ruler) внутри scroll
   const ruler = document.createElement('div');
   ruler.className = 'gantt-works-ruler';
-  ruler.style.width = canvasW + 'px';
+  ruler.style.width    = canvasW + 'px';
+  ruler.style.height   = RULER_H + 'px';
+  ruler.style.position = 'relative';
+  ruler.style.flex     = '0 0 auto';
+  ruler.style.borderBottom = '1px solid var(--border-1, #d8d8d8)';
   _buildRulerTicks(ruler, CANVAS_DAYS);
   scrollArea.appendChild(ruler);
 
@@ -613,6 +644,13 @@ function _renderGanttWorks(wrap) {
     // Заголовок группы — слева
     const leftGroupHead = document.createElement('div');
     leftGroupHead.className = 'gantt-works-group-head gantt-works-group-head-left';
+    leftGroupHead.style.height       = TRACK_ROW_H + 'px';
+    leftGroupHead.style.flex         = '0 0 auto';
+    leftGroupHead.style.display      = 'flex';
+    leftGroupHead.style.alignItems   = 'center';
+    leftGroupHead.style.gap          = '6px';
+    leftGroupHead.style.padding      = '0 8px';
+    leftGroupHead.style.background   = 'var(--bg-2, #fafafa)';
     leftGroupHead.innerHTML = `
       <span class="gantt-stage-dot" style="background:${g.color}"></span>
       <span style="font-size:11px;font-weight:600;color:var(--text-1);flex:1">${esc(g.stageName || 'Без этапа')}</span>`;
@@ -621,7 +659,10 @@ function _renderGanttWorks(wrap) {
     // Заголовок группы — справа (пустой спейсер той же высоты)
     const rightGroupHead = document.createElement('div');
     rightGroupHead.className = 'gantt-works-group-head gantt-works-group-head-right';
-    rightGroupHead.style.width = canvasW + 'px';
+    rightGroupHead.style.width      = canvasW + 'px';
+    rightGroupHead.style.height     = TRACK_ROW_H + 'px';
+    rightGroupHead.style.flex       = '0 0 auto';
+    rightGroupHead.style.background = 'var(--bg-2, #fafafa)';
     scrollArea.appendChild(rightGroupHead);
 
     g.rows.forEach(r => {
@@ -639,6 +680,13 @@ function _renderGanttWorks(wrap) {
       // ── Левая ячейка строки ──────────────────────────────────
       const leftRow = document.createElement('div');
       leftRow.className = 'gantt-works-left-row';
+      leftRow.style.height       = TRACK_ROW_H + 'px';
+      leftRow.style.flex         = '0 0 auto';
+      leftRow.style.display      = 'flex';
+      leftRow.style.alignItems   = 'center';
+      leftRow.style.gap          = '4px';
+      leftRow.style.padding      = '0 8px';
+      leftRow.style.borderBottom = '1px solid var(--border-2, #f1f1f1)';
 
       const labelDiv = document.createElement('div');
       labelDiv.className = 'gantt-row-label gantt-works-label-draggable';
@@ -673,12 +721,18 @@ function _renderGanttWorks(wrap) {
       // ── Правая ячейка (трек) ─────────────────────────────────
       const trackRow = document.createElement('div');
       trackRow.className = 'gantt-works-track-row';
-      trackRow.style.width = canvasW + 'px';
+      trackRow.style.width        = canvasW + 'px';
+      trackRow.style.height       = TRACK_ROW_H + 'px';
+      trackRow.style.flex         = '0 0 auto';
+      trackRow.style.position     = 'relative';
+      trackRow.style.borderBottom = '1px solid var(--border-2, #f1f1f1)';
 
       // Вертикальная сетка на треке
       const grid = document.createElement('div');
       grid.className = 'gantt-track-grid';
-      grid.style.width = canvasW + 'px';
+      grid.style.position = 'absolute';
+      grid.style.inset    = '0';
+      grid.style.width    = canvasW + 'px';
       _buildTrackGrid(grid, CANVAS_DAYS);
       trackRow.appendChild(grid);
 
@@ -686,16 +740,29 @@ function _renderGanttWorks(wrap) {
       const track = document.createElement('div');
       track.className = 'gantt-track';
       track.dataset.uid = uid;
-      track.style.width = canvasW + 'px';
+      track.style.position = 'absolute';
+      track.style.inset    = '0';
+      track.style.width    = canvasW + 'px';
 
       if (days > 0) {
         const bar = document.createElement('div');
         bar.className = 'gantt-bar gantt-work-bar gantt-work-bar-placed';
         bar.dataset.uid = uid;
-        bar.style.left   = (start * PX_PER_DAY) + 'px';
-        bar.style.width  = Math.max(days * PX_PER_DAY, 16) + 'px';
+        const BAR_H = TRACK_ROW_H - 8; // 8px суммарного зазора сверху+снизу
+        bar.style.position   = 'absolute';
+        bar.style.top        = '4px';
+        bar.style.height     = BAR_H + 'px';
+        bar.style.left       = (start * PX_PER_DAY) + 'px';
+        bar.style.width      = Math.max(days * PX_PER_DAY, 16) + 'px';
         bar.style.background = g.color;
-        bar.style.cursor = 'grab';
+        bar.style.cursor     = 'grab';
+        bar.style.borderRadius = '4px';
+        bar.style.display      = 'flex';
+        bar.style.alignItems   = 'center';
+        bar.style.padding      = '0 6px';
+        bar.style.fontSize     = '10px';
+        bar.style.color        = '#fff';
+        bar.style.fontWeight   = '600';
         bar.innerHTML = `
           <span class="gantt-bar-label">${days} дн.</span>
           <div class="gantt-handle gantt-handle-r gantt-work-handle" data-uid="${uid}" data-edge="right"></div>`;
@@ -985,24 +1052,44 @@ function _renderGanttWorks(wrap) {
 } // end _renderGanttWorks
 
 // ── Строим тики шкалы ─────────────────────────────────────────
-// Показываем номера дней: каждые 1, 5, 7 или 14 дней в зависимости от масштаба.
+// В режиме «По работам» (works) — каждый день нумеруется (0..365).
+// В режиме «По этапам» — крупный шаг с цифрами + промежуточные тонкие тики.
 function _buildRulerTicks(rulerEl, totalDays) {
   rulerEl.innerHTML = '';
-  // Шаг тиков: каждые 5 дней если < 60, каждые 7 если < 120, иначе 14
-  const step = totalDays <= 60 ? 5 : totalDays <= 120 ? 7 : 14;
+  rulerEl.style.height   = RULER_H + 'px';
+  rulerEl.style.position = 'relative';
+
+  const isWorksMode = appState.ganttMode === 'works';
+
+  // Шаг для крупных подписей в режиме «по этапам»
+  const majorStep = totalDays <= 60 ? 5 : totalDays <= 120 ? 7 : 14;
+
   for (let d = 0; d <= totalDays; d++) {
-    const isMajor = d % step === 0;
-    const isEvery = d % 1 === 0; // каждый день — тонкая линия
-    if (!isMajor && !isEvery) continue;
+    const isMajor = isWorksMode ? true : (d % majorStep === 0);
 
     const line = document.createElement('div');
-    line.className = isMajor ? 'gantt-ruler-tick gantt-ruler-tick-major' : 'gantt-ruler-tick gantt-ruler-tick-minor';
-    line.style.left = (d * PX_PER_DAY) + 'px';
+    line.className = isMajor ? 'gantt-ruler-tick gantt-ruler-tick-major'
+                              : 'gantt-ruler-tick gantt-ruler-tick-minor';
+    line.style.position = 'absolute';
+    line.style.top      = '0';
+    line.style.bottom   = '0';
+    line.style.left     = (d * PX_PER_DAY) + 'px';
+    line.style.width    = '1px';
+    line.style.background = isMajor ? 'var(--border-1, #d8d8d8)' : 'var(--border-2, #ececec)';
+    line.style.pointerEvents = 'none';
 
     if (isMajor) {
       const lbl = document.createElement('span');
       lbl.className = 'gantt-ruler-tick-label';
       lbl.textContent = d;
+      lbl.style.position    = 'absolute';
+      lbl.style.left        = '3px';
+      lbl.style.top         = '2px';
+      lbl.style.fontSize    = '10px';
+      lbl.style.lineHeight  = '1';
+      lbl.style.color       = 'var(--text-3, #888)';
+      lbl.style.fontFamily  = 'var(--font-mono, monospace)';
+      lbl.style.whiteSpace  = 'nowrap';
       line.appendChild(lbl);
     }
     rulerEl.appendChild(line);
@@ -1010,13 +1097,28 @@ function _buildRulerTicks(rulerEl, totalDays) {
 }
 
 // ── Строим вертикальную сетку трека ───────────────────────────
+// Координаты точно совпадают с _buildRulerTicks: линия на каждом дне d * PX_PER_DAY.
+// В режиме «по работам» каждый день — major (как и в ruler), чтобы линии гарантированно сходились.
 function _buildTrackGrid(gridEl, totalDays) {
   gridEl.innerHTML = '';
-  const step = totalDays <= 60 ? 5 : totalDays <= 120 ? 7 : 14;
+  gridEl.style.position = 'absolute';
+  gridEl.style.inset    = '0';
+  gridEl.style.pointerEvents = 'none';
+
+  const isWorksMode = appState.ganttMode === 'works';
+  const majorStep   = totalDays <= 60 ? 5 : totalDays <= 120 ? 7 : 14;
+
   for (let d = 0; d <= totalDays; d++) {
+    const isMajor = isWorksMode ? true : (d % majorStep === 0);
     const line = document.createElement('div');
-    line.className = d % step === 0 ? 'gantt-grid-line gantt-grid-line-major' : 'gantt-grid-line gantt-grid-line-minor';
-    line.style.left = (d * PX_PER_DAY) + 'px';
+    line.className = isMajor ? 'gantt-grid-line gantt-grid-line-major'
+                              : 'gantt-grid-line gantt-grid-line-minor';
+    line.style.position = 'absolute';
+    line.style.top      = '0';
+    line.style.bottom   = '0';
+    line.style.left     = (d * PX_PER_DAY) + 'px';
+    line.style.width    = '1px';
+    line.style.background = isMajor ? 'var(--border-1, #e6e6e6)' : 'var(--border-2, #f1f1f1)';
     gridEl.appendChild(line);
   }
 }
@@ -1025,8 +1127,24 @@ function _buildTrackGrid(gridEl, totalDays) {
 // В режиме «По работам» ruler строится внутри _renderGanttWorks.
 
 function _renderGanttRuler() {
-  if (appState.ganttMode === 'works') return; // у works — свой ruler
   const ruler = document.getElementById('ganttRuler');
+  const wrapTop = document.getElementById('ganttRulerTopWrap');
+
+  // В режиме «По работам» полностью убираем верхнюю шкалу из layout
+  if (appState.ganttMode === 'works') {
+    if (wrapTop) {
+      wrapTop.classList.add('works-mode');
+      wrapTop.style.display = 'none';
+    }
+    if (ruler) ruler.innerHTML = '';
+    return;
+  }
+
+  // Режим «По этапам» — верхнюю шкалу показываем
+  if (wrapTop) {
+    wrapTop.classList.remove('works-mode');
+    wrapTop.style.display = '';
+  }
   if (!ruler) return;
   ruler.innerHTML = '';
   const totalDays = Math.max(appState.totalDays || 0, 14);
