@@ -539,7 +539,7 @@
     height: 32px;
     flex-shrink: 0;
     border-bottom: 1px solid var(--border-2);
-    background: var(--bg-soft);
+    background: var(--bg-card);
   }
 
   /* Строка левой колонки */
@@ -574,7 +574,7 @@
     height: 32px;
     flex-shrink: 0;
     position: relative;
-    background: var(--bg-soft);
+    background: var(--bg-card);
     border-bottom: 1px solid var(--border-2);
   }
 
@@ -647,7 +647,7 @@
     height: 28px;
     padding: 0 8px;
     border-bottom: 1px solid var(--border-2);
-    background: #F2FAF6;
+    background: var(--bg-card);
     flex-shrink: 0;
   }
   .gantt-works-group-head-left {
@@ -655,7 +655,7 @@
   }
   .gantt-works-group-head-right {
     border-left: none;
-    background: #F2FAF6;
+    background: var(--bg-card);
     position: relative;
   }
 
