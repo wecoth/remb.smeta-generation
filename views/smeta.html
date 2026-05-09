@@ -287,6 +287,7 @@
                 <button class="smr-mode-btn active" id="smrBtnClient" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('client'); document.getElementById('smrScard').classList.remove('scard--masters')">Заказчику</button>
                 <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('masters'); document.getElementById('smrScard').classList.add('scard--masters')">Мастерам</button>
               </div>
+              <button class="scard-upload-btn" id="smrCollapseAllBtn" onclick="event.stopPropagation(); window._smetaModule.toggleCollapseAllSmr(this)">Свернуть всё</button>
               <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
               <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
               <div class="scard-arrow">▾</div>
@@ -332,6 +333,7 @@
               <div class="scard-num">3</div>
               <div class="scard-label">Смета материалов</div>
               <div class="scard-meta" id="matCount">0 позиций</div>
+              <button class="scard-upload-btn" id="matCollapseAllBtn" onclick="event.stopPropagation(); window._smetaModule.toggleCollapseAllMat(this)">Свернуть всё</button>
               <input type="file" id="matFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleMat(event)">
               <button class="scard-upload-btn" onclick="document.getElementById('matFileInput').click()">↑ Загрузить</button>
               <div class="scard-arrow">▾</div>
