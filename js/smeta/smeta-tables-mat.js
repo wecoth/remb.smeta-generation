@@ -12,6 +12,10 @@ import { updateTotals }                     from './smeta-header.js';
 // Хранилище свёрнутых секций материалов
 if (!appState.matCollapsed) appState.matCollapsed = new Set();
 
+// ── Локальные хелперы для форматирования ─────────────────────
+const fmtRub = (n) => (n ? fmtInt(n) + ' ₽' : '');
+const fmtQty = (v) => (v !== undefined && v !== '' ? parseFloat(v).toFixed(2) : '');
+
 // ── Публичный API ──────────────────────────────────────────────────
 
 export function handleMat(e) {
@@ -120,7 +124,7 @@ export function renderMatTable() {
     if (r.isSection) {
       const collapsed = appState.matCollapsed.has(r._uid);
       const secTotal = _sectionTotal(appState.matRows, i);
-      const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
+      const secTotalStr = secTotal > 0 ? fmtRub(secTotal) : '';
       const uid = r._uid;
       sectionIdx++;
       const secNum = sectionIdx;
@@ -156,9 +160,9 @@ export function renderMatTable() {
         <td class="td-num">${idx}</td>
         <td><input class="inp-name" value="${esc(r.name)}" placeholder="Наименование материала" data-i="${i}" data-f="name"></td>
         <td><input class="inp-unit" value="${esc(r.unit)}" placeholder="шт" data-i="${i}" data-f="unit"></td>
-        <td><input class="inp-num" value="${r.qty}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
+        <td><input class="inp-num" value="${fmtQty(r.qty)}" placeholder="0" data-i="${i}" data-f="qty" type="number" min="0"></td>
         <td><input class="inp-num" value="${r.price || ''}" placeholder="0" data-i="${i}" data-f="price" type="number" min="0"></td>
-        <td class="td-total">${r.total ? fmtInt(r.total) : ''}</td>
+        <td class="td-total">${r.total ? fmtRub(r.total) : ''}</td>
         <td><input class="inp-note" value="${esc(r.note || '')}" placeholder="Примечание" data-i="${i}" data-f="note"></td>
         <td><button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button></td>`;
     }
@@ -200,7 +204,7 @@ function _bindMatEvents(tbody) {
         const r = appState.matRows[i];
         r.total = (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0);
         const td = e.target.closest('tr').querySelector('.td-total');
-        if (td) td.textContent = r.total ? fmtInt(r.total) : '';
+        if (td) td.textContent = r.total ? fmtRub(r.total) : '';
         updateTotals();
         _updateSectionBadge(tbody, appState.matRows, i);
       }
@@ -225,7 +229,7 @@ function _updateSectionBadge(tbody, rows, changedIdx) {
   if (sectionIdx === -1) return;
 
   const secTotal = _sectionTotal(rows, sectionIdx);
-  const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
+  const secTotalStr = secTotal > 0 ? fmtRub(secTotal) : '';
 
   for (const tr of tbody.querySelectorAll('tr.row-section')) {
     if (+tr.dataset.rowIdx === sectionIdx) {
