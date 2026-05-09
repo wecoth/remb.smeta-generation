@@ -167,18 +167,25 @@ export function renderSmrTable() {
       const collapsed = appState.smrCollapsed.has(r._uid);
       const secTotal = _sectionTotal(rows, i);
       const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
-      const arrow = collapsed ? '▶' : '▼';
+      const uid = r._uid;
 
       tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
-      tr.dataset.uid = r._uid;
+      tr.dataset.uid = uid;
       tr.style.cursor = 'pointer';
+      // onclick прямо на tr — до initRowDnd, поэтому не перехватывается
+      tr.onclick = function(e) {
+        if (e.target.closest('input') || e.target.closest('.btn-row-del')) return;
+        if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
+        appState.smrCollapsed.has(uid)
+          ? appState.smrCollapsed.delete(uid)
+          : appState.smrCollapsed.add(uid);
+        renderSmrTable();
+      };
       tr.innerHTML = `
         <td colspan="2"></td>
-        <td colspan="3">
-          <span class="section-arrow">${arrow}</span>
-          <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name">
+        <td colspan="4">
+          <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name" style="max-width:420px;width:50%">
         </td>
-        <td></td>
         <td class="td-total section-total-cell">${secTotalStr}</td>
         <td></td>
         <td><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
@@ -236,21 +243,6 @@ export function renderSmrTable() {
 function _bindSmrEvents(tbody) {
   const activeRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
 
-  // Клик по строке раздела (не по инпуту и не по крестику) — сворачивает
-  tbody.querySelectorAll('tr.row-section').forEach(tr => {
-    tr.addEventListener('click', e => {
-      if (e.target.closest('input') || e.target.closest('.btn-row-del')) return;
-      const uid = tr.dataset.uid;
-      if (!uid) return;
-      if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
-      if (appState.smrCollapsed.has(uid)) {
-        appState.smrCollapsed.delete(uid);
-      } else {
-        appState.smrCollapsed.add(uid);
-      }
-      renderSmrTable();
-    });
-  });
 
   tbody.querySelectorAll('input, select').forEach(inp => {
     const onEdit = e => {
