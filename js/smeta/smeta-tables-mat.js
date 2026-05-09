@@ -1,6 +1,6 @@
 // ─── smeta-tables-mat.js ───────────────────────────────────────────
 // Блок 3: Таблица материалов.
-// Аналог SMR без двойного режима и без Gantt-синхронизации.
+// v2: сворачиваемые разделы + сумма раздела в заголовке
 
 import { appState }                         from '../state.js';
 import { esc, fmtInt,
@@ -8,6 +8,9 @@ import { esc, fmtInt,
          buildInsertZoneTr }                from './smeta-utils.js';
 import { parseExcelFile }                   from './smeta-excel.js';
 import { updateTotals }                     from './smeta-header.js';
+
+// Хранилище свёрнутых секций материалов
+if (!appState.matCollapsed) appState.matCollapsed = new Set();
 
 // ── Публичный API ──────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ export function insertMatRow(afterIdx, isSection = false) {
 
 export function clearMat() {
   appState.matRows = [];
+  appState.matCollapsed = new Set();
   updateTotals();
 }
 
@@ -73,28 +77,68 @@ export function getMatTotal() {
   return appState.matRows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 
+// ── Считаем сумму раздела ──────────────────────────────────────────
+
+function _sectionTotal(rows, sectionIdx) {
+  let sum = 0;
+  for (let j = sectionIdx + 1; j < rows.length; j++) {
+    if (rows[j].isSection) break;
+    sum += rows[j].total || 0;
+  }
+  return sum;
+}
+
 // ── Рендер ─────────────────────────────────────────────────────────
 
 export function renderMatTable() {
   const tbody = document.getElementById('matTbody');
   if (!tbody) return;
+  if (!appState.matCollapsed) appState.matCollapsed = new Set();
   tbody.innerHTML = '';
   let idx = 0;
 
+  let currentSectionUid = null;
+  let currentSectionCollapsed = false;
+
   appState.matRows.forEach((r, i) => {
-    tbody.appendChild(buildInsertZoneTr(i, 'mat'));
+    if (r.isSection) {
+      // У строк материалов может не быть _uid — добавляем на лету
+      if (!r._uid) r._uid = 'mat_' + i + '_' + Math.random().toString(36).slice(2, 7);
+      currentSectionUid = r._uid;
+      currentSectionCollapsed = appState.matCollapsed.has(r._uid);
+    }
+
+    if (!currentSectionCollapsed || r.isSection) {
+      tbody.appendChild(buildInsertZoneTr(i, 'mat'));
+    }
 
     const tr = document.createElement('tr');
     tr.draggable = false;
     tr.dataset.rowIdx = i;
 
     if (r.isSection) {
-      tr.className = 'row-section';
+      const collapsed = appState.matCollapsed.has(r._uid);
+      const secTotal = _sectionTotal(appState.matRows, i);
+      const secTotalStr = secTotal > 0 ? fmtInt(secTotal) + ' ₽' : '';
+      const arrow = collapsed ? '▶' : '▼';
+
+      tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
       tr.innerHTML = `
-        <td colspan="2"></td>
-        <td colspan="4"><input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name"></td>
-        <td colspan="2"><button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button></td>`;
+        <td colspan="2" style="width:36px">
+          <button class="btn-section-toggle" data-uid="${r._uid}" data-table="mat" title="${collapsed ? 'Развернуть' : 'Свернуть'}">${arrow}</button>
+        </td>
+        <td colspan="4" style="position:relative">
+          <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name">
+          ${secTotalStr ? `<span class="section-total-badge">${secTotalStr}</span>` : ''}
+        </td>
+        <td colspan="2">
+          <button class="btn-row-del" data-i="${i}" data-table="mat" title="Удалить">×</button>
+        </td>`;
     } else {
+      if (currentSectionCollapsed) {
+        tr.style.display = 'none';
+        tr.dataset.hiddenBySection = currentSectionUid;
+      }
       idx++;
       tr.innerHTML = `
         <td class="td-drag" title="Перетащить">⠿</td>
@@ -110,7 +154,9 @@ export function renderMatTable() {
     tbody.appendChild(tr);
   });
 
-  tbody.appendChild(buildInsertZoneTr(appState.matRows.length, 'mat'));
+  if (!currentSectionCollapsed) {
+    tbody.appendChild(buildInsertZoneTr(appState.matRows.length, 'mat'));
+  }
 
   _bindMatEvents(tbody);
   initInsertZones(tbody, (beforeIdx, isSection) => {
@@ -134,6 +180,21 @@ export function renderMatTable() {
 // ── Привязка событий ───────────────────────────────────────────────
 
 function _bindMatEvents(tbody) {
+  // Кнопки сворачивания
+  tbody.querySelectorAll('.btn-section-toggle[data-table="mat"]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const uid = btn.dataset.uid;
+      if (!appState.matCollapsed) appState.matCollapsed = new Set();
+      if (appState.matCollapsed.has(uid)) {
+        appState.matCollapsed.delete(uid);
+      } else {
+        appState.matCollapsed.add(uid);
+      }
+      renderMatTable();
+    });
+  });
+
   tbody.querySelectorAll('input, select').forEach(inp => {
     inp.addEventListener('input', e => {
       const i = +e.target.dataset.i;
@@ -145,6 +206,7 @@ function _bindMatEvents(tbody) {
         const td = e.target.closest('tr').querySelector('.td-total');
         if (td) td.textContent = r.total ? fmtInt(r.total) : '';
         updateTotals();
+        _updateSectionBadge(tbody, appState.matRows, i);
       }
     });
   });
@@ -156,4 +218,33 @@ function _bindMatEvents(tbody) {
       updateTotals();
     });
   });
+}
+
+// Обновить badge суммы раздела без полного перерендера
+function _updateSectionBadge(tbody, rows, changedIdx) {
+  let sectionIdx = -1;
+  for (let j = changedIdx; j >= 0; j--) {
+    if (rows[j]?.isSection) { sectionIdx = j; break; }
+  }
+  if (sectionIdx === -1) return;
+
+  const secTotal = _sectionTotal(rows, sectionIdx);
+  const secTotalStr = secTotal > 0 ? fmtInt(secTotal) + ' ₽' : '';
+
+  for (const tr of tbody.querySelectorAll('tr.row-section')) {
+    if (+tr.dataset.rowIdx === sectionIdx) {
+      let badge = tr.querySelector('.section-total-badge');
+      if (secTotalStr) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'section-total-badge';
+          tr.querySelector('td:nth-child(2)')?.appendChild(badge);
+        }
+        badge.textContent = secTotalStr;
+      } else if (badge) {
+        badge.remove();
+      }
+      break;
+    }
+  }
 }
