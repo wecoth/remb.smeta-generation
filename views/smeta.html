@@ -161,27 +161,7 @@
                     <th style="width:30px"></th>
                   </tr>
                 </thead>
-                <tbody id="smrTbody">
-                  <tr class="tr-insert-zone tr-insert-zone--top" id="smrTopInsert">
-                    <td colspan="9">
-                      <div class="tr-insert-btn open">
-                        <div class="tr-insert-line"></div>
-                        <div class="tr-insert-plus-wrap" id="smrTopPlusWrap">
-                          <button class="tr-insert-plus" id="smrTopPlusBtn" title="Вставить в начало">+</button>
-                          <div class="tr-insert-dropdown" id="smrTopDropdown">
-                            <div class="tr-insert-dd-item dd-row" onclick="window._smetaModule.addSmrRowAt(0,false); document.getElementById('smrTopPlusWrap').classList.remove('open')">
-                              <span class="dd-dot"></span>Строка
-                            </div>
-                            <div class="tr-insert-dd-item dd-sec" onclick="window._smetaModule.addSmrRowAt(0,true); document.getElementById('smrTopPlusWrap').classList.remove('open')">
-                              <span class="dd-dot"></span>Раздел
-                            </div>
-                          </div>
-                        </div>
-                        <div class="tr-insert-line"></div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
+                <tbody id="smrTbody"></tbody>
               </table>
             </div>
             <div class="tbl-footer">
@@ -349,59 +329,6 @@
   }
 
   hookDaysInput();
-
-  // ── Top insert zone plus button toggle ──────────────────
-  document.addEventListener('click', function(e) {
-    var btn = document.getElementById('smrTopPlusBtn');
-    var wrap = document.getElementById('smrTopPlusWrap');
-    if (!btn || !wrap) return;
-    if (btn.contains(e.target)) {
-      wrap.classList.toggle('open');
-      e.stopPropagation();
-    } else if (!wrap.contains(e.target)) {
-      wrap.classList.remove('open');
-    }
-  });
-
-  // ── Restore top insert row after smrTbody re-renders ────
-  // JS-модуль перезаписывает innerHTML smrTbody при каждом рендере.
-  // MutationObserver следит и вставляет tr-зону обратно первой строкой.
-  function buildTopInsertTr() {
-    var tr = document.createElement('tr');
-    tr.className = 'tr-insert-zone tr-insert-zone--top';
-    tr.id = 'smrTopInsert';
-    tr.innerHTML = '<td colspan="9">' +
-      '<div class="tr-insert-btn open">' +
-        '<div class="tr-insert-line"></div>' +
-        '<div class="tr-insert-plus-wrap" id="smrTopPlusWrap">' +
-          '<button class="tr-insert-plus" id="smrTopPlusBtn" title="Вставить в начало">+</button>' +
-          '<div class="tr-insert-dropdown" id="smrTopDropdown">' +
-            '<div class="tr-insert-dd-item dd-row" onclick="window._smetaModule.addSmrRowAt(0,false);document.getElementById(\'smrTopPlusWrap\').classList.remove(\'open\')">' +
-              '<span class="dd-dot"></span>Строка' +
-            '</div>' +
-            '<div class="tr-insert-dd-item dd-sec" onclick="window._smetaModule.addSmrRowAt(0,true);document.getElementById(\'smrTopPlusWrap\').classList.remove(\'open\')">' +
-              '<span class="dd-dot"></span>Раздел' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="tr-insert-line"></div>' +
-      '</div>' +
-    '</td>';
-    return tr;
-  }
-
-  function ensureTopInsertZone() {
-    var tbody = document.getElementById('smrTbody');
-    if (!tbody) return;
-    if (tbody.firstChild && tbody.firstChild.id === 'smrTopInsert') return;
-    tbody.insertBefore(buildTopInsertTr(), tbody.firstChild);
-  }
-
-  var smrTbody = document.getElementById('smrTbody');
-  if (smrTbody) {
-    var obs = new MutationObserver(function() { ensureTopInsertZone(); });
-    obs.observe(smrTbody, { childList: true });
-  }
 })();
 </script>
 
