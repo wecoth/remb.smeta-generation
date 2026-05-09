@@ -1020,53 +1020,36 @@
 
 /* ══════════════════════════════════════════════════════
    ДОБАВИТЬ В КОНЕЦ smeta.css
-   Сворачиваемые разделы + badge суммы раздела
+   Сворачиваемые разделы + сумма раздела
    ══════════════════════════════════════════════════════ */
 
-/* Кнопка сворачивания раздела */
-.btn-section-toggle {
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--text-3);
+/* Стрелка внутри ячейки названия раздела */
+.section-arrow {
   font-size: 9px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background .1s, color .1s;
-  padding: 0;
-  flex-shrink: 0;
+  color: var(--text-3);
+  margin-right: 6px;
+  display: inline-block;
+  transition: color .15s;
+  user-select: none;
 }
-.btn-section-toggle:hover {
-  background: var(--bg-hover);
+.row-section:hover .section-arrow {
   color: var(--accent);
 }
 
-/* Строка раздела в свёрнутом состоянии */
-.row-section--collapsed {
-  opacity: 0.85;
+/* Строка раздела — ховер подсказывает что кликабельна */
+tr.row-section:hover td {
+  background: var(--bg-soft);
 }
+
+/* Свёрнутый раздел — чуть приглушён */
 .row-section--collapsed .inp-section {
   font-style: italic;
+  color: var(--text-2);
 }
 
-/* Badge суммы раздела */
-.section-total-badge {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
+/* Сумма раздела в колонке Сумма ₽ */
+.section-total-cell {
+  font-weight: 700 !important;
+  color: var(--accent) !important;
   font-family: var(--font-mono);
-  background: var(--accent-soft);
-  border-radius: 4px;
-  padding: 2px 7px;
-  white-space: nowrap;
-  pointer-events: none;
-  letter-spacing: .2px;
 }
