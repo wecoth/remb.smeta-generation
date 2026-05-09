@@ -90,7 +90,7 @@
 
   /* ── Scroll area ─────────────────────────────────────── */
   .smeta-scroll {
-    flex: 1; overflow-y: auto; padding: 0;
+    flex: 1; overflow-y: auto; padding: 0 50px 48px;
     display: flex; flex-direction: column; gap: 0;
     align-items: stretch; background: var(--bg-page);
   }
@@ -106,10 +106,13 @@
     background: var(--bg-card);
     border-radius: 0; overflow: visible;
     border: none;
-    border-bottom: 1px solid var(--border-1);
+    border-top: 1px solid var(--border-1);
+    margin-top: 24px;
+    padding-bottom: 8px;
     box-shadow: none;
     transition: none;
   }
+  .scard:first-child { margin-top: 24px; border-top: none; }
 
   /* Spinner/number inputs — no arrows */
   table.smeta-tbl input[type=number]::-webkit-inner-spin-button,
