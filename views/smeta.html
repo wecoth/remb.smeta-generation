@@ -3,6 +3,83 @@
 <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/smeta.css">
 
+<style>
+/* ── Калькулятор ──────────────────────────────────────── */
+.smeta-calc {
+  background: #FFFFFF;
+  border: 1px solid #D6E0D8;
+  border-radius: 14px;
+  overflow: hidden;
+  width: 260px;
+  font-family: 'Merriweather', Georgia, serif;
+  box-shadow: 0 1px 4px rgba(15,110,86,.06);
+  flex-shrink: 0;
+  position: sticky;
+  top: 16px;
+}
+.calc-display {
+  background: #F0F4F1;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #D6E0D8;
+}
+.calc-expr {
+  font-size: 11px;
+  color: #9aada2;
+  min-height: 16px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  letter-spacing: .3px;
+}
+.calc-main-val {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a1f1b;
+  text-align: right;
+  line-height: 1.15;
+  letter-spacing: -.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.calc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  background: #FFFFFF;
+  padding: 8px;
+  gap: 6px;
+}
+.calc-btn {
+  background: #FAFCFA;
+  border: 1px solid #D6E0D8;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1f1b;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .1s, border-color .1s;
+  font-family: 'Merriweather', Georgia, serif;
+  letter-spacing: .1px;
+}
+.calc-btn:hover { background: #E8F0EB; border-color: #b8d0bc; }
+.calc-btn:active { background: #E1F5EE; }
+.calc-btn.op { color: #0F6E56; font-size: 18px; font-weight: 400; background: #F0F4F1; }
+.calc-btn.op:hover { background: #E1F5EE; }
+.calc-btn.fn { color: #5a6860; font-size: 12px; }
+.calc-btn.ac { color: #b83232; }
+.calc-btn.eq { background: #0F6E56; color: #fff; font-size: 18px; border-color: #0a4f3e; }
+.calc-btn.eq:hover { background: #0d6350; }
+.calc-btn.eq:active { background: #0a4f3e; }
+.calc-btn.zero { grid-column: span 2; }
+</style>
 
 <div id="smetaView" style="height:100%;overflow:hidden">
 <div class="smeta-screen">
@@ -128,101 +205,144 @@
           </div><!-- /obj-meta-right -->
 
         </div><!-- /obj-body-row -->
-      </div>
+      </div><!-- /BLOCK 1 -->
 
-      <!-- BLOCK 2: Смета работ (СМР) -->
-      <div class="scard" id="smrScard">
-        <div class="scard-head" data-collapse="1">
-          <div class="scard-num">2</div>
-          <div class="scard-label">Смета работ (СМР)</div>
-          <div class="scard-meta" id="smrCount">0 позиций</div>
-          <div class="smr-mode-toggle">
-            <button class="smr-mode-btn active" id="smrBtnClient" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('client'); document.getElementById('smrScard').classList.remove('scard--masters')">Заказчику</button>
-            <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('masters'); document.getElementById('smrScard').classList.add('scard--masters')">Мастерам</button>
-          </div>
-          <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
-          <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
-          <div class="scard-arrow">▾</div>
-        </div>
-        <div class="scard-body">
-          <div id="smrTableWrap">
-            <div class="smeta-table-wrap">
-              <table class="smeta-tbl">
-                <thead>
-                  <tr>
-                    <th style="width:30px"></th>
-                    <th style="width:32px">№</th>
-                    <th>Наименование работы</th>
-                    <th style="width:74px">Ед.</th>
-                    <th style="width:74px;text-align:right">Кол-во</th>
-                    <th style="width:74px;text-align:right">Цена ₽</th>
-                    <th style="width:74px;text-align:right">Сумма ₽</th>
-                    <th style="width:120px">Примечание</th>
-                    <th style="width:30px"></th>
-                  </tr>
-                </thead>
-                <tbody id="smrTbody"></tbody>
-              </table>
-            </div>
-            <div class="tbl-footer">
-              <div class="tbl-footer-actions">
-                <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(false)">+ Строка</button>
-                <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(true)">+ Раздел</button>
-                <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearSmr()">Очистить</button>
-              </div>
-              <div>
-                <span class="tbl-footer-total-lbl">Итого СМР:</span>
-                <span class="tbl-footer-total" id="smrFootTotal">0 ₽</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- WRAPPER: блоки 2+3 слева, калькулятор справа -->
+      <div style="display:flex; gap:16px; align-items:flex-start; margin-top:16px;">
 
-      <!-- BLOCK 3: Смета материалов -->
-      <div class="scard">
-        <div class="scard-head" data-collapse="1">
-          <div class="scard-num">3</div>
-          <div class="scard-label">Смета материалов</div>
-          <div class="scard-meta" id="matCount">0 позиций</div>
-          <input type="file" id="matFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleMat(event)">
-          <button class="scard-upload-btn" onclick="document.getElementById('matFileInput').click()">↑ Загрузить</button>
-          <div class="scard-arrow">▾</div>
-        </div>
-        <div class="scard-body">
-          <div id="matTableWrap">
-            <div class="smeta-table-wrap">
-              <table class="smeta-tbl">
-                <thead>
-                  <tr>
-                    <th style="width:30px"></th>
-                    <th style="width:32px">№</th>
-                    <th>Наименование материала</th>
-                    <th style="width:74px">Ед.</th>
-                    <th style="width:74px;text-align:right">Кол-во</th>
-                    <th style="width:74px;text-align:right">Цена ₽</th>
-                    <th style="width:74px;text-align:right">Сумма ₽</th>
-                    <th style="width:120px">Примечание</th>
-                    <th style="width:30px"></th>
-                  </tr>
-                </thead>
-                <tbody id="matTbody"></tbody>
-              </table>
-            </div>
-            <div class="tbl-footer">
-              <div class="tbl-footer-actions">
-                <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(false)">+ Строка</button>
-                <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(true)">+ Раздел</button>
-                <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearMat()">Очистить</button>
+        <!-- Левая колонка: блоки 2 и 3 -->
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:16px;">
+
+          <!-- BLOCK 2: Смета работ (СМР) -->
+          <div class="scard" style="margin-top:0" id="smrScard">
+            <div class="scard-head" data-collapse="1">
+              <div class="scard-num">2</div>
+              <div class="scard-label">Смета работ (СМР)</div>
+              <div class="scard-meta" id="smrCount">0 позиций</div>
+              <div class="smr-mode-toggle">
+                <button class="smr-mode-btn active" id="smrBtnClient" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('client'); document.getElementById('smrScard').classList.remove('scard--masters')">Заказчику</button>
+                <button class="smr-mode-btn masters" id="smrBtnMasters" onclick="event.stopPropagation(); window._smetaModule.setSmrMode('masters'); document.getElementById('smrScard').classList.add('scard--masters')">Мастерам</button>
               </div>
-              <div>
-                <span class="tbl-footer-total-lbl">Итого материалы:</span>
-                <span class="tbl-footer-total" id="matFootTotal">0 ₽</span>
+              <input type="file" id="smrFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleSmr(event)">
+              <button class="scard-upload-btn" onclick="document.getElementById('smrFileInput').click()">↑ Загрузить</button>
+              <div class="scard-arrow">▾</div>
+            </div>
+            <div class="scard-body">
+              <div id="smrTableWrap">
+                <div class="smeta-table-wrap">
+                  <table class="smeta-tbl">
+                    <thead>
+                      <tr>
+                        <th style="width:30px"></th>
+                        <th style="width:32px">№</th>
+                        <th>Наименование работы</th>
+                        <th style="width:74px">Ед.</th>
+                        <th style="width:74px;text-align:right">Кол-во</th>
+                        <th style="width:74px;text-align:right">Цена ₽</th>
+                        <th style="width:74px;text-align:right">Сумма ₽</th>
+                        <th style="width:120px">Примечание</th>
+                        <th style="width:30px"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="smrTbody"></tbody>
+                  </table>
+                </div>
+                <div class="tbl-footer">
+                  <div class="tbl-footer-actions">
+                    <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(false)">+ Строка</button>
+                    <button class="tbl-add-btn" onclick="window._smetaModule.addSmrRow(true)">+ Раздел</button>
+                    <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearSmr()">Очистить</button>
+                  </div>
+                  <div>
+                    <span class="tbl-footer-total-lbl">Итого СМР:</span>
+                    <span class="tbl-footer-total" id="smrFootTotal">0 ₽</span>
+                  </div>
+                </div>
               </div>
             </div>
+          </div><!-- /BLOCK 2 -->
+
+          <!-- BLOCK 3: Смета материалов -->
+          <div class="scard" style="margin-top:0">
+            <div class="scard-head" data-collapse="1">
+              <div class="scard-num">3</div>
+              <div class="scard-label">Смета материалов</div>
+              <div class="scard-meta" id="matCount">0 позиций</div>
+              <input type="file" id="matFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="window._smetaModule.handleMat(event)">
+              <button class="scard-upload-btn" onclick="document.getElementById('matFileInput').click()">↑ Загрузить</button>
+              <div class="scard-arrow">▾</div>
+            </div>
+            <div class="scard-body">
+              <div id="matTableWrap">
+                <div class="smeta-table-wrap">
+                  <table class="smeta-tbl">
+                    <thead>
+                      <tr>
+                        <th style="width:30px"></th>
+                        <th style="width:32px">№</th>
+                        <th>Наименование материала</th>
+                        <th style="width:74px">Ед.</th>
+                        <th style="width:74px;text-align:right">Кол-во</th>
+                        <th style="width:74px;text-align:right">Цена ₽</th>
+                        <th style="width:74px;text-align:right">Сумма ₽</th>
+                        <th style="width:120px">Примечание</th>
+                        <th style="width:30px"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="matTbody"></tbody>
+                  </table>
+                </div>
+                <div class="tbl-footer">
+                  <div class="tbl-footer-actions">
+                    <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(false)">+ Строка</button>
+                    <button class="tbl-add-btn" onclick="window._smetaModule.addMatRow(true)">+ Раздел</button>
+                    <button class="tbl-add-btn" style="color:#e05c5c" onclick="window._smetaModule.clearMat()">Очистить</button>
+                  </div>
+                  <div>
+                    <span class="tbl-footer-total-lbl">Итого материалы:</span>
+                    <span class="tbl-footer-total" id="matFootTotal">0 ₽</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div><!-- /BLOCK 3 -->
+
+        </div><!-- /левая колонка -->
+
+        <!-- КАЛЬКУЛЯТОР -->
+        <div class="smeta-calc" id="smetaCalcWidget">
+          <div class="calc-display">
+            <div class="calc-expr" id="cExpr">&nbsp;</div>
+            <div class="calc-main-val" id="cVal">0</div>
           </div>
-        </div>
-      </div>
+          <div class="calc-grid">
+            <button class="calc-btn fn ac" data-action="ac">AC</button>
+            <button class="calc-btn fn" data-action="sign">+/−</button>
+            <button class="calc-btn fn" data-action="pct">%</button>
+            <button class="calc-btn op" data-action="op" data-op="÷">÷</button>
+
+            <button class="calc-btn" data-action="digit" data-d="7">7</button>
+            <button class="calc-btn" data-action="digit" data-d="8">8</button>
+            <button class="calc-btn" data-action="digit" data-d="9">9</button>
+            <button class="calc-btn op" data-action="op" data-op="×">×</button>
+
+            <button class="calc-btn" data-action="digit" data-d="4">4</button>
+            <button class="calc-btn" data-action="digit" data-d="5">5</button>
+            <button class="calc-btn" data-action="digit" data-d="6">6</button>
+            <button class="calc-btn op" data-action="op" data-op="−">−</button>
+
+            <button class="calc-btn" data-action="digit" data-d="1">1</button>
+            <button class="calc-btn" data-action="digit" data-d="2">2</button>
+            <button class="calc-btn" data-action="digit" data-d="3">3</button>
+            <button class="calc-btn op" data-action="op" data-op="+">+</button>
+
+            <button class="calc-btn zero" data-action="digit" data-d="0">0</button>
+            <button class="calc-btn" data-action="dot">.</button>
+            <button class="calc-btn eq" data-action="eq">=</button>
+          </div>
+        </div><!-- /калькулятор -->
+
+      </div><!-- /wrapper блоки 2+3 + калькулятор -->
 
       <!-- BLOCK 4: График производства работ (Ганtt) -->
       <div class="scard">
@@ -289,7 +409,6 @@
 (function() {
   function toInputDate(d) { return d.toISOString().slice(0, 10); }
 
-  // Добавить N рабочих дней (пн-пт) к дате
   function addWorkingDays(date, days) {
     var d = new Date(date);
     var added = 0;
@@ -301,34 +420,92 @@
     return d;
   }
 
-  // Пересчитать финиш при изменении старта
   window._calcFinish = function() {
     var startEl  = document.getElementById('hdrStart');
     var finishEl = document.getElementById('hdrFinish');
     var daysEl   = document.getElementById('totalDaysSlider');
     if (!startEl || !startEl.value) return;
     var days = parseInt(daysEl ? daysEl.value : '') || 0;
-    if (!days) {
-      // Нет данных — сбрасываем финиш
-      finishEl.value = '';
-      return;
-    }
+    if (!days) { finishEl.value = ''; return; }
     var finish = addWorkingDays(new Date(startEl.value), days);
     finishEl.value = toInputDate(finish);
     var hdrDays = document.getElementById('hdrDays');
     if (hdrDays) hdrDays.textContent = days + ' дн.';
   };
 
-  // При изменении слайдера дней — пересчитать финиш
   function hookDaysInput() {
     var daysEl = document.getElementById('totalDaysSlider');
     if (!daysEl) return;
-    daysEl.addEventListener('input', function() {
-      window._calcFinish();
-    });
+    daysEl.addEventListener('input', function() { window._calcFinish(); });
+  }
+  hookDaysInput();
+})();
+
+/* ── Калькулятор ── */
+(function() {
+  var display = document.getElementById('cVal');
+  var expr    = document.getElementById('cExpr');
+  var cur = '0', prev = null, op = null, fresh = false;
+
+  function fmt(v) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return '0';
+    var s = parseFloat(n.toPrecision(10)).toString();
+    if (s.length > 12) s = parseFloat(n.toPrecision(6)).toString();
+    return s;
+  }
+  function show() { display.textContent = fmt(cur); }
+
+  function applyOp(a, o, b) {
+    a = parseFloat(a); b = parseFloat(b);
+    if (o === '+') return a + b;
+    if (o === '−') return a - b;
+    if (o === '×') return a * b;
+    if (o === '÷') return b !== 0 ? a / b : 0;
+    return b;
   }
 
-  hookDaysInput();
+  document.getElementById('smetaCalcWidget').addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.dataset.action;
+
+    if (action === 'digit') {
+      var d = btn.dataset.d;
+      if (fresh || cur === '0') { cur = d; fresh = false; }
+      else if (cur.length < 12) cur += d;
+      show();
+    } else if (action === 'dot') {
+      if (fresh) { cur = '0.'; fresh = false; }
+      else if (cur.indexOf('.') === -1) cur += '.';
+      show();
+    } else if (action === 'ac') {
+      cur = '0'; prev = null; op = null; fresh = false;
+      expr.innerHTML = '&nbsp;';
+      show();
+    } else if (action === 'sign') {
+      cur = fmt(-parseFloat(cur));
+      show();
+    } else if (action === 'pct') {
+      cur = fmt(parseFloat(cur) / 100);
+      show();
+    } else if (action === 'op') {
+      var o = btn.dataset.op;
+      if (op && !fresh) {
+        cur = fmt(applyOp(prev, op, cur));
+        show();
+      }
+      prev = cur; op = o; fresh = true;
+      expr.textContent = fmt(prev) + ' ' + op;
+    } else if (action === 'eq') {
+      if (op && prev !== null) {
+        expr.textContent = fmt(prev) + ' ' + op + ' ' + fmt(cur) + ' =';
+        cur = fmt(applyOp(prev, op, cur));
+        prev = null; op = null; fresh = true;
+        show();
+      }
+    }
+  });
 })();
 </script>
 
