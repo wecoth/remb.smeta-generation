@@ -143,6 +143,7 @@ export function renderSmrTable() {
   if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
   tbody.innerHTML = '';
   let idx = 0;
+  let sectionIdx = 0; // счётчик разделов
 
   // Определяем, в каком разделе сейчас находимся (для скрытия строк)
   let currentSectionUid = null;
@@ -168,6 +169,8 @@ export function renderSmrTable() {
       const secTotal = _sectionTotal(rows, i);
       const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
       const uid = r._uid;
+      sectionIdx++;
+      const secNum = sectionIdx;
 
       tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
       tr.dataset.uid = uid;
@@ -182,7 +185,8 @@ export function renderSmrTable() {
         renderSmrTable();
       };
       tr.innerHTML = `
-        <td colspan="2"></td>
+        <td class="td-num" style="color:var(--accent);font-weight:700">${secNum}</td>
+        <td></td>
         <td colspan="4">
           <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name" style="max-width:420px;width:50%">
         </td>
@@ -333,4 +337,21 @@ function _makeSmrRow(isSection) {
 
 function _sumRows(rows) {
   return rows.filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
+}
+
+// ── Свернуть / Развернуть все разделы ────────────────────────────
+
+export function toggleCollapseAllSmr(btn) {
+  const rows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
+  if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
+  const sections = rows.filter(r => r.isSection && r._uid);
+  const allCollapsed = sections.every(r => appState.smrCollapsed.has(r._uid));
+  if (allCollapsed) {
+    sections.forEach(r => appState.smrCollapsed.delete(r._uid));
+    if (btn) btn.textContent = 'Свернуть всё';
+  } else {
+    sections.forEach(r => appState.smrCollapsed.add(r._uid));
+    if (btn) btn.textContent = 'Развернуть всё';
+  }
+  renderSmrTable();
 }
