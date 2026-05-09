@@ -96,6 +96,7 @@ export function renderMatTable() {
   if (!appState.matCollapsed) appState.matCollapsed = new Set();
   tbody.innerHTML = '';
   let idx = 0;
+  let sectionIdx = 0;
 
   let currentSectionUid = null;
   let currentSectionCollapsed = false;
@@ -121,6 +122,8 @@ export function renderMatTable() {
       const secTotal = _sectionTotal(appState.matRows, i);
       const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
       const uid = r._uid;
+      sectionIdx++;
+      const secNum = sectionIdx;
 
       tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
       tr.dataset.uid = uid;
@@ -134,7 +137,8 @@ export function renderMatTable() {
         renderMatTable();
       };
       tr.innerHTML = `
-        <td colspan="2"></td>
+        <td class="td-num" style="color:var(--accent);font-weight:700">${secNum}</td>
+        <td></td>
         <td colspan="4">
           <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name" style="max-width:420px;width:50%">
         </td>
@@ -230,4 +234,20 @@ function _updateSectionBadge(tbody, rows, changedIdx) {
       break;
     }
   }
+}
+
+// ── Свернуть / Развернуть все разделы ────────────────────────────
+
+export function toggleCollapseAllMat(btn) {
+  if (!appState.matCollapsed) appState.matCollapsed = new Set();
+  const sections = appState.matRows.filter(r => r.isSection && r._uid);
+  const allCollapsed = sections.every(r => appState.matCollapsed.has(r._uid));
+  if (allCollapsed) {
+    sections.forEach(r => appState.matCollapsed.delete(r._uid));
+    if (btn) btn.textContent = 'Свернуть всё';
+  } else {
+    sections.forEach(r => appState.matCollapsed.add(r._uid));
+    if (btn) btn.textContent = 'Развернуть всё';
+  }
+  renderMatTable();
 }
