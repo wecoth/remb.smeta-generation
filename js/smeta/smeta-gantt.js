@@ -29,7 +29,7 @@ export function initGantt({ onDurationChanged, onStageRenamed }) {
 
   // Дефолт — ничего не ставим, поле пустое пока нет работ
   if (!appState.totalDaysSet) {
-    appState.totalDays = 7;
+    appState.totalDays = 14;
   }
 
   _initGanttDrag();
@@ -94,7 +94,7 @@ function _initTotalDaysInput() {
       _showResetBtn(false, inp);
     }
 
-    appState.totalDays = Math.max(val, 7);
+    appState.totalDays = Math.max(val, 14);
     renderGantt();
     renderPayments_safe();
     if (typeof window._calcFinish === 'function') window._calcFinish();
@@ -129,7 +129,7 @@ function _applyAutoTotalDays() {
   const valEl = document.getElementById('totalDaysVal');
   if (inp) inp.value = autoVal > 0 ? autoVal : '';
   if (valEl) valEl.textContent = autoVal > 0 ? autoVal : '';
-  if (autoVal > 0) appState.totalDays = Math.max(autoVal, 7);
+  if (autoVal > 0) appState.totalDays = Math.max(autoVal, 14);
   if (typeof window._calcFinish === 'function') window._calcFinish();
 }
 
@@ -293,7 +293,7 @@ export function recalcTotalDaysAuto() {
     const worksEnd      = appState.worksRealEnd || 0;
     const effectiveEnd  = worksEnd > 0 ? worksEnd : maxEnd;
     _setTotalDaysDisplay(effectiveEnd);
-    if (effectiveEnd > 0) appState.totalDays = Math.max(effectiveEnd, 7);
+    if (effectiveEnd > 0) appState.totalDays = Math.max(effectiveEnd, 14);
   }
 }
 
@@ -509,10 +509,10 @@ function _renderGanttWorks(wrap) {
 
   const allWorkRows = groups.flatMap(g => g.rows);
   if (!allWorkRows.length) {
-    if (!appState.totalDays || appState.totalDays < 7) {
-      appState.totalDays = 7;
+    if (!appState.totalDays || appState.totalDays < 14) {
+      appState.totalDays = 14;
       const sl = document.getElementById('totalDaysSlider');
-      if (sl) sl.value = 7;
+      if (sl) sl.value = 14;
     }
     wrap.innerHTML = '<div style="padding:20px 0;text-align:center;font-size:12px;color:#bbb">Добавьте работы в смету — они появятся здесь</div>';
     return;
@@ -543,7 +543,7 @@ function _renderGanttWorks(wrap) {
     if (d > 0) realEnd = Math.max(realEnd, (appState.workStart[uid] || 0) + d);
   });
 
-  const totalDays = Math.max(realEnd, 7);
+  const totalDays = Math.max(realEnd, 14);
   appState.totalDays = totalDays;
   appState.worksRealEnd = realEnd;
 
@@ -768,13 +768,18 @@ function _renderGanttWorks(wrap) {
         if (trk && trk.dataset.uid) {
           const trkUid = String(trk.dataset.uid);
           const rect   = trk.getBoundingClientRect();
-          const dayPos = Math.max(0, Math.floor((ev.clientX - rect.left) / rect.width * (appState.totalDays || 1)));
+          const dayPos = Math.max(0, Math.floor((ev.clientX - rect.left) / rect.width * (appState.totalDays || 14)));
           if (!appState.workDays[trkUid] || appState.workDays[trkUid] === 0) {
             appState.workDays[trkUid] = 1;
           }
           appState.workStart[trkUid] = dayPos;
           if (!appState.workMovedManually) appState.workMovedManually = {};
           appState.workMovedManually[trkUid] = true;
+          // Растягиваем шкалу если дроп ушёл вправо
+          const barEnd = dayPos + (appState.workDays[trkUid] || 1);
+          if (barEnd + 3 > appState.totalDays) {
+            appState.totalDays = barEnd + 5;
+          }
           // Синхронизируем инпут дней в этой строке
           const rowDaysInp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${trkUid}"]`);
           if (rowDaysInp) {
@@ -795,6 +800,20 @@ function _renderGanttWorks(wrap) {
     });
   });
 
+  // ── Резиновая шкала ──────────────────────────────────────────────
+  // barEnd — правый конец бара в днях.
+  // Если он ближе чем 3 дня к правому краю шкалы — расширяем totalDays.
+  // trackW пересчитывается после расширения.
+  function _stretch(track, barEnd) {
+    const BUFFER = 3;
+    if (barEnd + BUFFER > appState.totalDays) {
+      // Расширяем с запасом чтобы не дёргало на каждый пиксель
+      appState.totalDays = barEnd + BUFFER + 2;
+      _renderGanttRuler();
+    }
+    return track.getBoundingClientRect().width;
+  }
+
   // ── Drag бара (перемещение) ───────────────────────────────────
   wrap.querySelectorAll('.gantt-work-bar').forEach(bar => {
     const uid = bar.dataset.uid;
@@ -802,19 +821,25 @@ function _renderGanttWorks(wrap) {
       if (e.target.classList.contains('gantt-handle')) return;
       e.preventDefault(); e.stopPropagation();
       const track     = bar.closest('.gantt-track');
-      const trackW    = track.getBoundingClientRect().width;
       const startX    = e.clientX;
       const origStart = appState.workStart[uid] || 0;
-      const tDays     = appState.totalDays || 1;
+      const origDays  = appState.workDays[uid]  || 1;
       document.body.style.cursor    = 'grabbing';
       document.body.style.userSelect = 'none';
 
       function onMove(ev) {
+        // trackW и tDays пересчитываем каждый раз — шкала могла растянуться
+        let trackW = track.getBoundingClientRect().width;
+        const tDays = appState.totalDays || 14;
         const delta = Math.round((ev.clientX - startX) / trackW * tDays);
-        appState.workStart[uid] = Math.max(0, origStart + delta);
+        const newStart = Math.max(0, origStart + delta);
+        appState.workStart[uid] = newStart;
         if (!appState.workMovedManually) appState.workMovedManually = {};
         appState.workMovedManually[uid] = true;
-        _renderGanttWorks(wrap); _renderGanttRuler();
+        // Растягиваем если бар подошёл к краю
+        trackW = _stretch(track, newStart + origDays);
+        _renderGanttWorks(wrap);
+        _renderGanttRuler();
       }
       function onUp() {
         document.body.style.cursor = ''; document.body.style.userSelect = '';
@@ -833,25 +858,30 @@ function _renderGanttWorks(wrap) {
       e.preventDefault(); e.stopPropagation();
       const uid    = h.dataset.uid;
       const track  = h.closest('.gantt-track');
-      const trackW = track.getBoundingClientRect().width;
       const startX = e.clientX;
-      const origD  = appState.workDays[uid] || 1;
-      const tDays  = appState.totalDays || 1;
+      const origD  = appState.workDays[uid]  || 1;
+      const origS  = appState.workStart[uid] || 0;
       document.body.style.cursor    = 'ew-resize';
       document.body.style.userSelect = 'none';
 
       function onMove(ev) {
+        let trackW = track.getBoundingClientRect().width;
+        const tDays = appState.totalDays || 14;
         const delta = Math.round((ev.clientX - startX) / trackW * tDays);
-        appState.workDays[uid] = Math.max(1, origD + delta);
+        const newD  = Math.max(1, origD + delta);
+        appState.workDays[uid] = newD;
         if (!appState.workMovedManually) appState.workMovedManually = {};
         appState.workMovedManually[uid] = true;
+        // Растягиваем если resize ушёл вправо
+        trackW = _stretch(track, origS + newD);
         // Синхронизируем инпут
         const rowDaysInp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
         if (rowDaysInp) {
-          rowDaysInp.value = appState.workDays[uid];
+          rowDaysInp.value = newD;
           rowDaysInp.style.fontWeight = '600';
         }
-        _renderGanttWorks(wrap); _renderGanttRuler();
+        _renderGanttWorks(wrap);
+        _renderGanttRuler();
       }
       function onUp() {
         document.body.style.cursor = ''; document.body.style.userSelect = '';
