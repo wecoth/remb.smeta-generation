@@ -166,21 +166,22 @@ export function renderSmrTable() {
     if (r.isSection) {
       const collapsed = appState.smrCollapsed.has(r._uid);
       const secTotal = _sectionTotal(rows, i);
-      const secTotalStr = secTotal > 0 ? fmtInt(secTotal) + ' ₽' : '';
+      const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
       const arrow = collapsed ? '▶' : '▼';
 
       tr.className = 'row-section' + (collapsed ? ' row-section--collapsed' : '');
+      tr.dataset.uid = r._uid;
+      tr.style.cursor = 'pointer';
       tr.innerHTML = `
-        <td colspan="2" style="width:36px">
-          <button class="btn-section-toggle" data-uid="${r._uid}" title="${collapsed ? 'Развернуть' : 'Свернуть'}">${arrow}</button>
-        </td>
-        <td colspan="4" style="position:relative">
+        <td colspan="2"></td>
+        <td colspan="3">
+          <span class="section-arrow">${arrow}</span>
           <input class="inp-section" value="${esc(r.name)}" placeholder="Название раздела" data-i="${i}" data-f="name">
-          ${secTotalStr ? `<span class="section-total-badge">${secTotalStr}</span>` : ''}
         </td>
-        <td colspan="2">
-          <button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button>
-        </td>`;
+        <td></td>
+        <td class="td-total section-total-cell">${secTotalStr}</td>
+        <td></td>
+        <td><button class="btn-row-del" data-i="${i}" data-table="smr" title="Удалить">×</button></td>`;
     } else {
       // Скрываем строки свёрнутого раздела
       if (currentSectionCollapsed) {
@@ -235,11 +236,12 @@ export function renderSmrTable() {
 function _bindSmrEvents(tbody) {
   const activeRows = appState.smrMode === 'masters' ? appState.smrRowsMasters : appState.smrRows;
 
-  // Кнопки сворачивания секций
-  tbody.querySelectorAll('.btn-section-toggle').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const uid = btn.dataset.uid;
+  // Клик по строке раздела (не по инпуту и не по крестику) — сворачивает
+  tbody.querySelectorAll('tr.row-section').forEach(tr => {
+    tr.addEventListener('click', e => {
+      if (e.target.closest('input') || e.target.closest('.btn-row-del')) return;
+      const uid = tr.dataset.uid;
+      if (!uid) return;
       if (!appState.smrCollapsed) appState.smrCollapsed = new Set();
       if (appState.smrCollapsed.has(uid)) {
         appState.smrCollapsed.delete(uid);
@@ -309,9 +311,8 @@ function _bindSmrEvents(tbody) {
   });
 }
 
-// Обновить badge суммы раздела у строки-секции без полного перерендера
+// Обновить сумму раздела у строки-секции без полного перерендера
 function _updateSectionBadge(tbody, rows, changedIdx) {
-  // Найти индекс секции для этой строки
   let sectionIdx = -1;
   for (let j = changedIdx; j >= 0; j--) {
     if (rows[j]?.isSection) { sectionIdx = j; break; }
@@ -319,22 +320,12 @@ function _updateSectionBadge(tbody, rows, changedIdx) {
   if (sectionIdx === -1) return;
 
   const secTotal = _sectionTotal(rows, sectionIdx);
-  const secTotalStr = secTotal > 0 ? fmtInt(secTotal) + ' ₽' : '';
+  const secTotalStr = secTotal > 0 ? fmtInt(secTotal) : '';
 
-  // Найти TR секции в DOM
   for (const tr of tbody.querySelectorAll('tr.row-section')) {
     if (+tr.dataset.rowIdx === sectionIdx) {
-      let badge = tr.querySelector('.section-total-badge');
-      if (secTotalStr) {
-        if (!badge) {
-          badge = document.createElement('span');
-          badge.className = 'section-total-badge';
-          tr.querySelector('td:nth-child(2)')?.appendChild(badge);
-        }
-        badge.textContent = secTotalStr;
-      } else if (badge) {
-        badge.remove();
-      }
+      const cell = tr.querySelector('.section-total-cell');
+      if (cell) cell.textContent = secTotalStr;
       break;
     }
   }
