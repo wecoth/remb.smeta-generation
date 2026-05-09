@@ -440,6 +440,8 @@
     outline: none; transition: border-color .15s;
   }
   .gantt-days-input:focus { border-color: var(--accent); }
+
+  /* ── Gantt «По этапам» (legacy процентная шкала) ────── */
   .gantt-rows { display: flex; flex-direction: column; gap: 7px; }
   .gantt-row { display: grid; grid-template-columns: 230px 1fr; align-items: center; gap: 14px; }
   .gantt-row-label { display: flex; align-items: center; gap: 7px; min-width: 0; }
@@ -463,9 +465,9 @@
   .gantt-bar {
     position: absolute; top: 3px; height: 22px;
     border-radius: 4px; display: flex; align-items: center;
-    justify-content: center; cursor: default; user-select: none; min-width: 24px;
+    justify-content: center; cursor: default; user-select: none; min-width: 16px;
   }
-  .gantt-bar-label { font-size: 10px; color: rgba(255,255,255,.95); pointer-events: none; font-family: var(--font-mono); }
+  .gantt-bar-label { font-size: 10px; color: rgba(255,255,255,.95); pointer-events: none; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; }
   .gantt-handle {
     position: absolute; top: 0; bottom: 0; width: 8px;
     cursor: ew-resize; opacity: 0; transition: opacity .15s;
@@ -475,15 +477,8 @@
   .gantt-handle::after { content: ''; width: 2px; height: 10px; background: rgba(255,255,255,.7); border-radius: 1px; }
   .gantt-handle-l { left: 0; border-radius: 4px 0 0 4px; }
   .gantt-handle-r { right: 0; border-radius: 0 4px 4px 0; }
-  .gantt-ruler-top-wrap {
-    display: flex; align-items: flex-end;
-    margin-bottom: 6px;
-  }
-  .gantt-ruler-spacer {
-    width: calc(230px + 14px); flex-shrink: 0;
-  }
-  .gantt-rows:has(.gantt-works-row) ~ * .gantt-ruler-spacer,
-  .gantt-ruler-top-wrap.works-mode .gantt-ruler-spacer { width: calc(280px + 14px); }
+  .gantt-ruler-top-wrap { display: flex; align-items: flex-end; margin-bottom: 6px; }
+  .gantt-ruler-spacer { width: calc(230px + 14px); flex-shrink: 0; }
   .gantt-ruler { position: relative; height: 18px; flex: 1; }
   .gantt-ruler-top { border-bottom: 1px solid var(--border-2); }
   .gantt-tick {
@@ -493,6 +488,154 @@
   }
   .gantt-tick:first-child { transform: none; }
   .gantt-tick:last-child { transform: translateX(-100%); }
+  .gantt-ticks { position: absolute; inset: 0; pointer-events: none; border-radius: 4px; overflow: hidden; }
+  .gantt-tick-mark { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.2); }
+  .gantt-tick-mark:first-child { display: none; }
+
+  /* ── Gantt «По работам» — пиксельная шкала со скроллом ─ */
+
+  /* Внешний контейнер: левая колонка + скролл */
+  .gantt-works-outer {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+  }
+
+  /* Левая sticky-колонка */
+  .gantt-works-left {
+    flex-shrink: 0;
+    width: 290px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-2);
+    background: var(--bg-card);
+    z-index: 2;
+  }
+  .gantt-works-left-header {
+    height: 28px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-2);
+    background: var(--bg-soft);
+  }
+
+  /* Строка левой колонки */
+  .gantt-works-left-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px 0 4px;
+    height: 34px;
+    border-bottom: 1px solid var(--border-2);
+    background: var(--bg-card);
+  }
+  .gantt-works-left-row:last-child { border-bottom: none; }
+
+  /* Правая scroll-область */
+  .gantt-works-scroll {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+    flex-direction: column;
+    /* Тонкий скроллбар */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-1) transparent;
+  }
+  .gantt-works-scroll::-webkit-scrollbar { height: 5px; }
+  .gantt-works-scroll::-webkit-scrollbar-track { background: transparent; }
+  .gantt-works-scroll::-webkit-scrollbar-thumb { background: var(--border-1); border-radius: 3px; }
+
+  /* Шкала (ruler) */
+  .gantt-works-ruler {
+    height: 28px;
+    flex-shrink: 0;
+    position: relative;
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--border-2);
+  }
+
+  /* Тики шкалы */
+  .gantt-ruler-tick {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    pointer-events: none;
+  }
+  .gantt-ruler-tick-major {
+    background: var(--border-1);
+  }
+  .gantt-ruler-tick-minor {
+    background: var(--border-2);
+    opacity: 0.5;
+  }
+  .gantt-ruler-tick-label {
+    position: absolute;
+    bottom: 4px;
+    left: 3px;
+    font-size: 9px;
+    color: var(--text-3);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Ряд трека (обёртка над треком — содержит grid + track) */
+  .gantt-works-track-row {
+    position: relative;
+    height: 34px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-2);
+    background: var(--bg-card);
+  }
+  .gantt-works-track-row:last-child { border-bottom: none; }
+
+  /* Вертикальная сетка дней */
+  .gantt-track-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .gantt-grid-line {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    pointer-events: none;
+  }
+  .gantt-grid-line-major { background: var(--border-2); opacity: 0.8; }
+  .gantt-grid-line-minor { background: var(--border-2); opacity: 0.3; }
+
+  /* Трек в режиме «по работам» — пиксельный */
+  .gantt-works-track-row .gantt-track {
+    position: absolute;
+    inset: 4px 0;
+    height: auto;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+
+  /* Заголовки групп */
+  .gantt-works-group-head {
+    display: flex; align-items: center; gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border-2);
+    background: var(--bg-soft);
+    flex-shrink: 0;
+  }
+  .gantt-works-group-head-left {
+    border-right: none;
+  }
+  .gantt-works-group-head-right {
+    border-left: none;
+    background: var(--bg-soft);
+    position: relative;
+  }
 
   /* ── Payments ────────────────────────────────────────── */
   .payments-wrap { padding: 0; }
@@ -626,21 +769,8 @@
   .obj-photo-placeholder-icon { font-size: 26px; line-height: 1; }
   .obj-photo-hint { font-size: 10px; color: var(--text-3); text-align: center; }
 
-  /* ── Gantt Works mode — new elements ───────────────────── */
-  .gantt-works-group-head {
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 12px 4px; margin-top: 4px;
-    border-top: 1px solid var(--border-2);
-  }
-  .gantt-works-group-head:first-child { border-top: none; margin-top: 0; }
-  .gantt-works-auto-days {
-    font-size: 10px; color: var(--text-3); font-family: var(--font-mono);
-    background: var(--bg-soft); padding: 1px 6px; border-radius: 4px;
-    border: 1px solid var(--border-2);
-  }
+  /* ── Gantt Works mode — drag/bar элементы ──────────────── */
   .gantt-works-row { grid-template-columns: 280px 1fr; }
-  .gantt-works-row .gantt-row-label { min-width: 0; flex-wrap: nowrap; align-items: center; padding-top: 2px; padding-bottom: 2px; }
-  .gantt-works-row .gantt-work-name { white-space: normal; line-height: 1.3; font-size:11px; flex:1; min-width:0; word-break: break-word; }
 
   /* Drag-handle на лейбле */
   .gantt-work-drag-handle {
@@ -653,34 +783,41 @@
   .gantt-work-drag-handle:hover { background: var(--bg-hover); color: var(--text-2); }
   .gantt-work-drag-handle:active { cursor: grabbing; }
 
-  /* Весь лейбл работы — перетаскиваемый */
+  /* Лейбл работы в левой колонке */
   .gantt-works-label-draggable {
     cursor: grab; border-radius: var(--r-sm);
     transition: background .12s;
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 4px;
   }
-  .gantt-works-label-draggable:hover {
-    background: var(--bg-hover);
-  }
+  .gantt-works-label-draggable:hover { background: var(--bg-hover); }
   .gantt-works-label-draggable:active { cursor: grabbing; }
+  .gantt-work-name {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 11px; color: var(--text-1); flex: 1; min-width: 0;
+    line-height: 1.3;
+  }
+  .gantt-work-vol {
+    font-size: 10px; color: var(--text-3); white-space: nowrap; flex-shrink: 0;
+    font-family: var(--font-mono); padding: 0 3px;
+    border: 1px solid var(--border-2); border-radius: 3px; background: var(--bg-soft);
+  }
 
-  /* Ghost-бар при перетаскивании из лейбла */
+  /* Ghost-бар при перетаскивании */
   .gantt-work-ghost {
     position: fixed; height: 22px; border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
     font-size: 10px; font-weight: 600; color: rgba(255,255,255,.9);
-    pointer-events: none; z-index: 9999;
-    opacity: 0.75; transition: none;
+    pointer-events: none; z-index: 9999; opacity: 0.75;
     white-space: nowrap; padding: 0 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,.18);
   }
 
-  /* Бар на треке без левого хэндла (только resize справа) */
-  .gantt-work-bar-placed {
-    cursor: grab;
-  }
+  /* Бар на треке */
+  .gantt-work-bar-placed { cursor: grab; }
   .gantt-work-bar-placed:active { cursor: grabbing; }
 
-  /* Дни на баре при resize */
+  /* Tooltip дней при resize */
   .gantt-bar-days-tooltip {
     position: absolute; top: -22px; right: 0;
     background: var(--bg-card); border: 1px solid var(--border-1);
@@ -706,18 +843,15 @@
     border-color: var(--accent-mid);
   }
 
-  /* Замок / разблокировать кнопки */
+  /* Замок / разблокировать */
   .gantt-unlock-btn, .gantt-lock-btn {
     width: 20px; height: 20px; border-radius: 4px;
     border: 1px solid var(--border-2); background: transparent;
     color: var(--text-3); font-size: 11px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; transition: all .15s; padding: 0;
-    margin-left: 2px;
+    flex-shrink: 0; transition: all .15s; padding: 0; margin-left: 2px;
   }
-  .gantt-unlock-btn:hover, .gantt-lock-btn:hover {
-    background: var(--bg-hover); color: var(--text-1);
-  }
+  .gantt-unlock-btn:hover, .gantt-lock-btn:hover { background: var(--bg-hover); color: var(--text-1); }
 
 /* ═══════════════════════════════════════════════════════════════════
    PAYMENTS — добавить в конец smeta.css
