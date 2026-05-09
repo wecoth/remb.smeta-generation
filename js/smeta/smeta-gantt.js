@@ -317,8 +317,10 @@ export function setGanttMode(mode) {
   document.getElementById('ganttBtnWorks')?.classList.toggle('active',  mode === 'works');
   const clearBtn = document.getElementById('ganttClearBtn');
   if (clearBtn) clearBtn.style.display = mode === 'works' ? '' : 'none';
+  // Прячем верхнюю шкалу в режиме «По работам»
+  const rulerWrap = document.getElementById('ganttRulerTopWrap');
+  if (rulerWrap) rulerWrap.classList.toggle('works-mode', mode === 'works');
 
-  // При переходе на «по этапам» — пересчитываем из актуальных workDays/workStart
   if (mode === 'stages') recalcAllStageDaysAuto();
   renderGantt();
 }
@@ -352,6 +354,10 @@ export function renderGantt() {
 
   const clearBtn = document.getElementById('ganttClearBtn');
   if (clearBtn) clearBtn.style.display = mode === 'works' ? '' : 'none';
+
+  // Верхняя шкала — только в режиме «По этапам»
+  const rulerWrap = document.getElementById('ganttRulerTopWrap');
+  if (rulerWrap) rulerWrap.classList.toggle('works-mode', mode === 'works');
 
   if (mode === 'works') {
     _renderGanttWorks(wrap);
@@ -493,8 +499,9 @@ function _renderGanttStages(wrap) {
 //   • Auto-scroll при drag к правому краю видимой области
 //   • Snap к целым дням (абсолютные пиксели, не проценты)
 
-const PX_PER_DAY = 28; // пикселей на один день
-const VISIBLE_DAYS_DEFAULT = 30; // сколько дней видно по умолчанию
+const PX_PER_DAY = 40;           // пикселей на один день
+const CANVAS_DAYS = 365;          // полотно всегда 365 дней
+const VISIBLE_DAYS_DEFAULT = 30;  // сколько дней видно по умолчанию
 
 function _ganttScrollContainer() {
   return document.getElementById('ganttScrollArea');
@@ -557,7 +564,7 @@ function _renderGanttWorks(wrap) {
     if (d > 0) realEnd = Math.max(realEnd, (appState.workStart[uid] || 0) + d);
   });
 
-  // totalDays: не меньше VISIBLE_DAYS_DEFAULT, не меньше realEnd + буфер 5
+  // totalDays для логики (конец баров + буфер), полотно всегда CANVAS_DAYS
   const totalDays = Math.max(realEnd > 0 ? realEnd + 5 : 0, VISIBLE_DAYS_DEFAULT);
   appState.totalDays    = totalDays;
   appState.worksRealEnd = realEnd;
@@ -566,8 +573,8 @@ function _renderGanttWorks(wrap) {
     _setTotalDaysDisplay(realEnd > 0 ? realEnd : 0);
   }
 
-  // Полная ширина полотна в пикселях
-  const canvasW = totalDays * PX_PER_DAY;
+  // Полная ширина полотна в пикселях — всегда 365 дней
+  const canvasW = CANVAS_DAYS * PX_PER_DAY;
 
   // ── Строим DOM ───────────────────────────────────────────────
   wrap.innerHTML = '';
@@ -596,7 +603,7 @@ function _renderGanttWorks(wrap) {
   const ruler = document.createElement('div');
   ruler.className = 'gantt-works-ruler';
   ruler.style.width = canvasW + 'px';
-  _buildRulerTicks(ruler, totalDays);
+  _buildRulerTicks(ruler, CANVAS_DAYS);
   scrollArea.appendChild(ruler);
 
   // ── Строки ───────────────────────────────────────────────────
@@ -672,7 +679,7 @@ function _renderGanttWorks(wrap) {
       const grid = document.createElement('div');
       grid.className = 'gantt-track-grid';
       grid.style.width = canvasW + 'px';
-      _buildTrackGrid(grid, totalDays);
+      _buildTrackGrid(grid, CANVAS_DAYS);
       trackRow.appendChild(grid);
 
       // Трек
@@ -818,7 +825,7 @@ function _renderGanttWorks(wrap) {
           const sc     = scrollArea;
           // Позиция в пикселях на полотне (с учётом скролла)
           const pxOnCanvas = (ev.clientX - rect.left) + (sc ? sc.scrollLeft : 0);
-          const dayPos = Math.max(0, Math.round(pxOnCanvas / PX_PER_DAY));
+          const dayPos = Math.max(0, Math.min(Math.round(pxOnCanvas / PX_PER_DAY), CANVAS_DAYS - 1));
           if (!appState.workDays[trkUid] || appState.workDays[trkUid] === 0) {
             appState.workDays[trkUid] = origDays || 1;
           }
@@ -851,25 +858,11 @@ function _renderGanttWorks(wrap) {
     if (lbl) lbl.textContent = days + ' дн.';
   }
 
-  // Расширить полотно если бар ушёл вправо за текущий totalDays
-  function _extendCanvas(barEnd) {
-    if (barEnd + 5 <= appState.totalDays) return;
-    appState.totalDays = barEnd + 10;
-    const newW = appState.totalDays * PX_PER_DAY;
-    // Обновляем ширину всех track-row, ruler, grid
-    wrap.querySelectorAll('.gantt-works-track-row, .gantt-works-ruler, .gantt-track-grid')
-      .forEach(el => { el.style.width = newW + 'px'; });
-    wrap.querySelectorAll('.gantt-works-group-head-right')
-      .forEach(el => { el.style.width = newW + 'px'; });
-    wrap.querySelectorAll('.gantt-track')
-      .forEach(el => { el.style.width = newW + 'px'; });
-    // Перестраиваем тики ruler
-    const rulerEl = wrap.querySelector('.gantt-works-ruler');
-    if (rulerEl) _buildRulerTicks(rulerEl, appState.totalDays);
-    // Перестраиваем сетки треков
-    wrap.querySelectorAll('.gantt-track-grid').forEach(g => {
-      _buildTrackGrid(g, appState.totalDays);
-    });
+  // Обновить appState.totalDays если бар ушёл вправо (полотно 365 — не меняем)
+  function _updateTotalDays(barEnd) {
+    if (barEnd > appState.totalDays) {
+      appState.totalDays = Math.min(barEnd + 5, CANVAS_DAYS);
+    }
   }
 
   // ── Drag бара ─────────────────────────────────────────────────
@@ -901,11 +894,11 @@ function _renderGanttWorks(wrap) {
       function onMove(ev) {
         _autoScroll(ev);
         const delta    = Math.round((ev.clientX - startX) / PX_PER_DAY);
-        const newStart = Math.max(0, origStart + delta);
+        const newStart = Math.max(0, Math.min(origStart + delta, CANVAS_DAYS - origDays));
         appState.workStart[uid] = newStart;
         if (!appState.workMovedManually) appState.workMovedManually = {};
         appState.workMovedManually[uid] = true;
-        _extendCanvas(newStart + origDays);
+        _updateTotalDays(newStart + origDays);
         _updateBarDOM(uid);
       }
       function onUp() {
@@ -954,7 +947,7 @@ function _renderGanttWorks(wrap) {
         appState.workDays[uid] = newD;
         if (!appState.workMovedManually) appState.workMovedManually = {};
         appState.workMovedManually[uid] = true;
-        _extendCanvas(origS + newD);
+        _updateTotalDays(origS + newD);
         _updateBarDOM(uid);
         // Синхронизируем инпут
         const inp = wrap.querySelector(`.gantt-work-days-inp[data-uid="${uid}"]`);
@@ -985,7 +978,7 @@ function _renderGanttWorks(wrap) {
       if (d > 0) realEnd = Math.max(realEnd, (appState.workStart[uid] || 0) + d);
     });
     if (realEnd === 0) return;
-    appState.totalDays    = Math.max(realEnd + 5, VISIBLE_DAYS_DEFAULT);
+    appState.totalDays    = Math.min(Math.max(realEnd + 5, VISIBLE_DAYS_DEFAULT), CANVAS_DAYS);
     appState.worksRealEnd = realEnd;
     _setTotalDaysDisplay(realEnd);
   }
