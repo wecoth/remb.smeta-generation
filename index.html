@@ -447,6 +447,15 @@ async function mountView(viewName) {
   wrapper.dataset.view = viewName;
   wrapper.style.display = 'none';
   wrapper.innerHTML = html;
+
+  // Переисполняем <script> теги (innerHTML их не запускает)
+  wrapper.querySelectorAll('script').forEach(oldScript => {
+    const newScript = document.createElement('script');
+    [...oldScript.attributes].forEach(a => newScript.setAttribute(a.name, a.value));
+    newScript.textContent = oldScript.textContent;
+    oldScript.parentNode.replaceChild(newScript, oldScript);
+  });
+
   viewContainer.appendChild(wrapper);
   mountedViews[viewName] = wrapper;
 
