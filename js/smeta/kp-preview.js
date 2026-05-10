@@ -617,16 +617,17 @@ function fillSmrPage(company) {
       // Первая страница — заполняем оригинальный контейнер
       content.innerHTML = html;
       _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
-      // Убираем «ПЕРЕЧЕНЬ ПОЗИЦИЙ» на первой странице
-      _hideSubtitle(originalPage);
     } else {
       // Дополнительные страницы — клонируем оригинал
       const newPage = originalPage.cloneNode(true);
       newPage.classList.add('spp-page--smr-extra');
+      // Оставляем тот же data-page, чтобы чекбоксы управляли группой
       newPage.dataset.page = originalPage.dataset.page;
 
-      // Скрываем блок «Смета строительно-монтажных работ» + «ПЕРЕЧЕНЬ ПОЗИЦИЙ»
-      _hideSmrPageHeader(newPage);
+      // На дополнительных листах убираем заголовок листа (h2/section title),
+      // оставляем только контент и футер
+      const pageTitle = newPage.querySelector('.spp-page-label, .kp-page-title, h2.kp-title');
+      if (pageTitle) pageTitle.style.display = 'none';
 
       // Убираем empty-плейсхолдер
       const extraEmpty = newPage.querySelector('[id*="SmrEmpty"]');
@@ -639,11 +640,13 @@ function fillSmrPage(company) {
         extraContent.innerHTML = html;
       }
 
+      // Футер — находим элементы внутри клона (id у них те же, getElementById не подойдёт)
       const ftLogo = newPage.querySelector('[id*="SmrFtLogoImg"]');
       const ftC    = newPage.querySelector('[id*="SmrFtC"]');
       const ftN    = newPage.querySelector('[id*="SmrFtN"]');
       _fillFooterEl(ftLogo, ftC, ftN, company);
 
+      // Вставляем после последней добавленной страницы
       lastInsertedPage.after(newPage);
       lastInsertedPage = newPage;
     }
@@ -764,15 +767,13 @@ function fillMatPage(company) {
     if (isFirst) {
       content.innerHTML = html;
       _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
-      // Убираем «ПЕРЕЧЕНЬ ПОЗИЦИЙ» на первой странице
-      _hideSubtitle(originalPage);
     } else {
       const newPage = originalPage.cloneNode(true);
       newPage.classList.add('spp-page--mat-extra');
       newPage.dataset.page = originalPage.dataset.page;
 
-      // Скрываем блок «Смета материалов» + «ПЕРЕЧЕНЬ ПОЗИЦИЙ»
-      _hideSmrPageHeader(newPage);
+      const pageTitle = newPage.querySelector('.spp-page-label, .kp-page-title, h2.kp-title');
+      if (pageTitle) pageTitle.style.display = 'none';
 
       const extraEmpty = newPage.querySelector('[id*="MatEmpty"]');
       if (extraEmpty) extraEmpty.style.display = 'none';
@@ -909,72 +910,6 @@ function fillContacts(company) {
 // ─────────────────────────────────────────────────────────────────
 // Футер (логотип/буква) — общий хелпер
 // ─────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────
-// Хелперы скрытия заголовков на клонированных страницах
-// ─────────────────────────────────────────────────────────────────
-
-// Скрывает «ПЕРЕЧЕНЬ ПОЗИЦИЙ» (subtitle) внутри переданного контейнера
-function _hideSubtitle(container) {
-  if (!container) return;
-  // Пробуем по классам
-  const byClass = container.querySelectorAll(
-    '.kp-smr-subtitle, .kp-page-subtitle, .kp-subtitle, [class*="subtitle"]'
-  );
-  byClass.forEach(n => { n.style.display = 'none'; });
-
-  // Фолбэк: ищем любой элемент с текстом «ПЕРЕЧЕНЬ ПОЗИЦИЙ»
-  if (!byClass.length) {
-    container.querySelectorAll('*').forEach(n => {
-      if (n.children.length === 0 && n.textContent.trim().toUpperCase() === 'ПЕРЕЧЕНЬ ПОЗИЦИЙ') {
-        n.style.display = 'none';
-      }
-    });
-  }
-}
-
-// Скрывает весь блок-заголовок страницы («Смета СМР / материалов» + subtitle)
-// на клонированных дополнительных листах
-function _hideSmrPageHeader(pageEl) {
-  if (!pageEl) return;
-
-  // Пробуем по распространённым классам
-  const headerSelectors = [
-    '.kp-smr-header',
-    '.kp-mat-header',
-    '.kp-page-header',
-    '.kp-section-header',
-    '.spp-page-header',
-    '.kp-title-block',
-    '[class*="smr-header"]',
-    '[class*="mat-header"]',
-    '[class*="page-header"]',
-    '[class*="title-block"]',
-    '[class*="kp-header"]',
-  ];
-  const found = pageEl.querySelectorAll(headerSelectors.join(', '));
-  found.forEach(n => { n.style.display = 'none'; });
-
-  // Фолбэк по тексту: скрываем первый блок, содержащий заголовок сметы
-  if (!found.length) {
-    const allBlocks = pageEl.querySelectorAll('div, section, header, article');
-    for (const block of allBlocks) {
-      if (
-        block.children.length < 6 &&
-        (
-          block.textContent.includes('Смета строительно-монтажных работ') ||
-          block.textContent.includes('Смета материалов')
-        )
-      ) {
-        block.style.display = 'none';
-        break;
-      }
-    }
-  }
-
-  // В любом случае убираем subtitle
-  _hideSubtitle(pageEl);
-}
 
 // Версия для клонированных страниц (элементы уже найдены, не по id)
 function _fillFooterEl(logoImg, circle, nameEl, company) {
