@@ -59,19 +59,19 @@
         <div id="prevCovCenter2" style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:80px 60px">
           <img id="prevLogoImg2" alt="" style="max-height:120px;max-width:260px;display:none;object-fit:contain">
           <div id="prevCircle2" style="width:88px;height:88px;border:2px solid #1c1c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;"></div>
-          <div id="prevCovName2" class="kp-cover-title"></div>
-          <div id="prevCovSlogan2" class="kp-cover-slogan"></div>
+          <div id="prevCovName2" class="kp-cover-title" style="display:none"></div>
+          <div id="prevCovSlogan2" class="kp-cover-slogan" style="display:none"></div>
         </div>
 
-        <div id="prevCovType2" class="kp-cover-type">Проектно-сметная документация</div>
+        <div id="prevCovType2" class="kp-cover-type" style="display:none">Проектно-сметная документация</div>
 
-        <!-- Нижняя строка: сайт слева, год справа -->
-        <div style="position:absolute;bottom:28px;left:50px;right:50px;display:flex;justify-content:space-between;align-items:center">
+        <!-- Нижняя строка: скрыта -->
+        <div style="display:none">
           <div id="prevCovSite2" class="kp-cover-footer-text"></div>
           <div id="prevCovYear2" class="kp-cover-footer-text"></div>
         </div>
 
-        <div id="prevCovFoot2" style="position:absolute;bottom:25px;right:25px;display:flex;align-items:center;gap:8px">
+        <div id="prevCovFoot2" style="display:none">
           <img id="prevFootLogoImg2" alt="" style="height:28px;max-width:80px;object-fit:contain;display:none">
           <div id="prevFootCircle2" class="kp-foot-circle"></div>
           <div id="prevFootName2" class="kp-foot-name"></div>
@@ -500,7 +500,7 @@
 
 /* Подзаголовок (например "Этапы и описание работ") */
 .kp-subtitle {
-  font-size: 11px !important;
+  font-size: 14.67px !important;
   color: #aaa;
   text-transform: uppercase;
   letter-spacing: .5px;
@@ -508,40 +508,40 @@
 
 /* Приветствие и вводный текст */
 .kp-greeting {
-  font-size: 13px !important;
+  font-size: 14.67px !important;
   font-weight: 600;
   color: #1c1c1c;
   margin-bottom: 8px;
 }
 .kp-intro-text {
-  font-size: 11px !important;
+  font-size: 14.67px !important;
   line-height: 1.7;
   color: #555;
 }
 
 /* Параметры (даты, сроки, стоимость) */
 .kp-param-label {
-  font-size: 10px !important;
+  font-size: 14.67px !important;
   color: #aaa;
   letter-spacing: .3px;
   text-transform: uppercase;
 }
 .kp-param-value {
-  font-size: 13px !important;
+  font-size: 14.67px !important;
   font-weight: 500;
   color: #1c1c1c;
 }
 
 /* Итого */
 .kp-total-label {
-  font-size: 10px !important;
+  font-size: 14.67px !important;
   font-weight: 600;
   color: #1c1c1c;
   letter-spacing: .5px;
   text-transform: uppercase;
 }
 .kp-total-value {
-  font-size: 15px !important;
+  font-size: 14.67px !important;
   font-weight: 700;
   color: #1c1c1c;
   letter-spacing: -0.3px;
@@ -549,7 +549,7 @@
 
 /* Заголовок таблицы экспликации */
 .kp-expl-title {
-  font-size: 18px !important;  /* ← здесь можно менять на нужный размер */
+  font-size: 14.67px !important;
   font-weight: 500;
   letter-spacing: .8px;
   color: #bbb;
@@ -559,7 +559,7 @@
 
 /* Обычный текстовый блок */
 .kp-body-text {
-  font-size: 12px !important;
+  font-size: 14.67px !important;
   line-height: 1.8;
   color: #444;
 }
@@ -569,7 +569,7 @@
 .kp-pg-num,
 .kp-footer-text,
 .kp-table-header {
-  font-size: 11px !important;
+  font-size: 14.67px !important;
 }
 
 /* Номер страницы (дополнительно позиционируется) */
@@ -651,7 +651,7 @@
   padding-top: 6px;
   border-top: 1px solid #d8d8d8;
   font-weight: 600;
-  font-size: 10px;
+  font-size: 14.67px;
   color: #1c1c1c;
 }
 #prevObjRoomsFoot2 tr td:first-child {
@@ -661,7 +661,7 @@
 
 /* Стиль таблицы смет — новый чистый */
 .kp-smr-stage-title {
-  font-size: 12px;
+  font-size: 14.67px;
   font-weight: 600;
   color: #1c1c1c;
   padding: 10px 0 4px;
@@ -672,7 +672,7 @@
   align-items: center;
 }
 .kp-smr-stage-desc {
-  font-size: 11px;
+  font-size: 14.67px;
   color: #888;
   margin-bottom: 8px;
   line-height: 1.5;
@@ -680,7 +680,7 @@
 .kp-smr-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 14.67px;
   margin-bottom: 14px;
 }
 .kp-smr-table thead tr {
@@ -691,7 +691,7 @@
   font-weight: 500;
   color: #aaa;
   text-align: right;
-  font-size: 10px;
+  font-size: 14.67px;
 }
 .kp-smr-table th:first-child,
 .kp-smr-table th:nth-child(2) { text-align: left; }
@@ -706,7 +706,7 @@
 .kp-smr-stage-subtotal {
   display: flex;
   justify-content: flex-end;
-  font-size: 12px;
+  font-size: 14.67px;
   font-weight: 600;
   color: #1c1c1c;
   margin-bottom: 18px;
@@ -728,7 +728,7 @@
   flex-shrink: 0;
 }
 .kp-roadmap-title {
-  font-size: 12px;
+  font-size: 14.67px;
   font-weight: 500;
   color: #1c1c1c;
   flex: 1;
@@ -737,28 +737,28 @@
   white-space: nowrap;
 }
 .kp-roadmap-days {
-  font-size: 12px;
+  font-size: 14.67px;
   font-weight: 700;
   color: #1c1c1c;
   white-space: nowrap;
   flex-shrink: 0;
 }
 .kp-roadmap-days-label {
-  font-size: 10px;
+  font-size: 14.67px;
   color: #aaa;
 }
 /* Устаревшие классы — оставляем для совместимости */
 .kp-roadmap-num { display: none; }
 .kp-roadmap-body {}
-.kp-roadmap-desc { font-size: 11px; color: #666; line-height: 1.55; }
-.kp-roadmap-bullets { font-size: 11px; color: #888; padding-left: 12px; margin: 0; line-height: 1.7; }
+.kp-roadmap-desc { font-size: 14.67px; color: #666; line-height: 1.55; }
+.kp-roadmap-bullets { font-size: 14.67px; color: #888; padding-left: 12px; margin: 0; line-height: 1.7; }
 
 /* Что не входит — элемент списка */
 .kp-exclude-item {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  font-size: 11px;
+  font-size: 14.67px;
   color: #888;
   line-height: 1.5;
 }
@@ -773,7 +773,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: 14.67px;
   color: #bbb;
 }
 
