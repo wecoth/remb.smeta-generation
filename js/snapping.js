@@ -5,7 +5,6 @@ import {
   getWallContourEndpoints, getWallContourSegment, getWallContourMidpoint,
   getWallCornerPoints, getWallSnapSegments, getWallJointRects,
   getJointBoundaryCornerPoints, getJointLocalCornerPoints, getWallGuideCorners,
-  isPointInsideWallSurface,
 } from './wall.js';
 
 // ── Viewport: set by render.js via initViewport ───────────────────
@@ -102,9 +101,9 @@ export function findObjectSnapCandidate(worldPoint, screenPoint, options = {}) {
       const wallAngle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
       for (const entry of getWallSnapSegments(wall)) {
         const proj = projectPointOntoSegment(worldPoint, entry.segment);
-        const inside = isPointInsideWallSurface(worldPoint, wall, 0.75);
-        // Infinity ломает сортировку по дистанции — используем увеличенный, но конечный порог
-        register(entry.type, proj, { wallId: wall.id, wallAngle }, inside ? wpt * 2 : wpt);
+        // Единый порог — удваивание при inside давало «прилипание» к грани
+        // даже когда курсор уже прошёл сквозь неё.
+        register(entry.type, proj, { wallId: wall.id, wallAngle }, wpt);
       }
     }
   }
@@ -134,11 +133,33 @@ export function findObjectSnapCandidate(worldPoint, screenPoint, options = {}) {
   }
   
   const candidates = [...bestByKey.values()];
+
+  // Весовые поправки к дистанции: corner/endpoint/intersection получают
+  // искусственный бонус −6px, чтобы гарантированно побеждать wallFace
+  // даже когда проекция на грань физически чуть ближе к курсору.
+  // wallFace при этом по-прежнему работает, когда курсор далеко от углов.
+  const SNAP_BIAS = {
+    corner:        -6,
+    endpoint:      -6,
+    intersection:  -6,
+    midpoint:      -3,
+    tracking:      -3,
+    wallFace:       0,
+    wallAxis:       0,
+    perpendicular:  0,
+    measureLine:    0,
+  };
+
+  candidates.forEach(c => {
+    c._eff = c.distance + (SNAP_BIAS[c.type] ?? 0);
+  });
+
   candidates.sort((a, b) =>
-    Math.abs(a.distance - b.distance) > 0.5
-      ? a.distance - b.distance
-      : getSnapTypePriority(a.type) - getSnapTypePriority(b.type)
+    Math.abs(a._eff - b._eff) < 0.1
+      ? getSnapTypePriority(a.type) - getSnapTypePriority(b.type)
+      : a._eff - b._eff
   );
+
   return candidates[0] || null;
 }
 
