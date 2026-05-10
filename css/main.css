@@ -724,8 +724,6 @@ html, body {
   border-radius: 2px;
   position: relative;
   overflow: visible;
-  font-family: 'Merriweather', serif;
-  font-size: 13px;
   color: #1c1c1c;
   /* transform-origin: top left — scale от верхнего левого угла,
      центрирование делает flex-родитель */
@@ -766,8 +764,6 @@ html, body {
 }
 .spp-a4:has(.be-margin-guide)::before { display: none; }
 
-/* Force GOST font everywhere inside preview pages */
-.spp-a4 * { font-family: 'Merriweather', serif !important; }
 /* Except editor UI */
 .spp-a4 .be-toolbar,
 .spp-a4 .be-tbtn { font-family: 'Onest', sans-serif !important; }
@@ -778,14 +774,12 @@ html, body {
   top: 50px !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
-  font-size: 24px !important;
   font-weight: 400 !important;
   color: #1c1c1c !important;
   letter-spacing: .5px !important;
   white-space: nowrap !important;
   pointer-events: none !important;
   z-index: 1 !important;
-  font-family: 'Merriweather', serif !important;
 }
 
 /* Clip content inside A4 page — table cannot overflow bottom edge */
@@ -795,10 +789,6 @@ html, body {
   height: 794px !important;
   box-sizing: border-box !important;
 }
-
-/* Table font sizes */
-.spp-a4 table { font-size: 18px; }
-.spp-a4 th    { font-size: 18px; }
 
 /* Hide old modal preview button */
 .btn-preview { display: none !important; }
