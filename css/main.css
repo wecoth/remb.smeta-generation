@@ -699,9 +699,10 @@ html, body {
 /* Каждый лист — блочный элемент, отступ снизу между листами */
 .spp-page {
   width: 100%;
-  display: block;
+  display: flex;
+  justify-content: center;
   overflow: visible;
-  margin-bottom: 0;
+  margin-bottom: 24px;
   flex-shrink: 0;
 }
 .spp-page.spp-hidden { display: none !important; }
@@ -999,8 +1000,6 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: block;
   padding: 32px 24px 48px;
 }
