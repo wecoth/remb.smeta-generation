@@ -832,7 +832,7 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════
-   ROADMAP MAP LAYOUT v5 — плавные S-кривые между краями пилюль
+   ROADMAP MAP LAYOUT v6 — одна нить сквозь пилюли
 ═══════════════════════════════════════════════════════════ */
 (function() {
 
@@ -896,12 +896,8 @@
 
       return {
         x: x, y: y, w: pw, h: ph, rot: rot,
-        cx: x + pw / 2,
-        cy: y + ph / 2,
-        left:  x,
-        right: x + pw,
-        top:   y,
-        bot:   y + ph
+        cx: x + pw / 2, cy: y + ph / 2,
+        left: x, right: x + pw
       };
     });
 
@@ -915,73 +911,111 @@
     svg.setAttribute('height', H);
     svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:0;overflow:visible;';
 
-    for (var i = 0; i < N - 1; i++) {
-      var p0 = positions[i];
-      var p1 = positions[i + 1];
+    /* ── Строим ЕДИНЫЙ path через все пилюли ──
+       Нить входит в пилюлю с одной стороны и выходит с другой.
+       Для первой пилюли: определяем с какой стороны входим
+       глядя на вторую пилюлю.
+       Для каждой следующей: сторона входа = противоположная стороне выхода предыдущей. */
 
-      var goRight = p1.cx >= p0.cx;
+    /* entryRight[i] = true если нить входит в пилюлю i справа */
+    var entryRight = new Array(N);
 
-      /* Точки выхода/входа — с боков пилюль, по центру высоты */
-      var x1, y1, x2, y2;
-      if (goRight) {
-        x1 = p0.right; y1 = p0.cy;
-        x2 = p1.left;  y2 = p1.cy;
+    /* Для первой пилюли: если вторая левее — первая выходит влево,
+       значит нить входит в первую справа */
+    if (N > 1) {
+      entryRight[0] = positions[1].cx < positions[0].cx;
+    } else {
+      entryRight[0] = false;
+    }
+
+    for (var i = 1; i < N; i++) {
+      /* входим с той же стороны, с которой вышли из предыдущей */
+      entryRight[i] = !entryRight[i - 1];
+    }
+
+    /* Собираем точки пути:
+       для каждой пилюли — точка входа и точка выхода */
+    var pts = [];  /* { x, y } */
+
+    for (var i = 0; i < N; i++) {
+      var p   = positions[i];
+      var inX = entryRight[i] ? p.right : p.left;
+      var outX, lastOut;
+
+      if (i < N - 1) {
+        /* выход с противоположной стороны */
+        outX = entryRight[i] ? p.left : p.right;
       } else {
-        x1 = p0.left;  y1 = p0.cy;
-        x2 = p1.right; y2 = p1.cy;
+        outX = null; /* последняя — только вход */
       }
 
-      /* S-образная кривая Безье.
-         Контрольные точки уходят далеко в стороны —
-         cp1 продолжает направление из x1 горизонтально,
-         cp2 приходит в x2 тоже горизонтально.
-         Амплитуда изгиба = половина ширины контейнера. */
-      var bulge = W * 0.52;  /* насколько далеко уходят контрольные точки */
-
-      var cp1x, cp2x;
-      if (goRight) {
-        /* выходим вправо → cp1 ещё правее, cp2 ещё левее */
-        cp1x = x1 + bulge;
-        cp2x = x2 - bulge;
-      } else {
-        /* выходим влево → cp1 ещё левее, cp2 ещё правее */
-        cp1x = x1 - bulge;
-        cp2x = x2 + bulge;
+      pts.push({ x: inX, y: p.cy, type: 'in', pill: i });
+      if (outX !== null) {
+        pts.push({ x: outX, y: p.cy, type: 'out', pill: i });
       }
+    }
 
-      /* cp по Y: между двумя пилюлями */
-      var cp1y = y1;
-      var cp2y = y2;
+    /* Строим SVG path с кривыми Безье между сегментами.
+       Между out[i] и in[i+1] — плавная S-кривая с bulge. */
+    var bulge = W * 0.55;
+    var dParts = [];
 
-      var d = 'M ' + x1 + ',' + y1 +
-              ' C ' + cp1x + ',' + cp1y +
-              ' '   + cp2x + ',' + cp2y +
-              ' '   + x2   + ',' + y2;
+    /* Начинаем с первой точки входа */
+    dParts.push('M ' + pts[0].x + ',' + pts[0].y);
 
-      var path = document.createElementNS(NS, 'path');
-      path.setAttribute('d', d);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', '#1c1c1c');
-      path.setAttribute('stroke-width', '0.9');
-      path.setAttribute('stroke-dasharray', '3 5');
-      path.setAttribute('opacity', '0.28');
-      svg.appendChild(path);
+    for (var k = 0; k < pts.length - 1; k++) {
+      var A = pts[k];
+      var B = pts[k + 1];
 
-      /* Стрелка — касательная к кривой в конечной точке */
-      /* Направление ≈ от cp2 к (x2,y2) */
-      var ax = x2 - cp2x;
-      var ay = y2 - cp2y;
-      var alen = Math.sqrt(ax*ax + ay*ay) || 1;
-      var angle = Math.atan2(ay / alen, ax / alen);
+      if (A.type === 'in' && B.type === 'out' && A.pill === B.pill) {
+        /* Сегмент внутри пилюли — прямая линия сквозь неё */
+        dParts.push('L ' + B.x + ',' + B.y);
+      } else {
+        /* Сегмент между пилюлями — плавная кривая.
+           A — выход из пилюли, B — вход в следующую.
+           Определяем направление изгиба по стороне выхода. */
+        var exitRight = (A.x > positions[A.pill].cx); /* A правее центра */
+
+        var cp1x, cp2x;
+        if (exitRight) {
+          cp1x = A.x + bulge;
+          cp2x = B.x + bulge;
+        } else {
+          cp1x = A.x - bulge;
+          cp2x = B.x - bulge;
+        }
+
+        dParts.push(
+          'C ' + cp1x + ',' + A.y +
+          ' '  + cp2x + ',' + B.y +
+          ' '  + B.x  + ',' + B.y
+        );
+      }
+    }
+
+    var path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', dParts.join(' '));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#1c1c1c');
+    path.setAttribute('stroke-width', '0.9');
+    path.setAttribute('stroke-dasharray', '3 5');
+    path.setAttribute('opacity', '0.3');
+    svg.appendChild(path);
+
+    /* Стрелка на последней точке */
+    var last = pts[pts.length - 1];
+    var prev = pts[pts.length - 2];
+    if (prev) {
+      var angle = Math.atan2(last.y - prev.y, last.x - prev.x);
       var AS = 5, SP = 0.38;
       [SP, -SP].forEach(function(a) {
         var t = document.createElementNS(NS, 'line');
-        t.setAttribute('x1', x2 - AS * Math.cos(angle - a));
-        t.setAttribute('y1', y2 - AS * Math.sin(angle - a));
-        t.setAttribute('x2', x2); t.setAttribute('y2', y2);
+        t.setAttribute('x1', last.x - AS * Math.cos(angle - a));
+        t.setAttribute('y1', last.y - AS * Math.sin(angle - a));
+        t.setAttribute('x2', last.x); t.setAttribute('y2', last.y);
         t.setAttribute('stroke', '#1c1c1c');
         t.setAttribute('stroke-width', '0.9');
-        t.setAttribute('opacity', '0.38');
+        t.setAttribute('opacity', '0.4');
         svg.appendChild(t);
       });
     }
