@@ -4,6 +4,7 @@
 // Версия 2.0 — 8 листов по новому макету.
 
 import { appState } from '../state.js';
+import { renderToImage } from '../render.js';
 
 // ── Утилиты ────────────────────────────────────────────────────────
 
@@ -62,12 +63,28 @@ function getAddress() {
 }
 
 // ── Изображения планов ─────────────────────────────────────────────
+// Автоматически рендерит чертёж из текущего состояния стен.
+// Если стен нет — возвращает null (показывается плейсхолдер).
 
-function getPlanImages() {
-  return {
-    clean:    appState.planData     || null,
-    measured: appState.planDataFull || null,
-  };
+function generateImages() {
+  if (!appState.walls || appState.walls.length === 0) {
+    return { clean: null, measured: null };
+  }
+  try {
+    const clean    = renderToImage(1600, 1200, false);   // чистый план
+    const measured = renderToImage(2480, 1754, true);    // обмерный план A4 landscape
+    // Сохраняем в appState на случай использования в других местах
+    appState.planData     = clean;
+    appState.planDataFull = measured;
+    return { clean, measured };
+  } catch (e) {
+    console.error('[KP] Ошибка авторендера плана:', e);
+    // Фолбэк: вернуть то, что было захвачено вручную ранее
+    return {
+      clean:    appState.planData     || null,
+      measured: appState.planDataFull || null,
+    };
+  }
 }
 
 // ── Этапы с суммами ────────────────────────────────────────────────
@@ -697,7 +714,7 @@ export function liveUpdateKP() {
 
   const company = getCompany();
   const address = getAddress();
-  const images  = getPlanImages();
+  const images  = generateImages();
 
   fillCover(company);
   fillObject(company, address, images);
