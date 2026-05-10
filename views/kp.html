@@ -714,7 +714,7 @@
   gap: 8px;
 }
 
-/* Карта ремонта — пилюли по содержимому, прижаты вправо */
+/* Карта ремонта — пилюли, fit-content, прижаты вправо */
 #prevRoadmapStages2 {
   display: flex;
   flex-direction: column;
@@ -723,14 +723,17 @@
 }
 .kp-roadmap-item {
   display: inline-flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
+  gap: 5px;
+  padding: 4px 14px;
   border-radius: 20px;
   border: 1px solid #1c1c1c;
   background: transparent;
   white-space: nowrap;
   width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .kp-roadmap-dot { display: none; }
 .kp-roadmap-num { display: none; }
@@ -738,18 +741,25 @@
   font-size: 14.67px;
   font-weight: 400;
   color: #1c1c1c;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .kp-roadmap-days {
   font-size: 14.67px;
   font-weight: 600;
   color: #1c1c1c;
   white-space: nowrap;
+  flex-shrink: 0;
+  display: inline;
 }
 .kp-roadmap-days-label {
   font-size: 14.67px;
   color: #888;
   white-space: nowrap;
+  flex-shrink: 0;
+  display: inline;
 }
+.kp-roadmap-num { display: none; }
 .kp-roadmap-body {}
 .kp-roadmap-desc { font-size: 14.67px; color: #666; line-height: 1.55; }
 .kp-roadmap-bullets { font-size: 14.67px; color: #888; padding-left: 12px; margin: 0; line-height: 1.7; }
