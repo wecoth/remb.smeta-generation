@@ -714,81 +714,40 @@
   gap: 8px;
 }
 
-/* Карта ремонта — вертикальный список карточек */
+/* Карта ремонта — пилюли как в графике платежей */
 #prevRoadmapStages2 {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 6px;
+  align-items: flex-start;
 }
-
 .kp-roadmap-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid #e8e6e0;
-  border-radius: 8px;
-  background: #fafaf8;
-  margin-bottom: 0;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid #1c1c1c;
+  background: transparent;
+  white-space: nowrap;
 }
-
 .kp-roadmap-dot { display: none; }
-
-.kp-roadmap-num {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid #ccc;
-  font-size: 10px;
-  font-weight: 600;
-  color: #999;
-  flex-shrink: 0;
-  background: #fff;
-}
-
+.kp-roadmap-num { display: none; }
 .kp-roadmap-title {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14.67px;
+  font-weight: 400;
   color: #1c1c1c;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-
 .kp-roadmap-days {
-  font-size: 13px;
+  font-size: 14.67px;
   font-weight: 600;
   color: #1c1c1c;
   white-space: nowrap;
-  flex-shrink: 0;
 }
-
 .kp-roadmap-days-label {
-  font-size: 11px;
-  color: #aaa;
-  margin-left: 2px;
+  font-size: 14.67px;
+  color: #888;
 }
-
-/* Соединитель между карточками */
-.kp-roadmap-connector {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 10px;
-  flex-shrink: 0;
-}
-.kp-roadmap-connector::before {
-  content: '';
-  display: block;
-  width: 1px;
-  height: 10px;
-  background: #d8d5ce;
-}
-
 .kp-roadmap-body {}
 .kp-roadmap-desc { font-size: 14.67px; color: #666; line-height: 1.55; }
 .kp-roadmap-bullets { font-size: 14.67px; color: #888; padding-left: 12px; margin: 0; line-height: 1.7; }
@@ -826,43 +785,6 @@
 }
 
 </style>
-
-<script>
-(function() {
-  function upgradeRoadmap(container) {
-    var items = Array.from(container.querySelectorAll('.kp-roadmap-item:not([data-upg])'));
-    if (!items.length) return;
-    items.forEach(function(item) {
-      item.setAttribute('data-upg', '1');
-      if (!item.querySelector('.kp-roadmap-num')) {
-        var n = document.createElement('div');
-        n.className = 'kp-roadmap-num';
-        item.insertBefore(n, item.firstChild);
-      }
-    });
-    // renumber all
-    Array.from(container.querySelectorAll('.kp-roadmap-item[data-upg]')).forEach(function(item, i) {
-      var n = item.querySelector('.kp-roadmap-num');
-      if (n) n.textContent = i + 1;
-    });
-    // rebuild connectors
-    container.querySelectorAll('.kp-roadmap-connector').forEach(function(c) { c.remove(); });
-    var all = Array.from(container.querySelectorAll('.kp-roadmap-item[data-upg]'));
-    for (var i = 0; i < all.length - 1; i++) {
-      var conn = document.createElement('div');
-      conn.className = 'kp-roadmap-connector';
-      all[i].parentNode.insertBefore(conn, all[i].nextSibling);
-    }
-  }
-  function init() {
-    var c = document.getElementById('prevRoadmapStages2');
-    if (!c) { setTimeout(init, 300); return; }
-    upgradeRoadmap(c);
-    new MutationObserver(function() { upgradeRoadmap(c); }).observe(c, { childList: true, subtree: true });
-  }
-  document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', init) : init();
-})();
-</script>
 
 <script>
 (function() {
