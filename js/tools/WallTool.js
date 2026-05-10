@@ -8,6 +8,7 @@ import {
   findObjectSnapCandidate, findGuideCandidate, getNearestGuideLineAxis, shouldKeepGuideLine,
   projectPointToGuideLineWorld, getTrackingLines, snapToTrackingLines,
 } from '../snapping.js';
+import { getWallSnapSegments } from '../wall.js';
 
 export class WallTool extends BaseTool {
   constructor(ui) {
@@ -406,6 +407,46 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
         snappedToEndpoint: false,
       };
       finalSnapType = 'axis';
+
+      // ── Шаг 3a: wallFace вдоль оси ──
+      // При осевом lock ищем грань стены, которая пересекает ось рисования.
+      // Если грань пересекает ось в пределах FACE_SNAP_WORLD мм от rawEnd —
+      // защёлкиваем конечную точку прямо на грань (оставаясь на оси).
+      {
+        const axisDir = { x: Math.cos(lockedAngle), y: Math.sin(lockedAngle) };
+        const FACE_SNAP_WORLD = 150; // мм — зона захвата грани вдоль оси
+
+        let bestFacePoint = null;
+        let bestFaceDist = FACE_SNAP_WORLD;
+
+        for (const wall of appState.walls) {
+          for (const entry of getWallSnapSegments(wall)) {
+            if (entry.type !== 'wallFace') continue;
+            const seg = entry.segment;
+            const sx = seg.x2 - seg.x1, sy = seg.y2 - seg.y1;
+            const denom = axisDir.x * sy - axisDir.y * sx;
+            if (Math.abs(denom) < 0.0001) continue; // ось параллельна грани
+            const qpx = seg.x1 - this.drawStart.x, qpy = seg.y1 - this.drawStart.y;
+            const t = (qpx * sy - qpy * sx) / denom; // расстояние вдоль оси
+            const u = (qpx * axisDir.y - qpy * axisDir.x) / denom; // позиция на грани
+            if (u < -0.001 || u > 1.001) continue; // промах мимо отрезка грани
+            if (t < 0) continue; // грань за спиной от drawStart
+            const distToRawEnd = Math.abs(t - len);
+            if (distToRawEnd < bestFaceDist) {
+              bestFaceDist = distToRawEnd;
+              bestFacePoint = {
+                x: this.drawStart.x + axisDir.x * t,
+                y: this.drawStart.y + axisDir.y * t,
+              };
+            }
+          }
+        }
+
+        if (bestFacePoint) {
+          rawEnd = { ...rawEnd, x: bestFacePoint.x, y: bestFacePoint.y, snapType: 'wallFace' };
+          finalSnapType = 'wallFace';
+        }
+      }
     } else {
       // Нет осевого lock — обычный snap
       const snappedBase = snap(world.x, world.y, {
