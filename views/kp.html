@@ -233,7 +233,6 @@
 
           <!-- Двухколоночный контент 50/50 -->
           <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:32px;overflow:hidden;align-items:stretch">
-
             <!-- ЛЕВАЯ: нарратив-текст -->
             <div style="display:flex;flex-direction:column">
               <div id="prevRoadmapNarrative2" class="kp-body-text">
@@ -957,7 +956,7 @@
 
     /* Строим SVG path с кривыми Безье между сегментами.
        Между out[i] и in[i+1] — плавная S-кривая с bulge. */
-    var bulge = W * 0.55;
+    var bulge = W * 0.28;
     var dParts = [];
 
     /* Начинаем с первой точки входа */
@@ -977,12 +976,13 @@
         var exitRight = (A.x > positions[A.pill].cx); /* A правее центра */
 
         var cp1x, cp2x;
+        var clamp = function(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); };
         if (exitRight) {
-          cp1x = A.x + bulge;
-          cp2x = B.x + bulge;
+          cp1x = clamp(A.x + bulge, 0, W);
+          cp2x = clamp(B.x + bulge, 0, W);
         } else {
-          cp1x = A.x - bulge;
-          cp2x = B.x - bulge;
+          cp1x = clamp(A.x - bulge, 0, W);
+          cp2x = clamp(B.x - bulge, 0, W);
         }
 
         dParts.push(
@@ -1021,7 +1021,7 @@
     }
 
     container.style.position = 'relative';
-    container.style.overflow = 'hidden';
+    container.style.overflow = 'visible';
     container.style.display  = 'block';
     container.insertBefore(svg, container.firstChild);
 
