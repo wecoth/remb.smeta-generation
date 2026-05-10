@@ -480,8 +480,27 @@ ${stagesContext}
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ЛИСТ 5 — Смета работ (по этапам, новый дизайн)
+// ЛИСТ 5 — Смета работ (пагинация по страницам А4)
 // ─────────────────────────────────────────────────────────────────
+
+// Сколько строк таблицы помещается на один лист.
+// Подберите под реальную высоту строк и масштаб вашего .spp-page.
+// Заголовок этапа считается за 1 строку, строка данных — за 1.
+const SMR_ROWS_PER_PAGE = 22;
+
+// Общий заголовок таблицы (шапка колонок) — выводится на каждой странице
+function _smrTableHeader(label) {
+  return `<table class="kp-smr-table">
+    <thead><tr>
+      <th style="width:20px">№</th>
+      <th>${label}</th>
+      <th style="width:52px">Ед.</th>
+      <th style="width:52px">Кол-во</th>
+      <th style="width:80px">Цена, ₽</th>
+      <th style="width:80px">Сумма, ₽</th>
+    </tr></thead>
+    <tbody>`;
+}
 
 function fillSmrPage(company) {
   const content  = el('prevSmrContent2');
@@ -491,94 +510,154 @@ function fillSmrPage(company) {
   const stages   = getStagesWithTotals();
   const dataRows = (appState.smrRows || []).filter(r => !r.isSection);
 
+  // ── Пустое состояние ─────────────────────────────────────────
   if (!dataRows.length) {
-    if (emptyEl)  emptyEl.style.display = '';
+    if (emptyEl) emptyEl.style.display = '';
     content.innerHTML = '';
     _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
+    // Удаляем ранее добавленные дополнительные страницы
+    const originalPage = el('prevSmr2')?.closest('.spp-page');
+    if (originalPage) {
+      originalPage.parentNode.querySelectorAll('.spp-page--smr-extra').forEach(n => n.remove());
+    }
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
-  let html = '';
-  let grandTotal = 0;
-  let counter = 0;
+  // ── Собираем плоский список «элементов» ──────────────────────
+  // Каждый элемент — либо заголовок этапа, либо строка данных.
+  const allItems = [];
+  const grandTotal = dataRows.reduce((s, r) => s + (r.total || 0), 0);
 
   if (stages.length) {
-    // Группировка по этапам
     stages.forEach(stage => {
       if (!stage.smrRows.length) return;
-      grandTotal += stage.smrTotal;
+      allItems.push({ type: 'stage', name: stage.name, total: stage.smrTotal });
+      stage.smrRows.forEach(r => allItems.push({ type: 'row', data: r }));
+    });
+  } else {
+    dataRows.forEach(r => allItems.push({ type: 'row', data: r }));
+  }
 
-      html += `<div class="kp-smr-stage-title">
-        <span>${stage.name}</span>
-        <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(stage.smrTotal)}</span>
-      </div>`;
+  // ── Разбиваем на страницы ────────────────────────────────────
+  const pages = [];
+  let cur = { items: [], count: 0 };
+  for (const item of allItems) {
+    if (cur.count >= SMR_ROWS_PER_PAGE && cur.items.length > 0) {
+      pages.push(cur);
+      cur = { items: [], count: 0 };
+    }
+    cur.items.push(item);
+    cur.count++;
+  }
+  if (cur.items.length) pages.push(cur);
 
-      html += `<table class="kp-smr-table">
-        <thead><tr>
-          <th style="width:20px">№</th>
-          <th>Наименование работ</th>
-          <th style="width:52px">Ед.</th>
-          <th style="width:52px">Кол-во</th>
-          <th style="width:80px">Цена, ₽</th>
-          <th style="width:80px">Сумма, ₽</th>
-        </tr></thead>
-        <tbody>`;
+  // ── Ссылки на DOM ────────────────────────────────────────────
+  const originalPage   = el('prevSmr2')?.closest('.spp-page');
+  const pagesContainer = originalPage?.parentNode;
+  if (!originalPage || !pagesContainer) {
+    // Фолбэк: просто рендерим в content без пагинации
+    _renderSmrFlat(content, allItems, grandTotal, company, true);
+    return;
+  }
 
-      stage.smrRows.forEach(r => {
-        counter++;
+  // Удаляем ранее добавленные дополнительные страницы
+  pagesContainer.querySelectorAll('.spp-page--smr-extra').forEach(n => n.remove());
+
+  // ── Рендерим каждую страницу ─────────────────────────────────
+  let globalCounter = 0;
+  let lastInsertedPage = originalPage;
+
+  pages.forEach((page, pageIdx) => {
+    const isFirst = pageIdx === 0;
+    const isLast  = pageIdx === pages.length - 1;
+    let html = '';
+    let openTable = false;
+
+    page.items.forEach(item => {
+      if (item.type === 'stage') {
+        // Закрываем предыдущую таблицу, если была открыта
+        if (openTable) { html += '</tbody></table>'; openTable = false; }
+        html += `<div class="kp-smr-stage-title">
+          <span>${item.name}</span>
+          <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
+        </div>`;
+        html += _smrTableHeader('Наименование работ');
+        openTable = true;
+      } else {
+        // Если строки без этапа — открываем таблицу сами
+        if (!openTable) {
+          html += _smrTableHeader('Наименование работ');
+          openTable = true;
+        }
+        globalCounter++;
+        const r = item.data;
         html += `<tr>
-          <td>${counter}</td>
+          <td>${globalCounter}</td>
           <td>${r.name || ''}</td>
           <td style="text-align:center">${r.unit || ''}</td>
           <td>${r.qty != null ? r.qty : ''}</td>
           <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
           <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
         </tr>`;
-      });
-
-      html += `</tbody></table>`;
+      }
     });
-  } else {
-    // Плоский список без этапов
-    html += `<table class="kp-smr-table">
-      <thead><tr>
-        <th style="width:20px">№</th>
-        <th>Наименование работ</th>
-        <th style="width:52px">Ед.</th>
-        <th style="width:52px">Кол-во</th>
-        <th style="width:80px">Цена, ₽</th>
-        <th style="width:80px">Сумма, ₽</th>
-      </tr></thead>
-      <tbody>`;
-    dataRows.forEach(r => {
-      counter++;
-      grandTotal += r.total || 0;
-      html += `<tr>
-        <td>${counter}</td>
-        <td>${r.name || ''}</td>
-        <td style="text-align:center">${r.unit || ''}</td>
-        <td>${r.qty != null ? r.qty : ''}</td>
-        <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-        <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-      </tr>`;
-    });
-    html += `</tbody></table>`;
-  }
 
-  // Итог
-  html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
-    <span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px">итого по работам</span>
-    <span style="font-size:18px;font-weight:700;color:#1c1c1c">${fmtMoney(grandTotal)}</span>
-  </div>`;
+    if (openTable) html += '</tbody></table>';
 
-  content.innerHTML = html;
-  _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
+    // Итог — только на последней странице
+    if (isLast) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
+        <span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px">итого по работам</span>
+        <span style="font-size:18px;font-weight:700;color:#1c1c1c">${fmtMoney(grandTotal)}</span>
+      </div>`;
+    }
+
+    if (isFirst) {
+      // Первая страница — заполняем оригинальный контейнер
+      content.innerHTML = html;
+      _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
+    } else {
+      // Дополнительные страницы — клонируем оригинал
+      const newPage = originalPage.cloneNode(true);
+      newPage.classList.add('spp-page--smr-extra');
+      // Оставляем тот же data-page, чтобы чекбоксы управляли группой
+      newPage.dataset.page = originalPage.dataset.page;
+
+      // На дополнительных листах убираем заголовок листа (h2/section title),
+      // оставляем только контент и футер
+      const pageTitle = newPage.querySelector('.spp-page-label, .kp-page-title, h2.kp-title');
+      if (pageTitle) pageTitle.style.display = 'none';
+
+      // Убираем empty-плейсхолдер
+      const extraEmpty = newPage.querySelector('[id*="SmrEmpty"]');
+      if (extraEmpty) extraEmpty.style.display = 'none';
+
+      // Вставляем контент
+      const extraContent = newPage.querySelector('[id*="SmrContent"]');
+      if (extraContent) {
+        extraContent.style.display = '';
+        extraContent.innerHTML = html;
+      }
+
+      // Футер — находим элементы внутри клона (id у них те же, getElementById не подойдёт)
+      const ftLogo = newPage.querySelector('[id*="SmrFtLogoImg"]');
+      const ftC    = newPage.querySelector('[id*="SmrFtC"]');
+      const ftN    = newPage.querySelector('[id*="SmrFtN"]');
+      _fillFooterEl(ftLogo, ftC, ftN, company);
+
+      // Вставляем после последней добавленной страницы
+      lastInsertedPage.after(newPage);
+      lastInsertedPage = newPage;
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ЛИСТ 6 — Смета материалов (по этапам, новый дизайн)
+// ЛИСТ 6 — Смета материалов (пагинация по страницам А4)
 // ─────────────────────────────────────────────────────────────────
+
+const MAT_ROWS_PER_PAGE = 22;
 
 function fillMatPage(company) {
   const content  = el('prevMatContent2');
@@ -589,9 +668,16 @@ function fillMatPage(company) {
   const stages   = getStagesWithTotals();
   const dataRows = (appState.matRows || []).filter(r => !r.isSection);
 
-  // Если материалов нет — скрываем весь лист из PDF
+  // ── Удаляем ранее добавленные дополнительные страницы ────────
+  const originalPage   = el('prevMat2')?.closest('.spp-page');
+  const pagesContainer = originalPage?.parentNode;
+  if (pagesContainer) {
+    pagesContainer.querySelectorAll('.spp-page--mat-extra').forEach(n => n.remove());
+  }
+
+  // ── Пустое состояние ─────────────────────────────────────────
   if (!dataRows.length) {
-    if (emptyEl)  emptyEl.style.display = '';
+    if (emptyEl) emptyEl.style.display = '';
     content.innerHTML = '';
     if (pageEl) pageEl.dataset.matEmpty = 'true';
     _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
@@ -600,78 +686,113 @@ function fillMatPage(company) {
   if (emptyEl) emptyEl.style.display = 'none';
   if (pageEl)  delete pageEl.dataset.matEmpty;
 
-  let html = '';
-  let grandTotal = 0;
-  let counter = 0;
+  const grandTotal = dataRows.reduce((s, r) => s + (r.total || 0), 0);
 
+  // ── Собираем плоский список ───────────────────────────────────
+  const allItems = [];
   if (stages.length) {
     stages.forEach(stage => {
       if (!stage.matRows.length) return;
-      grandTotal += stage.matTotal;
+      allItems.push({ type: 'stage', name: stage.name, total: stage.matTotal });
+      stage.matRows.forEach(r => allItems.push({ type: 'row', data: r }));
+    });
+  } else {
+    dataRows.forEach(r => allItems.push({ type: 'row', data: r }));
+  }
 
-      html += `<div class="kp-smr-stage-title">
-        <span>${stage.name}</span>
-        <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(stage.matTotal)}</span>
-      </div>`;
+  // ── Разбиваем на страницы ────────────────────────────────────
+  const pages = [];
+  let cur = { items: [], count: 0 };
+  for (const item of allItems) {
+    if (cur.count >= MAT_ROWS_PER_PAGE && cur.items.length > 0) {
+      pages.push(cur);
+      cur = { items: [], count: 0 };
+    }
+    cur.items.push(item);
+    cur.count++;
+  }
+  if (cur.items.length) pages.push(cur);
 
-      html += `<table class="kp-smr-table">
-        <thead><tr>
-          <th style="width:20px">№</th>
-          <th>Наименование материала</th>
-          <th style="width:52px">Ед.</th>
-          <th style="width:52px">Кол-во</th>
-          <th style="width:80px">Цена, ₽</th>
-          <th style="width:80px">Сумма, ₽</th>
-        </tr></thead>
-        <tbody>`;
+  if (!originalPage || !pagesContainer) {
+    _renderMatFlat(content, allItems, grandTotal, company);
+    return;
+  }
 
-      stage.matRows.forEach(r => {
-        counter++;
+  // ── Рендерим каждую страницу ─────────────────────────────────
+  let globalCounter = 0;
+  let lastInsertedPage = originalPage;
+
+  pages.forEach((page, pageIdx) => {
+    const isFirst = pageIdx === 0;
+    const isLast  = pageIdx === pages.length - 1;
+    let html = '';
+    let openTable = false;
+
+    page.items.forEach(item => {
+      if (item.type === 'stage') {
+        if (openTable) { html += '</tbody></table>'; openTable = false; }
+        html += `<div class="kp-smr-stage-title">
+          <span>${item.name}</span>
+          <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
+        </div>`;
+        html += _smrTableHeader('Наименование материала');
+        openTable = true;
+      } else {
+        if (!openTable) {
+          html += _smrTableHeader('Наименование материала');
+          openTable = true;
+        }
+        globalCounter++;
+        const r = item.data;
         html += `<tr>
-          <td>${counter}</td>
+          <td>${globalCounter}</td>
           <td>${r.name || ''}</td>
           <td style="text-align:center">${r.unit || ''}</td>
           <td>${r.qty != null ? r.qty : ''}</td>
           <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
           <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
         </tr>`;
-      });
-
-      html += `</tbody></table>`;
+      }
     });
-  } else {
-    html += `<table class="kp-smr-table">
-      <thead><tr>
-        <th style="width:20px">№</th>
-        <th>Наименование материала</th>
-        <th style="width:52px">Ед.</th>
-        <th style="width:52px">Кол-во</th>
-        <th style="width:80px">Цена, ₽</th>
-        <th style="width:80px">Сумма, ₽</th>
-      </tr></thead>
-      <tbody>`;
-    dataRows.forEach(r => {
-      counter++;
-      grandTotal += r.total || 0;
-      html += `<tr>
-        <td>${counter}</td>
-        <td>${r.name || ''}</td>
-        <td style="text-align:center">${r.unit || ''}</td>
-        <td>${r.qty != null ? r.qty : ''}</td>
-        <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-        <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-      </tr>`;
-    });
-    html += `</tbody></table>`;
-  }
 
-  html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
-    <span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px">итого по материалам</span>
-    <span style="font-size:18px;font-weight:700;color:#1c1c1c">${fmtMoney(grandTotal)}</span>
-  </div>`;
+    if (openTable) html += '</tbody></table>';
 
-  content.innerHTML = html;
-  _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
+    if (isLast) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
+        <span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px">итого по материалам</span>
+        <span style="font-size:18px;font-weight:700;color:#1c1c1c">${fmtMoney(grandTotal)}</span>
+      </div>`;
+    }
+
+    if (isFirst) {
+      content.innerHTML = html;
+      _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
+    } else {
+      const newPage = originalPage.cloneNode(true);
+      newPage.classList.add('spp-page--mat-extra');
+      newPage.dataset.page = originalPage.dataset.page;
+
+      const pageTitle = newPage.querySelector('.spp-page-label, .kp-page-title, h2.kp-title');
+      if (pageTitle) pageTitle.style.display = 'none';
+
+      const extraEmpty = newPage.querySelector('[id*="MatEmpty"]');
+      if (extraEmpty) extraEmpty.style.display = 'none';
+
+      const extraContent = newPage.querySelector('[id*="MatContent"]');
+      if (extraContent) {
+        extraContent.style.display = '';
+        extraContent.innerHTML = html;
+      }
+
+      const ftLogo = newPage.querySelector('[id*="MatFtLogoImg"]');
+      const ftC    = newPage.querySelector('[id*="MatFtC"]');
+      const ftN    = newPage.querySelector('[id*="MatFtN"]');
+      _fillFooterEl(ftLogo, ftC, ftN, company);
+
+      lastInsertedPage.after(newPage);
+      lastInsertedPage = newPage;
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -789,6 +910,19 @@ function fillContacts(company) {
 // ─────────────────────────────────────────────────────────────────
 // Футер (логотип/буква) — общий хелпер
 // ─────────────────────────────────────────────────────────────────
+
+// Версия для клонированных страниц (элементы уже найдены, не по id)
+function _fillFooterEl(logoImg, circle, nameEl, company) {
+  if (company.logoBase64) {
+    if (logoImg) { logoImg.src = company.logoBase64; logoImg.style.display = ''; }
+    if (circle)  circle.style.display = 'none';
+    if (nameEl)  nameEl.style.display = 'none';
+  } else {
+    if (logoImg) logoImg.style.display = 'none';
+    if (circle)  { circle.style.display = ''; circle.textContent = company.letter; }
+    if (nameEl)  { nameEl.style.display = ''; nameEl.textContent = company.name; }
+  }
+}
 
 function _fillFooter(logoImgId, circleId, nameId, company) {
   const logoImg = el(logoImgId);
