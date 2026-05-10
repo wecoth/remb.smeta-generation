@@ -99,11 +99,35 @@ export function findObjectSnapCandidate(worldPoint, screenPoint, options = {}) {
     const wpt = options.wallPointTolerance ?? Math.max(tolerance, 24);
     for (const wall of appState.walls) {
       const wallAngle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-      for (const entry of getWallSnapSegments(wall)) {
-        const proj = projectPointOntoSegment(worldPoint, entry.segment);
-        // Единый порог — удваивание при inside давало «прилипание» к грани
-        // даже когда курсор уже прошёл сквозь неё.
-        register(entry.type, proj, { wallId: wall.id, wallAngle }, wpt);
+      const entries = getWallSnapSegments(wall);
+
+      // Ось (wallAxis) регистрируем всегда.
+      for (const entry of entries) {
+        if (entry.type === 'wallAxis') {
+          const proj = projectPointOntoSegment(worldPoint, entry.segment);
+          register('wallAxis', proj, { wallId: wall.id, wallAngle }, wpt);
+        }
+      }
+
+      // wallFace: из двух граней регистрируем только БЛИЖАЙШУЮ к курсору.
+      // Это не позволяет курсору «провалиться» сквозь ближнюю грань и
+      // зацепиться за дальнюю (т.е. изнутри стены).
+      const faceSeg = entries.filter(e => e.type === 'wallFace');
+      if (faceSeg.length > 0) {
+        let nearestFace = null;
+        let nearestDist = Infinity;
+        for (const entry of faceSeg) {
+          const proj = projectPointOntoSegment(worldPoint, entry.segment);
+          const s = toScreen(proj.x, proj.y);
+          const d = Math.hypot(screenPoint.x - s.x, screenPoint.y - s.y);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearestFace = { proj, entry };
+          }
+        }
+        if (nearestFace) {
+          register('wallFace', nearestFace.proj, { wallId: wall.id, wallAngle }, wpt);
+        }
       }
     }
   }
