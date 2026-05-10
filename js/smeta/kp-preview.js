@@ -1,7 +1,7 @@
 // ─── js/smeta/kp-preview.js ────────────────────────────────────────
-// Заполняет все страницы КП (kp.html) актуальными данными из appState.
-// Вызывать: liveUpdateKP() — при каждом переходе на вкладку КП,
-// а также после любых изменений данных (СМР, материалы, комнаты).
+// Заполняет все страницы КП актуальными данными из appState.
+// Вызывать: liveUpdateKP() — при каждом переходе на вкладку КП.
+// Версия 2.0 — 8 листов по новому макету.
 
 import { appState } from '../state.js';
 
@@ -22,7 +22,16 @@ function sumRows(rows) {
   return (rows || []).filter(r => !r.isSection).reduce((s, r) => s + (r.total || 0), 0);
 }
 
-// ── Получить профиль компании ──────────────────────────────────────
+function today() {
+  return new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function fmtDate(val) {
+  if (!val) return '—';
+  return new Date(val).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+// ── Профиль компании ───────────────────────────────────────────────
 
 function getCompany() {
   const profile = window._auth?._currentProfile || {};
@@ -32,17 +41,17 @@ function getCompany() {
     'КОМПАНИЯ';
   return {
     name,
-    slogan:    el('profileSlogan')?.value    || profile.slogan    || 'КАЧЕСТВО ПОД КЛЮЧ',
-    ownerName: el('profileOwnerName')?.value || profile.ownerName || '',
-    phone:     el('profilePhone')?.value     || profile.phone     || '',
-    email:     profile.email  || '',
-    site:      profile.site   || '',
+    slogan:     el('profileSlogan')?.value    || profile.slogan    || 'КАЧЕСТВО ПОД КЛЮЧ',
+    ownerName:  el('profileOwnerName')?.value || profile.ownerName || '',
+    phone:      el('profilePhone')?.value     || profile.phone     || '',
+    email:      profile.email  || '',
+    site:       profile.site   || '',
     logoBase64: profile.logoBase64 || appState.logoData || null,
-    letter:    (name || 'К')[0].toUpperCase(),
+    letter:     (name || 'К')[0].toUpperCase(),
   };
 }
 
-// ── Получить адрес объекта ─────────────────────────────────────────
+// ── Адрес объекта ──────────────────────────────────────────────────
 
 function getAddress() {
   const street = el('hdrStreet')?.value?.trim() || '';
@@ -52,7 +61,7 @@ function getAddress() {
   return parts.join(', ') || '—';
 }
 
-// ── Обмерный план / чертёж ─────────────────────────────────────────
+// ── Изображения планов ─────────────────────────────────────────────
 
 function getPlanImages() {
   return {
@@ -61,12 +70,58 @@ function getPlanImages() {
   };
 }
 
+// ── Этапы с суммами ────────────────────────────────────────────────
+// Возвращает массив { name, color, days, smrTotal, matTotal, smrRows, matRows }
+
+function getStagesWithTotals() {
+  const stages  = appState.stages || [];
+  const smrRows = appState.smrRows || [];
+  const matRows = appState.matRows || [];
+
+  return stages.map(stage => {
+    // Собираем строки СМР внутри этапа
+    let inside = false;
+    const stageSmr = [];
+    for (const r of smrRows) {
+      if (r.isSection) {
+        if (inside) break;
+        inside = (r.name?.trim() === stage.name);
+        continue;
+      }
+      if (inside && r.name) stageSmr.push(r);
+    }
+
+    // Аналогично для материалов
+    inside = false;
+    const stageMat = [];
+    for (const r of matRows) {
+      if (r.isSection) {
+        if (inside) break;
+        inside = (r.name?.trim() === stage.name);
+        continue;
+      }
+      if (inside && r.name) stageMat.push(r);
+    }
+
+    const days = (stage.daysOverride != null ? stage.daysOverride : stage.daysAuto) || 0;
+
+    return {
+      name:     stage.name,
+      color:    stage.color || '#888',
+      days,
+      smrTotal: stageSmr.reduce((s, r) => s + (r.total || 0), 0),
+      matTotal: stageMat.reduce((s, r) => s + (r.total || 0), 0),
+      smrRows:  stageSmr,
+      matRows:  stageMat,
+    };
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────
 // ЛИСТ 1 — Обложка
 // ─────────────────────────────────────────────────────────────────
 
 function fillCover(company) {
-  // Центральный блок
   const nameEl   = el('prevCovName2');
   const sloganEl = el('prevCovSlogan2');
   const circle   = el('prevCircle2');
@@ -75,19 +130,14 @@ function fillCover(company) {
   if (nameEl)   nameEl.textContent   = company.name;
   if (sloganEl) sloganEl.textContent = company.slogan;
 
-  // Логотип vs буква
   if (company.logoBase64) {
     if (logoImg)  { logoImg.src = company.logoBase64; logoImg.style.display = ''; }
     if (circle)   circle.style.display = 'none';
   } else {
     if (logoImg)  logoImg.style.display = 'none';
-    if (circle) {
-      circle.style.display = '';
-      circle.textContent = company.letter;
-    }
+    if (circle) { circle.style.display = ''; circle.textContent = company.letter; }
   }
 
-  // Футер обложки
   const footCircle = el('prevFootCircle2');
   const footName   = el('prevFootName2');
   const footLogo   = el('prevFootLogoImg2');
@@ -101,103 +151,78 @@ function fillCover(company) {
     if (footCircle) { footCircle.style.display = ''; footCircle.textContent = company.letter; }
     if (footName)   { footName.style.display = ''; footName.textContent = company.name; }
   }
+
+  const siteEl = el('prevCovSite2');
+  if (siteEl) siteEl.textContent = company.site || '';
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ЛИСТ 2 — Планирование работ
+// ЛИСТ 2 — Объект
 // ─────────────────────────────────────────────────────────────────
 
-function fillPlanning(company, address, images) {
-  // Информация об объекте (правая колонка, верх)
-  const infoEl = el('prevObjInfo2');
-  if (infoEl) {
-    const inspDate = el('smetaDate')?.value || '';
-    const dateStr  = inspDate
-      ? new Date(inspDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      : '—';
-    infoEl.innerHTML =
-      `<div><span style="color:#888">Объект:&nbsp;</span>${address}</div>` +
-      `<div><span style="color:#888">Дата осмотра:&nbsp;</span>${dateStr}</div>`;
-  }
+function fillObject(company, address, images) {
+  // Заголовок и адрес
+  const titleEl = el('prevObjTitle2');
+  const addrEl  = el('prevObjAddress2');
+  if (titleEl) titleEl.textContent = 'Объект';
+  if (addrEl)  addrEl.textContent  = address;
 
-  // Итоги (центр правой колонки)
-  const smrT   = sumRows(appState.smrRows);
-  const matT   = sumRows(appState.matRows);
-  const total  = smrT + matT;
-  const days   = appState.totalDaysOverride || appState.totalDays || 0;
-
-  const totalsEl = el('prevPlanTotals2');
-  if (totalsEl) {
-    totalsEl.style.display = (smrT > 0 || matT > 0) ? '' : 'none';
-  }
-  const smrTotEl   = el('prevPlanSmrTot2');
-  const matTotEl   = el('prevPlanMatTot2');
-  const totalTotEl = el('prevPlanTotalTot2');
-  const daysEl     = el('prevPlanDays2');
-
-  if (smrTotEl)   smrTotEl.textContent   = fmtMoney(smrT);
-  if (matTotEl)   matTotEl.textContent   = fmtMoney(matT);
-  if (totalTotEl) totalTotEl.textContent = fmtMoney(total);
-  if (daysEl)     daysEl.textContent     = days ? days + ' дн.' : '—';
-
-  // Изображение плана (левая колонка)
-  const planImg = el('prevPlanImg2');
-  const planPh  = el('prevPlanPh2');
+  // Чертёж
+  const img = el('prevObjPlanImg2');
+  const ph  = el('prevObjPlanPh2');
   if (images.clean) {
-    if (planImg) { planImg.src = images.clean; planImg.style.display = ''; }
-    if (planPh)  planPh.style.display = 'none';
+    if (img) { img.src = images.clean; img.style.display = ''; }
+    if (ph)  ph.style.display = 'none';
   } else {
-    if (planImg) planImg.style.display = 'none';
-    if (planPh)  planPh.style.display = '';
+    if (img) img.style.display = 'none';
+    if (ph)  ph.style.display = '';
   }
 
-  // Экспликация помещений
-  fillRoomsTable();
-
-  // Футер
-  _fillFooter('prevPlanFootLogoImg2', 'prevPlanFootCircle2', 'prevPlanFootName2', company);
-}
-
-// Экспликация помещений
-function fillRoomsTable() {
-  const tbody = el('prevRoomsBody2');
-  const tfoot = el('prevRoomsFoot2');
-  if (!tbody) return;
-
-  const rooms = appState.rooms || [];
-  tbody.innerHTML = '';
-
-  let totalFloor = 0, totalWall = 0, totalPerim = 0;
-
-  rooms.forEach(room => {
-    const floor = room.area           ?? room.floorArea ?? 0;
-    const wall  = room.metrics?.wallAreaCleanM2 ?? room.wallArea  ?? 0;
-    const perim = room.metrics?.perimeterFloorM ?? room.perimeter ?? 0;
-
-    totalFloor += floor;
-    totalWall  += wall;
-    totalPerim += perim;
-
-    const name = room.name || room.id || 'Помещение';
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      `<td style="border:1px solid #bbb;padding:4px 7px;font-size:14px">${name}</td>` +
-      `<td style="border:1px solid #bbb;padding:4px 7px;text-align:center;font-size:14px">${fmtNum(floor)}</td>` +
-      `<td style="border:1px solid #bbb;padding:4px 7px;text-align:center;font-size:14px">${fmtNum(wall)}</td>` +
-      `<td style="border:1px solid #bbb;padding:4px 7px;text-align:center;font-size:14px">${fmtNum(perim)}</td>`;
-    tbody.appendChild(tr);
-  });
-
-  if (tfoot) {
-    tfoot.innerHTML = rooms.length
-      ? `<tr style="font-weight:600;background:#f5f5f2">
-          <td style="border:1px solid #bbb;padding:4px 7px;font-size:14px">ИТОГО</td>
-          <td style="border:1px solid #bbb;padding:4px 7px;text-align:center;font-size:14px">${fmtNum(totalFloor)}</td>
-          <td style="border:1px solid #bbb;padding:4px 7px;text-align:center;font-size:14px">${fmtNum(totalWall)}</td>
-          <td style="border:1px solid #bbb;padding:4px 7px;text-align:center;font-size:14px">${fmtNum(totalPerim)}</td>
-         </tr>`
-      : '';
+  // Экспликация
+  const tbody = el('prevObjRoomsBody2');
+  const tfoot = el('prevObjRoomsFoot2');
+  if (tbody) {
+    const rooms = appState.rooms || [];
+    let totalFloor = 0;
+    tbody.innerHTML = rooms.map((room, i) => {
+      const floor = room.area ?? room.floorArea ?? 0;
+      totalFloor += floor;
+      const name = room.name || room.id || 'Помещение';
+      return `<tr style="border-bottom:1px solid #f0f0f0">
+        <td style="padding:5px 0;font-size:11px;color:#bbb">${i + 1}</td>
+        <td style="padding:5px 8px;font-size:12px;color:#333">${name}</td>
+        <td style="padding:5px 4px;font-size:12px;text-align:right;color:#333">${fmtNum(floor)}</td>
+      </tr>`;
+    }).join('');
+    if (tfoot && rooms.length) {
+      tfoot.innerHTML = `<tr style="border-top:1px solid #1c1c1c">
+        <td colspan="2" style="padding:6px 0;font-size:12px;font-weight:600;color:#1c1c1c">итого</td>
+        <td style="padding:6px 4px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${fmtNum(totalFloor)} м²</td>
+      </tr>`;
+    }
   }
+
+  // Параметры
+  const inspDate = el('smetaDate')?.value || '';
+  const smrT  = sumRows(appState.smrRows);
+  const matT  = sumRows(appState.matRows);
+  const days  = appState.totalDaysOverride || appState.totalDays || 0;
+
+  const set = (id, val) => { const e = el(id); if (e) e.textContent = val; };
+  set('prevObjInspDate2', fmtDate(inspDate));
+  set('prevObjCompDate2', today());
+  set('prevObjDays2',     days ? days + ' рабочих дней' : '—');
+  set('prevObjSmrCost2',  smrT > 0 ? fmtMoney(smrT) : '—');
+  set('prevObjMatCost2',  matT > 0 ? fmtMoney(matT) : '0 ₽');
+  set('prevObjTotal2',    fmtMoney(smrT + matT));
+
+  // Адрес на странице контактов (дублируем)
+  set('prevCtAddress2', address);
+  set('prevCtDate2',    fmtDate(inspDate));
+  set('prevCtDays2',    days ? days + ' рабочих дней' : '—');
+  set('prevCtSmr2',     smrT > 0 ? fmtMoney(smrT) : '—');
+  set('prevCtMat2',     matT > 0 ? fmtMoney(matT) : '0 ₽');
+  set('prevCtTotal2',   fmtMoney(smrT + matT));
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -208,12 +233,9 @@ function fillBlueprint(company, images) {
   const bpImg = el('prevBpImg2');
   const bpPh  = el('prevBpPh2');
 
-  if (images.measured) {
-    if (bpImg) { bpImg.src = images.measured; bpImg.style.display = ''; }
-    if (bpPh)  bpPh.style.display = 'none';
-  } else if (images.clean) {
-    // Запасной вариант — чистый план если обмерного нет
-    if (bpImg) { bpImg.src = images.clean; bpImg.style.display = ''; }
+  const src = images.measured || images.clean;
+  if (src) {
+    if (bpImg) { bpImg.src = src; bpImg.style.display = ''; }
     if (bpPh)  bpPh.style.display = 'none';
   } else {
     if (bpImg) bpImg.style.display = 'none';
@@ -224,132 +246,430 @@ function fillBlueprint(company, images) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ЛИСТ 4 — Смета СМР
+// ЛИСТ 4 — Карта ремонта
+// ─────────────────────────────────────────────────────────────────
+
+// Кэш сгенерированных описаний { stageName → { desc, bullets } }
+const _roadmapCache = {};
+
+function fillRoadmap() {
+  const container = el('prevRoadmapStages2');
+  if (!container) return;
+
+  const stages = getStagesWithTotals();
+  if (!stages.length) {
+    container.innerHTML = '<div style="color:#ccc;font-size:13px;padding:40px 0;text-align:center">Добавьте этапы в смету</div>';
+    return;
+  }
+
+  container.innerHTML = stages.map((stage, i) => {
+    const cached = _roadmapCache[stage.name];
+    const desc    = cached?.desc    || '';
+    const bullets = cached?.bullets || [];
+    const num = String(i + 1).padStart(2, '0');
+
+    return `<div class="kp-roadmap-item">
+      <div class="kp-roadmap-num">${num}</div>
+      <div class="kp-roadmap-body">
+        <div class="kp-roadmap-title">${stage.name}</div>
+        ${desc ? `<div class="kp-roadmap-desc">${desc}</div>` : ''}
+        ${bullets.length ? `<ul class="kp-roadmap-bullets">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>` : ''}
+      </div>
+      <div>
+        <div class="kp-roadmap-days">${stage.days || '—'}</div>
+        <div class="kp-roadmap-days-label">${stage.days ? 'дней' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Генерация описаний через Claude API
+async function generateRoadmapText() {
+  const stages = getStagesWithTotals();
+  if (!stages.length) return;
+
+  const statusEl = el('prevRoadmapGenStatus');
+  const btnEl    = el('btnGenerateRoadmap');
+  if (statusEl) statusEl.textContent = 'Генерирую...';
+  if (btnEl)    btnEl.disabled = true;
+
+  // Формируем контекст для API
+  const stagesContext = stages.map((s, i) => {
+    const works = s.smrRows.map(r => r.name).filter(Boolean).slice(0, 8).join(', ');
+    return `${i + 1}. ${s.name} (${s.days} дн.)${works ? ': ' + works : ''}`;
+  }).join('\n');
+
+  const prompt = `Ты — менеджер строительной компании. Напиши краткое описание каждого этапа ремонта для клиентского КП.
+
+Этапы:
+${stagesContext}
+
+Для каждого этапа верни JSON-объект строго в таком формате (массив):
+[
+  {
+    "name": "название этапа точно как указано",
+    "desc": "1-2 предложения что делается и зачем, понятным языком для клиента",
+    "bullets": ["ключевая работа 1", "ключевая работа 2", "ключевая работа 3"]
+  }
+]
+
+Верни ТОЛЬКО JSON-массив, без пояснений и markdown.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await res.json();
+    const text = (data.content || []).map(c => c.text || '').join('');
+
+    let parsed;
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(clean);
+    } catch {
+      throw new Error('Не удалось распарсить ответ');
+    }
+
+    // Кладём в кэш
+    if (Array.isArray(parsed)) {
+      parsed.forEach(item => {
+        if (item.name) {
+          _roadmapCache[item.name] = {
+            desc:    item.desc    || '',
+            bullets: item.bullets || []
+          };
+        }
+      });
+    }
+
+    fillRoadmap();
+    if (statusEl) statusEl.textContent = '✓ Готово';
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+
+  } catch (e) {
+    console.error('Roadmap gen error:', e);
+    if (statusEl) statusEl.textContent = '✗ Ошибка генерации';
+  }
+
+  if (btnEl) btnEl.disabled = false;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ЛИСТ 5 — Смета работ (по этапам, новый дизайн)
 // ─────────────────────────────────────────────────────────────────
 
 function fillSmrPage(company) {
-  const tbody   = el('prevSmrBody2');
-  const emptyEl = el('prevSmrEmpty2');
-  if (!tbody) return;
+  const content  = el('prevSmrContent2');
+  const emptyEl  = el('prevSmrEmpty2');
+  if (!content) return;
 
-  const rows = appState.smrRows || [];
-  const dataRows = rows.filter(r => !r.isSection);
+  const stages   = getStagesWithTotals();
+  const dataRows = (appState.smrRows || []).filter(r => !r.isSection);
 
-  tbody.innerHTML = '';
-
-  if (dataRows.length === 0) {
-    if (emptyEl) emptyEl.style.display = '';
+  if (!dataRows.length) {
+    if (emptyEl)  emptyEl.style.display = '';
+    content.innerHTML = '';
     _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
+  let html = '';
+  let grandTotal = 0;
   let counter = 0;
-  let total   = 0;
 
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
+  if (stages.length) {
+    // Группировка по этапам
+    stages.forEach(stage => {
+      if (!stage.smrRows.length) return;
+      grandTotal += stage.smrTotal;
 
-    if (r.isSection) {
-      // Строка-раздел
-      tr.style.background = '#fcebb0';
-      tr.innerHTML =
-        `<td colspan="7" style="border:1px solid #c9b86a;padding:3px 8px;font-weight:600;font-size:14px;color:#5a4000">` +
-        `${r.name || 'Раздел'}</td>`;
-    } else {
+      html += `<div class="kp-smr-stage-title">
+        <span>${stage.name}</span>
+        <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(stage.smrTotal)}</span>
+      </div>`;
+
+      html += `<table class="kp-smr-table">
+        <thead><tr>
+          <th style="width:20px">№</th>
+          <th>Наименование работ</th>
+          <th style="width:52px">Ед.</th>
+          <th style="width:52px">Кол-во</th>
+          <th style="width:80px">Цена, ₽</th>
+          <th style="width:80px">Сумма, ₽</th>
+        </tr></thead>
+        <tbody>`;
+
+      stage.smrRows.forEach(r => {
+        counter++;
+        html += `<tr>
+          <td>${counter}</td>
+          <td>${r.name || ''}</td>
+          <td style="text-align:center">${r.unit || ''}</td>
+          <td>${r.qty != null ? r.qty : ''}</td>
+          <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+          <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+        </tr>`;
+      });
+
+      html += `</tbody></table>`;
+    });
+  } else {
+    // Плоский список без этапов
+    html += `<table class="kp-smr-table">
+      <thead><tr>
+        <th style="width:20px">№</th>
+        <th>Наименование работ</th>
+        <th style="width:52px">Ед.</th>
+        <th style="width:52px">Кол-во</th>
+        <th style="width:80px">Цена, ₽</th>
+        <th style="width:80px">Сумма, ₽</th>
+      </tr></thead>
+      <tbody>`;
+    dataRows.forEach(r => {
       counter++;
-      const rowTotal = r.total || 0;
-      total += rowTotal;
-      tr.innerHTML =
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:center;font-size:14px">${counter}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;font-size:14px">${r.name || ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:center;font-size:14px">${r.unit || ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:center;font-size:14px">${r.qty != null ? r.qty : ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:right;font-size:14px">${r.price ? fmtMoney(r.price).replace(' ₽','') : ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:right;font-size:14px;font-weight:500">${rowTotal ? fmtMoney(rowTotal) : ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;font-size:13px;color:#888">${r.note || ''}</td>`;
-    }
+      grandTotal += r.total || 0;
+      html += `<tr>
+        <td>${counter}</td>
+        <td>${r.name || ''}</td>
+        <td style="text-align:center">${r.unit || ''}</td>
+        <td>${r.qty != null ? r.qty : ''}</td>
+        <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+        <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  }
 
-    tbody.appendChild(tr);
-  });
+  // Итог
+  html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
+    <span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px">итого по работам</span>
+    <span style="font-size:18px;font-weight:700;color:#1c1c1c">${fmtMoney(grandTotal)}</span>
+  </div>`;
 
-  // Итоговая строка
-  const tfootTr = document.createElement('tr');
-  tfootTr.style.background = '#fcebb0';
-  tfootTr.style.fontWeight = '600';
-  tfootTr.innerHTML =
-    `<td colspan="5" style="border:1px solid #c9b86a;padding:5px 8px;font-size:14px">ИТОГО по работам</td>` +
-    `<td style="border:1px solid #c9b86a;padding:5px 8px;text-align:right;font-size:14px">${fmtMoney(total)}</td>` +
-    `<td style="border:1px solid #c9b86a"></td>`;
-  tbody.appendChild(tfootTr);
-
+  content.innerHTML = html;
   _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ЛИСТ 5 — Смета материалов
+// ЛИСТ 6 — Смета материалов (по этапам, новый дизайн)
 // ─────────────────────────────────────────────────────────────────
 
 function fillMatPage(company) {
-  const tbody   = el('prevMatBody2');
-  const emptyEl = el('prevMatEmpty2');
-  if (!tbody) return;
+  const content  = el('prevMatContent2');
+  const emptyEl  = el('prevMatEmpty2');
+  const pageEl   = el('prevMat2')?.closest('.spp-page');
+  if (!content) return;
 
-  const rows = appState.matRows || [];
-  const dataRows = rows.filter(r => !r.isSection);
+  const stages   = getStagesWithTotals();
+  const dataRows = (appState.matRows || []).filter(r => !r.isSection);
 
-  tbody.innerHTML = '';
-
-  if (dataRows.length === 0) {
-    if (emptyEl) emptyEl.style.display = '';
+  // Если материалов нет — скрываем весь лист из PDF
+  if (!dataRows.length) {
+    if (emptyEl)  emptyEl.style.display = '';
+    content.innerHTML = '';
+    if (pageEl) pageEl.dataset.matEmpty = 'true';
     _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
+  if (pageEl)  delete pageEl.dataset.matEmpty;
 
+  let html = '';
+  let grandTotal = 0;
   let counter = 0;
-  let total   = 0;
 
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
+  if (stages.length) {
+    stages.forEach(stage => {
+      if (!stage.matRows.length) return;
+      grandTotal += stage.matTotal;
 
-    if (r.isSection) {
-      tr.style.background = '#d8e4f2';
-      tr.innerHTML =
-        `<td colspan="7" style="border:1px solid #9fb8d9;padding:3px 8px;font-weight:600;font-size:14px;color:#1a3a5c">` +
-        `${r.name || 'Раздел'}</td>`;
-    } else {
+      html += `<div class="kp-smr-stage-title">
+        <span>${stage.name}</span>
+        <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(stage.matTotal)}</span>
+      </div>`;
+
+      html += `<table class="kp-smr-table">
+        <thead><tr>
+          <th style="width:20px">№</th>
+          <th>Наименование материала</th>
+          <th style="width:52px">Ед.</th>
+          <th style="width:52px">Кол-во</th>
+          <th style="width:80px">Цена, ₽</th>
+          <th style="width:80px">Сумма, ₽</th>
+        </tr></thead>
+        <tbody>`;
+
+      stage.matRows.forEach(r => {
+        counter++;
+        html += `<tr>
+          <td>${counter}</td>
+          <td>${r.name || ''}</td>
+          <td style="text-align:center">${r.unit || ''}</td>
+          <td>${r.qty != null ? r.qty : ''}</td>
+          <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+          <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+        </tr>`;
+      });
+
+      html += `</tbody></table>`;
+    });
+  } else {
+    html += `<table class="kp-smr-table">
+      <thead><tr>
+        <th style="width:20px">№</th>
+        <th>Наименование материала</th>
+        <th style="width:52px">Ед.</th>
+        <th style="width:52px">Кол-во</th>
+        <th style="width:80px">Цена, ₽</th>
+        <th style="width:80px">Сумма, ₽</th>
+      </tr></thead>
+      <tbody>`;
+    dataRows.forEach(r => {
       counter++;
-      const rowTotal = r.total || 0;
-      total += rowTotal;
-      tr.innerHTML =
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:center;font-size:14px">${counter}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;font-size:14px">${r.name || ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:center;font-size:14px">${r.unit || ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:center;font-size:14px">${r.qty != null ? r.qty : ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:right;font-size:14px">${r.price ? fmtMoney(r.price).replace(' ₽','') : ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;text-align:right;font-size:14px;font-weight:500">${rowTotal ? fmtMoney(rowTotal) : ''}</td>` +
-        `<td style="border:1px solid #ddd;padding:3px 8px;font-size:13px;color:#888">${r.note || ''}</td>`;
-    }
+      grandTotal += r.total || 0;
+      html += `<tr>
+        <td>${counter}</td>
+        <td>${r.name || ''}</td>
+        <td style="text-align:center">${r.unit || ''}</td>
+        <td>${r.qty != null ? r.qty : ''}</td>
+        <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+        <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  }
 
-    tbody.appendChild(tr);
-  });
+  html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
+    <span style="font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px">итого по материалам</span>
+    <span style="font-size:18px;font-weight:700;color:#1c1c1c">${fmtMoney(grandTotal)}</span>
+  </div>`;
 
-  // Итоговая строка
-  const tfootTr = document.createElement('tr');
-  tfootTr.style.background = '#d8e4f2';
-  tfootTr.style.fontWeight = '600';
-  tfootTr.innerHTML =
-    `<td colspan="5" style="border:1px solid #9fb8d9;padding:5px 8px;font-size:14px">ИТОГО по материалам</td>` +
-    `<td style="border:1px solid #9fb8d9;padding:5px 8px;text-align:right;font-size:14px">${fmtMoney(total)}</td>` +
-    `<td style="border:1px solid #9fb8d9"></td>`;
-  tbody.appendChild(tfootTr);
-
+  content.innerHTML = html;
   _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Футер (логотип/буква компании) — общий хелпер
+// ЛИСТ 7 — График платежей
+// ─────────────────────────────────────────────────────────────────
+
+function fillPayments(company) {
+  const tbody = el('prevPayBody2');
+  const tfoot = el('prevPayFoot2');
+  if (!tbody) return;
+
+  const stages = getStagesWithTotals();
+  const smrT   = sumRows(appState.smrRows);
+
+  // Доля аванса — 30% по умолчанию
+  const ADVANCE_PCT = 30;
+
+  let grandSmr = 0, grandAdv = 0, grandPay = 0;
+
+  tbody.innerHTML = stages.map((stage, i) => {
+    const cost    = stage.smrTotal;
+    if (!cost) return '';
+    grandSmr += cost;
+    const adv = Math.round(cost * ADVANCE_PCT / 100);
+    const pay = cost - adv;
+    grandAdv += adv;
+    grandPay += pay;
+    return `<tr style="border-bottom:1px solid #f0f0f0">
+      <td style="padding:7px 0;font-size:12px;color:#bbb">${String(i + 1).padStart(2, '0')}</td>
+      <td style="padding:7px 8px;font-size:12px;color:#333">${stage.name}</td>
+      <td style="padding:7px 8px;font-size:12px;text-align:right;color:#333">${cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
+      <td style="padding:7px 8px;font-size:12px;text-align:center;color:#888">${ADVANCE_PCT}%</td>
+      <td style="padding:7px 8px;font-size:12px;text-align:right;color:#333">${adv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
+      <td style="padding:7px 8px;font-size:12px;text-align:right;color:#333">${pay.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
+    </tr>`;
+  }).join('');
+
+  if (tfoot) {
+    tfoot.innerHTML = `<tr style="border-top:2px solid #1c1c1c">
+      <td colspan="2" style="padding:8px 0;font-size:12px;font-weight:600;color:#1c1c1c">итого:</td>
+      <td style="padding:8px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandSmr.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
+      <td style="padding:8px 8px;font-size:11px;text-align:center;color:#888">${ADVANCE_PCT}%</td>
+      <td style="padding:8px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandAdv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
+      <td style="padding:8px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandPay.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
+    </tr>`;
+  }
+
+  const ownerEl = el('prevPayOwner2');
+  if (ownerEl) ownerEl.textContent = company.ownerName || '';
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ЛИСТ 8 — Что не входит + Контакты
+// ─────────────────────────────────────────────────────────────────
+
+const EXCLUDE_ITEMS = [
+  'Дизайн-проект и авторский надзор',
+  'Мебель и предметы интерьера',
+  'Бытовая техника',
+  'Осветительные приборы (люстры, бра и т.п.)',
+  'Текстиль (шторы, ковры и т.п.)',
+  'Уличные работы и остекление балкона',
+  'Работы смежных подрядчиков (натяжные потолки, кондиционирование, кухня)',
+  'Погрузо-разгрузочные работы и подъём материалов',
+  'Дополнительные работы, выявленные после демонтажа',
+  'Услуги управляющей компании',
+];
+
+function fillContacts(company) {
+  // Логотип/буква на тёмном фоне
+  const ctLogo   = el('prevCtLogoImg2');
+  const ctCircle = el('prevCtCircle2');
+  const ctName   = el('prevCtName2');
+  const ctSlogan = el('prevCtSlogan2');
+
+  if (company.logoBase64) {
+    if (ctLogo)   { ctLogo.src = company.logoBase64; ctLogo.style.display = ''; }
+    if (ctCircle) ctCircle.style.display = 'none';
+  } else {
+    if (ctLogo)   ctLogo.style.display = 'none';
+    if (ctCircle) { ctCircle.style.display = ''; ctCircle.textContent = company.letter; }
+  }
+  if (ctName)   ctName.textContent   = company.name;
+  if (ctSlogan) ctSlogan.textContent = company.slogan;
+
+  const siteEl = el('prevCtSite2');
+  if (siteEl) siteEl.textContent = company.site || '';
+
+  // Список «что не входит»
+  const listEl = el('prevExcludeList2');
+  if (listEl) {
+    listEl.innerHTML = EXCLUDE_ITEMS.map(item =>
+      `<li class="kp-exclude-item">${item}</li>`
+    ).join('');
+  }
+
+  // Контакты
+  const contactsEl = el('prevCtContacts2');
+  if (contactsEl) {
+    const rows = [];
+    if (company.ownerName) rows.push({ icon: '👤', text: 'Руководитель проекта<br><strong style="color:#fff;font-size:13px">' + company.ownerName + '</strong>' });
+    if (company.phone)     rows.push({ icon: '📞', text: company.phone });
+    if (company.email)     rows.push({ icon: '✉️',  text: company.email });
+    if (company.site)      rows.push({ icon: '🌐', text: company.site });
+
+    contactsEl.innerHTML = rows.map(r =>
+      `<div class="kp-contact-row">
+        <span style="font-size:14px">${r.icon}</span>
+        <span>${r.text}</span>
+      </div>`
+    ).join('');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Футер (логотип/буква) — общий хелпер
 // ─────────────────────────────────────────────────────────────────
 
 function _fillFooter(logoImgId, circleId, nameId, company) {
@@ -369,26 +689,30 @@ function _fillFooter(logoImgId, circleId, nameId, company) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ГЛАВНАЯ ФУНКЦИЯ — вызывать при открытии вкладки КП
-// и после любых изменений данных
+// ГЛАВНАЯ ФУНКЦИЯ
 // ─────────────────────────────────────────────────────────────────
 
 export function liveUpdateKP() {
-  // Проверяем что страницы КП вообще есть в DOM
-  if (!el('prevCover2') && !el('prevSmrBody2')) return;
+  if (!el('prevCover2') && !el('prevObject2')) return;
 
   const company = getCompany();
   const address = getAddress();
   const images  = getPlanImages();
 
   fillCover(company);
-  fillPlanning(company, address, images);
+  fillObject(company, address, images);
   fillBlueprint(company, images);
+  fillRoadmap();
   fillSmrPage(company);
   fillMatPage(company);
+  fillPayments(company);
+  fillContacts(company);
 }
 
-// Экспортируем в window чтобы можно было вызывать из других мест
+// Экспорт в window
 if (typeof window !== 'undefined') {
-  window._kpPreview = { liveUpdateKP };
+  window._kpPreview = {
+    liveUpdateKP,
+    generateRoadmapText,
+  };
 }
