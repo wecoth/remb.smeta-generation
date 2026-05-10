@@ -832,20 +832,18 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════
-   ROADMAP MAP LAYOUT v3 — fit-content пилюли, наклон, scatter
+   ROADMAP MAP LAYOUT v4 — равномерно по высоте, линии край→край
 ═══════════════════════════════════════════════════════════ */
 (function() {
 
   var CONTAINER_ID = 'prevRoadmapStages2';
   var rendered = false;
 
-  /* ── Псевдорандом детерминированный ── */
   function sr(seed) {
     var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
     return x - Math.floor(x);
   }
 
-  /* ── Дефис ── */
   function applyDash(item) {
     var title  = item.querySelector('.kp-roadmap-title');
     var daysEl = item.querySelector('.kp-roadmap-days');
@@ -854,17 +852,14 @@
     title.classList.toggle('no-days', !hasDays);
   }
 
-  /* ── Измерить натуральную ширину пилюли ── */
   function measurePill(item, container) {
-    /* Снимаем абсолютное позиционирование и даём fit-content */
-    item.style.cssText = 'position:static;width:auto;white-space:nowrap;visibility:hidden;display:inline-flex;padding:4px 16px;';
+    item.style.cssText = 'position:static;width:auto;white-space:nowrap;visibility:hidden;display:inline-flex;padding:4px 16px;border-radius:20px;border:1px solid #1c1c1c;';
     container.appendChild(item);
-    var w = item.offsetWidth + 2;   /* +2px запас */
-    var h = item.offsetHeight || 30;
+    var w = item.offsetWidth + 2;
+    var h = item.offsetHeight || 28;
     return { w: w, h: h };
   }
 
-  /* ── Основной рендер ── */
   function renderMap(container) {
     var items = Array.from(container.querySelectorAll('.kp-roadmap-item'));
     if (items.length === 0) { rendered = false; return; }
@@ -875,45 +870,53 @@
 
     var W = container.offsetWidth  || 460;
     var H = container.offsetHeight || 580;
+    var N = items.length;
 
-    var PAD_X  = 18;
-    var PAD_Y  = 18;
-    var N      = items.length;
+    var PAD_X = 20;
+    var PAD_Y = 16;
 
-    /* Измеряем каждую пилюлю */
+    /* Измеряем пилюли */
     var sizes = items.map(function(item) { return measurePill(item, container); });
 
-    /* Вертикальные пояса — каждая пилюля в своём поясе */
-    var zoneH = (H - PAD_Y * 2) / N;
+    /* ── Равномерное распределение по высоте ── */
+    /* Шаг между центрами пилюль */
+    var usableH = H - PAD_Y * 2;
+    var step    = usableH / (N - 1 || 1);
 
     var positions = items.map(function(item, i) {
       var pw = sizes[i].w;
       var ph = sizes[i].h;
 
-      /* X: случайный, но пилюля не вылезает за края */
-      var maxX = W - pw - PAD_X;
-      var minX = PAD_X;
-      var rx   = sr(i * 7 + 3);
-      var x    = Math.round(minX + rx * Math.max(0, maxX - minX));
-
-      /* Y: центр пояса + jitter */
-      var zc     = PAD_Y + i * zoneH + zoneH / 2;
-      var jitter = (sr(i * 13 + 5) - 0.5) * zoneH * 0.50;
-      var y      = Math.round(zc + jitter - ph / 2);
+      /* Y: строго равномерно, центр пилюли */
+      var cy = PAD_Y + i * step;
+      var y  = Math.round(cy - ph / 2);
       y = Math.max(PAD_Y, Math.min(H - ph - PAD_Y, y));
 
-      /* Лёгкий наклон ±4° */
-      var rot = (sr(i * 17 + 9) - 0.5) * 8;  /* -4..+4 градуса */
+      /* X: случайный в пределах ширины */
+      var maxX = W - pw - PAD_X;
+      var rx   = sr(i * 7 + 3);
+      var x    = Math.round(PAD_X + rx * Math.max(0, maxX - PAD_X));
 
-      return { x: x, y: y, w: pw, h: ph, rot: rot,
-               cx: x + pw / 2, cy: y + ph / 2 };
+      /* Наклон ±4° */
+      var rot = (sr(i * 17 + 9) - 0.5) * 8;
+
+      return {
+        x: x, y: y, w: pw, h: ph, rot: rot,
+        /* Центр пилюли с учётом позиции */
+        cx: x + pw / 2,
+        cy: y + ph / 2,
+        /* Края пилюли (без учёта поворота — пренебрегаем малым углом) */
+        left:  x,
+        right: x + pw,
+        top:   y,
+        bot:   y + ph
+      };
     });
 
     /* Убрать старый SVG */
     var oldSvg = container.querySelector('.rm-svg');
     if (oldSvg) oldSvg.remove();
 
-    /* ── SVG пунктир + стрелки ── */
     var NS  = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('class', 'rm-svg');
@@ -925,22 +928,38 @@
       var p0 = positions[i];
       var p1 = positions[i + 1];
 
-      /* Выход из нижнего центра → вход в верхний центр */
-      var x1 = p0.cx;
-      var y1 = p0.y + p0.h;
-      var x2 = p1.cx;
-      var y2 = p1.y;
+      /* Определяем: выходим из правого или левого края p0,
+         входим в противоположный край p1.
+         Логика: если p1 правее центра p0 — выходим вправо,
+         если левее — выходим влево. */
+      var goRight = p1.cx >= p0.cx;
 
+      var x1, y1, x2, y2;
+      if (goRight) {
+        /* выход из правого края p0, вход в левый край p1 */
+        x1 = p0.right;
+        y1 = p0.cy;
+        x2 = p1.left;
+        y2 = p1.cy;
+      } else {
+        /* выход из левого края p0, вход в правый край p1 */
+        x1 = p0.left;
+        y1 = p0.cy;
+        x2 = p1.right;
+        y2 = p1.cy;
+      }
+
+      /* Пунктирная линия */
       var line = document.createElementNS(NS, 'line');
       line.setAttribute('x1', x1); line.setAttribute('y1', y1);
       line.setAttribute('x2', x2); line.setAttribute('y2', y2);
       line.setAttribute('stroke', '#1c1c1c');
       line.setAttribute('stroke-width', '0.8');
       line.setAttribute('stroke-dasharray', '3 5');
-      line.setAttribute('opacity', '0.25');
+      line.setAttribute('opacity', '0.28');
       svg.appendChild(line);
 
-      /* Стрелка */
+      /* Стрелка у конца */
       var angle = Math.atan2(y2 - y1, x2 - x1);
       var AS = 5, SP = 0.38;
       [SP, -SP].forEach(function(a) {
@@ -950,7 +969,7 @@
         t.setAttribute('x2', x2); t.setAttribute('y2', y2);
         t.setAttribute('stroke', '#1c1c1c');
         t.setAttribute('stroke-width', '0.8');
-        t.setAttribute('opacity', '0.35');
+        t.setAttribute('opacity', '0.38');
         svg.appendChild(t);
       });
     }
@@ -960,7 +979,6 @@
     container.style.display  = 'block';
     container.insertBefore(svg, container.firstChild);
 
-    /* ── Позиционировать пилюли ── */
     items.forEach(function(item, i) {
       var pos = positions[i];
       item.style.cssText = [
@@ -969,22 +987,21 @@
         'top:'       + pos.y + 'px',
         'width:'     + pos.w + 'px',
         'height:'    + pos.h + 'px',
-        'transform:  rotate(' + pos.rot + 'deg)',
-        'transform-origin: center center',
+        'transform:rotate(' + pos.rot + 'deg)',
+        'transform-origin:center center',
         'z-index:1',
-        'box-sizing: border-box',
-        'white-space: nowrap',
-        'display:    inline-flex',
+        'box-sizing:border-box',
+        'white-space:nowrap',
+        'display:inline-flex',
         'align-items:center',
-        'justify-content: center',
-        'padding:    4px 16px',
-        'background: #fff',
-        'visibility: visible'
+        'justify-content:center',
+        'padding:4px 16px',
+        'background:#fff',
+        'visibility:visible'
       ].join(';');
     });
   }
 
-  /* ── Init ── */
   function init() {
     var container = document.getElementById(CONTAINER_ID);
     if (!container) { setTimeout(init, 300); return; }
