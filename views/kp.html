@@ -92,8 +92,8 @@
         <!-- Основной контент: строго внутри полей -->
         <div style="position:absolute;inset:48px 50px 48px 50px;display:flex;flex-direction:column;box-sizing:border-box">
 
-          <!-- ЗАГОЛОВОК — над обеими колонками, без черты -->
-          <div style="margin-bottom:20px">
+          <!-- ЗАГОЛОВОК — по центру всей ширины -->
+          <div style="margin-bottom:20px;text-align:center">
             <div style="font-size:22px;font-weight:600;color:#1c1c1c" id="prevObjTitle2">Объект</div>
           </div>
 
@@ -108,56 +108,61 @@
             </div>
           </div>
 
-          <!-- ПРАВАЯ: обращение → параметры → стоимость → экспликация внизу -->
+          <!-- ПРАВАЯ: три блока — обращение, параметры по центру, экспликация внизу -->
           <div style="display:flex;flex-direction:column;min-height:0">
 
-            <!-- ОБРАЩЕНИЕ -->
-            <div style="margin-bottom:20px">
+            <!-- БЛОК 1: ОБРАЩЕНИЕ — фиксирован сверху -->
+            <div style="margin-bottom:0">
               <div style="font-size:13px;font-weight:600;color:#1c1c1c;margin-bottom:8px" id="prevObjGreeting2">Уважаемый клиент!</div>
               <div style="font-size:11px;line-height:1.7;color:#555" id="prevObjIntro2">На основании дизайн-проекта и проведённого осмотра подготовлена проектно-сметная документация на выполнение <strong>ремонтных работ в вашей квартире</strong>.</div>
               <div style="font-size:11px;line-height:1.7;color:#555;margin-top:6px" id="prevObjIntro2b">Ниже представлены состав работ, сроки, стоимость и график реализации проекта. Мы уверены, что результат превзойдёт ваши ожидания.</div>
             </div>
 
-            <!-- ПАРАМЕТРЫ: группа 1 — даты -->
-            <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px" id="prevObjParams2">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
-                <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Дата осмотра</span>
-                <span style="font-size:11px;font-weight:500;color:#1c1c1c" id="prevObjInspDate2">—</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Дата составления</span>
-                <span style="font-size:11px;font-weight:500;color:#1c1c1c" id="prevObjCompDate2">—</span>
-              </div>
-            </div>
+            <!-- БЛОК 2: ПАРАМЕТРЫ + СТОИМОСТЬ — всегда по центру между блоком 1 и блоком 3 -->
+            <div style="margin-top:auto;margin-bottom:auto;padding:0">
 
-            <!-- ПАРАМЕТРЫ: группа 2 — срок отдельно -->
-            <div style="margin-bottom:20px;padding:10px 0;border-top:1px solid #ebebeb;border-bottom:1px solid #ebebeb">
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Срок выполнения</span>
-                <span style="font-size:13px;font-weight:700;color:#1c1c1c" id="prevObjDays2">—</span>
-              </div>
-            </div>
-
-            <!-- СТОИМОСТЬ -->
-            <div style="margin-bottom:0">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
-                <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Стоимость работ</span>
-                <span style="font-size:14px;font-weight:600;color:#1c1c1c;letter-spacing:-0.3px" id="prevObjSmrCost2">—</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
-                <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Стоимость материалов</span>
-                <span style="font-size:14px;font-weight:600;color:#1c1c1c;letter-spacing:-0.3px" id="prevObjMatCost2">—</span>
-              </div>
-              <div style="border-top:1.5px solid #1c1c1c;padding-top:8px">
+              <!-- Даты -->
+              <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px" id="prevObjParams2">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
+                  <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Дата осмотра</span>
+                  <span style="font-size:11px;font-weight:500;color:#1c1c1c" id="prevObjInspDate2">—</span>
+                </div>
                 <div style="display:flex;justify-content:space-between;align-items:baseline">
-                  <span style="font-size:10px;font-weight:600;color:#1c1c1c;letter-spacing:.5px;text-transform:uppercase">Итого</span>
-                  <span style="font-size:20px;font-weight:700;color:#1c1c1c;letter-spacing:-0.5px" id="prevObjTotal2">—</span>
+                  <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Дата составления</span>
+                  <span style="font-size:11px;font-weight:500;color:#1c1c1c" id="prevObjCompDate2">—</span>
                 </div>
               </div>
+
+              <!-- Срок -->
+              <div style="margin-bottom:16px;padding:10px 0;border-top:1px solid #ebebeb;border-bottom:1px solid #ebebeb">
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Срок выполнения</span>
+                  <span style="font-size:13px;font-weight:700;color:#1c1c1c" id="prevObjDays2">—</span>
+                </div>
+              </div>
+
+              <!-- Стоимость -->
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+                  <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Стоимость работ</span>
+                  <span style="font-size:13px;font-weight:600;color:#1c1c1c;letter-spacing:-0.3px" id="prevObjSmrCost2">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+                  <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Стоимость материалов</span>
+                  <span style="font-size:13px;font-weight:600;color:#1c1c1c;letter-spacing:-0.3px" id="prevObjMatCost2">—</span>
+                </div>
+                <div style="border-top:1.5px solid #1c1c1c;padding-top:8px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline">
+                    <span style="font-size:10px;font-weight:600;color:#1c1c1c;letter-spacing:.5px;text-transform:uppercase">Итого</span>
+                    <span style="font-size:15px;font-weight:700;color:#1c1c1c;letter-spacing:-0.3px" id="prevObjTotal2">—</span>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-            <!-- ЭКСПЛИКАЦИЯ — прижата к низу правой колонки -->
-            <div style="margin-top:auto;padding-top:16px">
+            <!-- БЛОК 3: ЭКСПЛИКАЦИЯ — прижата к низу правой колонки -->
+            <div style="padding-top:16px">
               <div style="font-size:9px;font-weight:500;letter-spacing:.8px;color:#bbb;text-transform:uppercase;margin-bottom:6px">Экспликация помещений</div>
               <table style="width:100%;border-collapse:collapse;font-size:10px" id="prevObjExplTable2">
                 <thead>
@@ -452,6 +457,19 @@
   color: #bbb;
   letter-spacing: 1px;
   font-family: 'Inter', sans-serif;
+}
+
+/* Экспликация — строка итого: первая td (№) скрыта, итого во второй колонке */
+#prevObjRoomsFoot2 tr td:first-child {
+  display: none;
+}
+#prevObjRoomsFoot2 tr td:nth-child(2) {
+  text-align: left !important;
+  font-weight: 600;
+  font-size: 10px;
+  color: #1c1c1c;
+  padding-top: 6px;
+  border-top: 1px solid #d0d0d0;
 }
 
 /* Стиль таблицы смет — новый чистый */
