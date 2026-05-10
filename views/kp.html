@@ -248,16 +248,16 @@
 
           </div>
 
+          <!-- Кнопка генерации описания — на экране, не в печати -->
+          <div class="roadmap-gen-bar" style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+            <button id="btnGenerateRoadmap" onclick="window._kpPreview.generateRoadmapText()" style="padding:8px 18px;border:1px solid #1c1c1c;border-radius:6px;background:#fff;cursor:pointer;color:#1c1c1c;letter-spacing:.3px">
+              ✦ Сгенерировать описание
+            </button>
+            <span id="prevRoadmapGenStatus" class="kp-small-text"></span>
+          </div>
+
         </div>
       </div>
-    </div>
-
-    <!-- Кнопка генерации — отдельный элемент после листа, не печатается -->
-    <div class="roadmap-gen-bar" data-page="roadmap">
-      <button id="btnGenerateRoadmap" onclick="window._kpPreview.generateRoadmapText()">
-        ✦ Сгенерировать описание
-      </button>
-      <span id="prevRoadmapGenStatus" class="kp-small-text"></span>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════
@@ -781,25 +781,7 @@
 /* ── СКРЫТИЕ СТРАНИЦ ─────────────────────────────────────── */
 .spp-page.spp-hidden { display: none !important; }
 
-/* Кнопка генерации карты ремонта — только экран, не печать */
-.roadmap-gen-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: -16px;
-  margin-bottom: 24px;
-  flex-shrink: 0;
-}
-.roadmap-gen-bar button {
-  padding: 5px 13px;
-  border: 1px solid #bbb;
-  border-radius: 5px;
-  background: #fff;
-  cursor: pointer;
-  color: #777;
-  font-size: 11.5px;
-  letter-spacing: .3px;
-}
+/* Кнопка генерации карты ремонта — не печатается */
 @media print {
   .roadmap-gen-bar { display: none !important; }
 }
