@@ -992,3 +992,25 @@ html, body {
   display: block;
   padding: 32px 24px 48px;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   KP PAGES — единый размер шрифта 14.67px для всего содержимого
+   Исключение: .kp-section-title (заголовки листов) = 24px
+═══════════════════════════════════════════════════════════════ */
+
+/* Сбрасываем всё внутри A4-листов на 14.67px через высокую специфичность */
+.spp-a4 *,
+.spp-a4 *::before,
+.spp-a4 *::after {
+  font-size: 14.67px !important;
+}
+
+/* Заголовки листов — единственное исключение */
+.spp-a4 .kp-section-title,
+.spp-a4 .spp-section-title {
+  font-size: 24px !important;
+}
+
+/* Иконки-заглушки — декоративные символы, не текст */
+.spp-a4 .kp-placeholder-icon  { font-size: 40px !important; }
+.spp-a4 .kp-placeholder-large { font-size: 48px !important; }
