@@ -63,7 +63,7 @@
           <div id="prevCovSlogan2" class="kp-cover-slogan" style="display:none"></div>
         </div>
 
-        <div id="prevCovType2" class="kp-cover-type" style="display:none">Проектно-сметная документация</div>
+        <div id="prevCovType2" class="kp-cover-type">Проектно-сметная документация</div>
 
         <!-- Нижняя строка: скрыта -->
         <div style="display:none">
@@ -120,6 +120,14 @@
 
             <!-- БЛОК 2: ПАРАМЕТРЫ + СТОИМОСТЬ — всегда по центру между блоком 1 и блоком 3 -->
             <div style="margin-top:auto;margin-bottom:auto;padding:0">
+
+              <!-- Адрес -->
+              <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
+                  <span class="kp-param-label">Адрес объекта</span>
+                  <span class="kp-param-value" id="prevObjAddress2b" style="text-align:right;max-width:55%">—</span>
+                </div>
+              </div>
 
               <!-- Даты -->
               <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px" id="prevObjParams2">
@@ -486,7 +494,7 @@
 
 .kp-cover-type {
   position: absolute;
-  bottom: 60px;
+  bottom: 50px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 14.67px !important;
@@ -522,7 +530,6 @@
   font-size: 14.67px !important;
   color: #aaa;
   letter-spacing: .3px;
-  text-transform: uppercase;
 }
 .kp-param-value {
   font-size: 14.67px !important;
@@ -779,3 +786,30 @@
 .spp-page.spp-hidden { display: none !important; }
 
 </style>
+
+<script>
+(function() {
+  function syncAddress() {
+    var src = document.getElementById('prevObjAddress2');
+    var dst = document.getElementById('prevObjAddress2b');
+    if (!src || !dst) return;
+    var txt = (src.textContent || '').trim();
+    dst.textContent = txt || '—';
+  }
+  var obs = new MutationObserver(syncAddress);
+  function init() {
+    var src = document.getElementById('prevObjAddress2');
+    if (src) {
+      obs.observe(src, { childList: true, characterData: true, subtree: true });
+      syncAddress();
+    } else {
+      setTimeout(init, 300);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
