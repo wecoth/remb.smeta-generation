@@ -645,10 +645,14 @@ async function loadView(viewName) {
     requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
   }
 
-  // При показе KP — A4 масштаб и сброс скролла
+  // При показе KP — A4 масштаб, сброс скролла и обновление данных
   if (viewName === 'kp') {
     const sppBody = el.querySelector('#sppBody');
     if (sppBody) sppBody.scrollTop = 0;
+    // Обновляем КП при каждом переходе на вкладку (не только при первом монтировании)
+    if (window._smetaModule?.liveUpdate) {
+      window._smetaModule.liveUpdate();
+    }
     requestAnimationFrame(() => {
       if (typeof window.setA4Scale === 'function') {
         window.setA4Scale();
