@@ -121,45 +121,36 @@
             <!-- БЛОК 2: ПАРАМЕТРЫ + СТОИМОСТЬ — по центру -->
             <div style="padding:0">
 
-              <!-- Адрес -->
-              <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
-                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
+              <!-- ГРУППА А: Адрес · Дата составления · Срок — плотно -->
+              <div style="display:flex;flex-direction:column;gap:0" id="prevObjParams2">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding:5px 0">
                   <span class="kp-param-label">Адрес объекта</span>
                   <span class="kp-param-value" id="prevObjAddress2b" style="text-align:right;max-width:55%">—</span>
                 </div>
-              </div>
-
-              <!-- Даты -->
-              <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px" id="prevObjParams2">
-                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
-                  <span class="kp-param-label">Дата осмотра</span>
-                  <span class="kp-param-value" id="prevObjInspDate2">—</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding:5px 0">
                   <span class="kp-param-label">Дата составления</span>
                   <span class="kp-param-value" id="prevObjCompDate2">—</span>
                 </div>
-              </div>
-
-              <!-- Срок -->
-              <div style="margin-bottom:16px;padding:10px 0;border-top:1px solid #ebebeb;border-bottom:1px solid #ebebeb">
-                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0">
                   <span class="kp-param-label">Срок выполнения</span>
                   <span class="kp-param-value" id="prevObjDays2">—</span>
                 </div>
               </div>
 
-              <!-- Стоимость -->
+              <!-- Разделитель между группами -->
+              <div style="height:16px"></div>
+
+              <!-- ГРУППА Б: Стоимость работ · Материалы · Итого — плотно -->
               <div>
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding:5px 0">
                   <span class="kp-param-label">Стоимость работ</span>
                   <span class="kp-param-value" id="prevObjSmrCost2">—</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0">
                   <span class="kp-param-label">Стоимость материалов</span>
                   <span class="kp-param-value" id="prevObjMatCost2">—</span>
                 </div>
-                <div style="border-top:1.5px solid #1c1c1c;padding-top:8px">
+                <div style="border-top:1.5px solid #1c1c1c;padding-top:8px;margin-top:4px">
                   <div style="display:flex;justify-content:space-between;align-items:baseline">
                     <span class="kp-total-label">Итого</span>
                     <span class="kp-total-value" id="prevObjTotal2">—</span>
