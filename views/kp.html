@@ -90,14 +90,18 @@
         <div class="kp-pg-num">02</div>
 
         <!-- Основной контент: строго внутри полей -->
-        <div style="position:absolute;inset:48px 50px 48px 50px;display:grid;grid-template-columns:1fr 1fr;gap:32px;box-sizing:border-box">
+        <div style="position:absolute;inset:48px 50px 48px 50px;display:flex;flex-direction:column;box-sizing:border-box">
 
-          <!-- ЛЕВАЯ: заголовок + чертёж -->
+          <!-- ЗАГОЛОВОК — над обеими колонками, без черты -->
+          <div style="margin-bottom:20px">
+            <div style="font-size:22px;font-weight:600;color:#1c1c1c" id="prevObjTitle2">Объект</div>
+          </div>
+
+          <!-- ДВЕ КОЛОНКИ — стартуют с одного уровня -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;flex:1;min-height:0">
+
+          <!-- ЛЕВАЯ: чертёж -->
           <div style="display:flex;flex-direction:column;min-height:0">
-            <div style="margin-bottom:16px">
-              <div style="font-size:22px;font-weight:600;color:#1c1c1c" id="prevObjTitle2">Объект</div>
-              <div style="width:28px;height:2px;background:#1c1c1c;margin-top:6px"></div>
-            </div>
             <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #eee;border-radius:4px;background:#fafafa">
               <img id="prevObjPlanImg2" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:none">
               <div id="prevObjPlanPh2" style="color:#ccc;font-size:40px;text-align:center">⬚</div>
@@ -108,25 +112,29 @@
           <div style="display:flex;flex-direction:column;min-height:0">
 
             <!-- ОБРАЩЕНИЕ -->
-            <div style="margin-bottom:18px">
+            <div style="margin-bottom:20px">
               <div style="font-size:13px;font-weight:600;color:#1c1c1c;margin-bottom:8px" id="prevObjGreeting2">Уважаемый клиент!</div>
               <div style="font-size:11px;line-height:1.7;color:#555" id="prevObjIntro2">На основании дизайн-проекта и проведённого осмотра подготовлена проектно-сметная документация на выполнение <strong>ремонтных работ в вашей квартире</strong>.</div>
               <div style="font-size:11px;line-height:1.7;color:#555;margin-top:6px" id="prevObjIntro2b">Ниже представлены состав работ, сроки, стоимость и график реализации проекта. Мы уверены, что результат превзойдёт ваши ожидания.</div>
             </div>
 
-            <!-- ПАРАМЕТРЫ — без иконок, единый стиль -->
-            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px" id="prevObjParams2">
+            <!-- ПАРАМЕТРЫ: группа 1 — даты -->
+            <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px" id="prevObjParams2">
               <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
                 <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Дата осмотра</span>
                 <span style="font-size:11px;font-weight:500;color:#1c1c1c" id="prevObjInspDate2">—</span>
               </div>
-              <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #f2f2f2;padding-bottom:5px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
                 <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Дата составления</span>
                 <span style="font-size:11px;font-weight:500;color:#1c1c1c" id="prevObjCompDate2">—</span>
               </div>
-              <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:2px">
+            </div>
+
+            <!-- ПАРАМЕТРЫ: группа 2 — срок отдельно -->
+            <div style="margin-bottom:20px;padding:10px 0;border-top:1px solid #ebebeb;border-bottom:1px solid #ebebeb">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
                 <span style="font-size:10px;color:#aaa;letter-spacing:.3px;text-transform:uppercase">Срок выполнения</span>
-                <span style="font-size:11px;font-weight:700;color:#1c1c1c" id="prevObjDays2">—</span>
+                <span style="font-size:13px;font-weight:700;color:#1c1c1c" id="prevObjDays2">—</span>
               </div>
             </div>
 
@@ -167,7 +175,8 @@
             </div>
 
           </div>
-        </div>
+          </div><!-- /grid -->
+        </div><!-- /flex wrapper -->
 
         <!-- скрытый адрес, нужен для совместимости с JS -->
         <div style="display:none" id="prevObjAddress2"></div>
