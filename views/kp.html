@@ -164,10 +164,17 @@
             <!-- БЛОК 3: ЭКСПЛИКАЦИЯ — прижата к низу правой колонки -->
             <div style="padding-top:16px">
               <div style="font-size:9px;font-weight:500;letter-spacing:.8px;color:#bbb;text-transform:uppercase;margin-bottom:6px">Экспликация помещений</div>
-              <table style="width:100%;border-collapse:collapse;font-size:10px" id="prevObjExplTable2">
+              <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed" id="prevObjExplTable2">
+                <colgroup>
+                  <col style="width:20px">
+                  <col>
+                  <col style="width:52px">
+                  <col style="width:52px">
+                  <col style="width:60px">
+                </colgroup>
                 <thead>
                   <tr style="border-bottom:1px solid #e0e0e0">
-                    <th style="padding:3px 0;text-align:left;font-weight:500;color:#bbb;font-size:9px;width:18px">№</th>
+                    <th style="padding:3px 0;text-align:left;font-weight:500;color:#bbb;font-size:9px">№</th>
                     <th style="padding:3px 6px 3px 0;text-align:left;font-weight:500;color:#bbb;font-size:9px">Помещение</th>
                     <th style="padding:3px 6px;text-align:right;font-weight:500;color:#bbb;font-size:9px">Пол, м²</th>
                     <th style="padding:3px 6px;text-align:right;font-weight:500;color:#bbb;font-size:9px">Стены, м²</th>
@@ -459,17 +466,17 @@
   font-family: 'Inter', sans-serif;
 }
 
-/* Экспликация — строка итого: первая td (№) скрыта, итого во второй колонке */
-#prevObjRoomsFoot2 tr td:first-child {
-  display: none;
-}
-#prevObjRoomsFoot2 tr td:nth-child(2) {
-  text-align: left !important;
+/* Экспликация — строка итого */
+#prevObjRoomsFoot2 tr td {
+  padding-top: 6px;
+  border-top: 1px solid #d8d8d8;
   font-weight: 600;
   font-size: 10px;
   color: #1c1c1c;
-  padding-top: 6px;
-  border-top: 1px solid #d0d0d0;
+}
+#prevObjRoomsFoot2 tr td:first-child {
+  text-align: left !important;
+  color: #1c1c1c;
 }
 
 /* Стиль таблицы смет — новый чистый */
