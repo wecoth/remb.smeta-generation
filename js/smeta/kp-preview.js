@@ -200,21 +200,57 @@ function fillObject(company, address, images) {
   const tfoot = el('prevObjRoomsFoot2');
   if (tbody) {
     const rooms = appState.rooms || [];
-    let totalFloor = 0;
+    let totalFloor = 0, totalPerim = 0, totalWalls = 0;
+
+    // Обновляем заголовки таблицы до 5 колонок
+    const table = tbody.closest('table');
+    if (table) {
+      let thead = table.querySelector('thead');
+      if (!thead) {
+        thead = document.createElement('thead');
+        table.insertBefore(thead, tbody);
+      }
+      const headerRow = thead.querySelector('tr') || document.createElement('tr');
+      if (!thead.contains(headerRow)) thead.appendChild(headerRow);
+      while (headerRow.children.length < 5) {
+        const th = document.createElement('th');
+        headerRow.appendChild(th);
+      }
+      headerRow.children[0].textContent = '№';
+      headerRow.children[1].textContent = 'Помещение';
+      headerRow.children[2].textContent = 'Пол, м²';
+      headerRow.children[3].textContent = 'Периметр, м';
+      headerRow.children[4].textContent = 'Стены, м²';
+      for (const th of headerRow.children) {
+        th.style.cssText = 'padding:5px 4px;font-size:10px;font-weight:600;color:#888;text-align:right;border-bottom:1px solid #ccc;';
+      }
+      headerRow.children[0].style.textAlign = 'center';
+      headerRow.children[1].style.textAlign = 'left';
+    }
+
     tbody.innerHTML = rooms.map((room, i) => {
       const floor = room.area ?? room.floorArea ?? 0;
+      const perim = room.perimeter ?? room.metrics?.perimeterFloorM ?? 0;
+      const walls = room.wallArea ?? room.metrics?.wallAreaCleanM2 ?? 0;
       totalFloor += floor;
+      totalPerim += perim;
+      totalWalls += walls;
       const name = room.name || room.id || 'Помещение';
       return `<tr style="border-bottom:1px solid #f0f0f0">
-        <td style="padding:5px 0;font-size:11px;color:#bbb">${i + 1}</td>
+        <td style="padding:5px 0;font-size:11px;color:#bbb;text-align:center">${i + 1}</td>
         <td style="padding:5px 8px;font-size:12px;color:#333">${name}</td>
         <td style="padding:5px 4px;font-size:12px;text-align:right;color:#333">${fmtNum(floor)}</td>
+        <td style="padding:5px 4px;font-size:12px;text-align:right;color:#333">${fmtNum(perim)}</td>
+        <td style="padding:5px 4px;font-size:12px;text-align:right;color:#333">${fmtNum(walls)}</td>
       </tr>`;
     }).join('');
+
     if (tfoot && rooms.length) {
       tfoot.innerHTML = `<tr style="border-top:1px solid #1c1c1c">
         <td colspan="2" style="padding:6px 0;font-size:12px;font-weight:600;color:#1c1c1c">итого</td>
         <td style="padding:6px 4px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${fmtNum(totalFloor)} м²</td>
+        <td style="padding:6px 4px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${fmtNum(totalPerim)} м</td>
+        <td style="padding:6px 4px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${fmtNum(totalWalls)} м²</td>
       </tr>`;
     }
   }
