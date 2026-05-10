@@ -96,14 +96,16 @@ function getStagesWithTotals() {
   const matRows = appState.matRows || [];
 
   return stages.map(stage => {
-    // Собираем строки СМР внутри этапа
+    const stageName = stage.name?.trim();
+
+    // Собираем строки СМР внутри секции с именем этапа
+    // (независимо от позиции секции в массиве)
     let inside = false;
     const stageSmr = [];
     for (const r of smrRows) {
       if (r.isSection) {
-        if (inside) break;
-        inside = (r.name?.trim() === stage.name);
-        continue;
+        inside = (r.name?.trim() === stageName);
+        continue;              // ← убрали break, просто переключаем флаг
       }
       if (inside && r.name) stageSmr.push(r);
     }
@@ -113,9 +115,8 @@ function getStagesWithTotals() {
     const stageMat = [];
     for (const r of matRows) {
       if (r.isSection) {
-        if (inside) break;
-        inside = (r.name?.trim() === stage.name);
-        continue;
+        inside = (r.name?.trim() === stageName);
+        continue;              // ← убрали break
       }
       if (inside && r.name) stageMat.push(r);
     }
