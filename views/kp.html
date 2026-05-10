@@ -430,6 +430,37 @@
 </div><!-- /kpView -->
 
 <style>
+
+/* ── ЛИСТЫ: центрирование, отступы, бумажный вид ─────────── */
+
+/* Панель прокрутки — серый фон как в Google Docs */
+.smeta-preview-panel.kp-full-preview {
+  background: #e8e8e8 !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+}
+
+/* Тело — центрируем листы колонкой */
+#sppBody {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding: 32px 24px 48px !important;
+  gap: 0 !important;
+}
+
+/* Обёртка каждого листа — отступ снизу */
+.spp-page {
+  margin-bottom: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Сам лист А4 — тень и скруглённые углы */
+.spp-a4 {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.10) !important;
+  border-radius: 3px !important;
+}
+
 /* Номер страницы — правый верхний угол */
 .kp-pg-num {
   position: absolute;
