@@ -82,7 +82,7 @@ export class MeasureTool extends BaseTool {
     this._snapHoverTimer = setTimeout(() => {
       this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type };
       this.ui.doRedraw();
-    }, 400);
+    }, 1500);
   }
 
   getRenderState() {
