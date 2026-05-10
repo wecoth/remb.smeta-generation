@@ -104,7 +104,7 @@ if (snap.wallId) {
 }
 this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, normalDir };
       this.ui.doRedraw();
-    }, 400);
+    }, 1500);
   }
 
   getCursor() {
