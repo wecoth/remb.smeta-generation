@@ -36,6 +36,11 @@ export class WallTool extends BaseTool {
     this.trackingDirection = null; 
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
+
+    // Для серых направляющих (с задержкой)
+    this._guideHoverCandidate = null;
+    this._guideHoverTimer = null;
+    this._guideHoverDelay = 1000;
   }
 
   activate() {
@@ -45,6 +50,10 @@ export class WallTool extends BaseTool {
 
   deactivate() {
     this.clearTracking();
+    clearTimeout(this._guideHoverTimer);
+    this._guideHoverTimer = null;
+    this._guideHoverCandidate = null;
+    this.currentGuideLine = null;
     this.reset();
   }
 
@@ -58,6 +67,9 @@ export class WallTool extends BaseTool {
     this.lengthInput = '';
     this.lengthMode = false;
     this._onTrackingLine = false;
+    clearTimeout(this._guideHoverTimer);
+    this._guideHoverTimer = null;
+    this._guideHoverCandidate = null;
     this.clearTracking();
     if (this.ui.dom.lengthOverlay) this.ui.dom.lengthOverlay.style.display = 'none';
     if (this.ui.dom.lblLen) this.ui.dom.lblLen.style.display = 'none';
@@ -104,7 +116,7 @@ if (snap.wallId) {
 }
 this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, normalDir };
       this.ui.doRedraw();
-    }, 1500);
+    }, 1000);
   }
 
   getCursor() {
@@ -317,8 +329,8 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     this.currentGuideLine = null;
     return;
   }
-  
-  // Если уже есть объектная направляющая — проверяем, не пора ли её сбросить
+
+  // Если уже есть активная направляющая (не start-axis) — держим или сбрасываем
   if (this.currentGuideLine && this.currentGuideLine.id !== 'wall:start-axis') {
     if (shouldKeepGuideLine(screenPoint, this.currentGuideLine, 36, 48)) {
       return;
@@ -327,13 +339,32 @@ this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type, wallDir, nor
     }
   }
 
-  // Ищем только реальные объектные направляющие
+  // Ищем кандидата под курсором
   const candidate = findGuideCandidate(screenPoint);
-  if (candidate) {
-    this.currentGuideLine = candidate;
-  } else {
-    this.currentGuideLine = null;   // <-- НЕ создаём автоматическую ось
+
+  // Если кандидат не изменился — ничего не делаем, ждём таймер
+  if (this._guideHoverCandidate && candidate &&
+      this._guideHoverCandidate.id === candidate.id) {
+    return;
   }
+
+  // Кандидат изменился → сбрасываем старый таймер
+  clearTimeout(this._guideHoverTimer);
+  this._guideHoverCandidate = candidate;
+  this._guideHoverTimer = null;
+
+  if (!candidate) {
+    this.currentGuideLine = null;
+    return;
+  }
+
+  // Запускаем таймер на активацию
+  this._guideHoverTimer = setTimeout(() => {
+    if (this._guideHoverCandidate && this._guideHoverCandidate === candidate) {
+      this.currentGuideLine = candidate;
+    }
+    this._guideHoverTimer = null;
+  }, this._guideHoverDelay);
 }
 
   getWallPreviewEnd(world) {
