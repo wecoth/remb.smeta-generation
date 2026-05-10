@@ -302,13 +302,30 @@ function fillBlueprint(company, images) {
 // ЛИСТ 4 — Карта ремонта
 // ─────────────────────────────────────────────────────────────────
 
-// Кэш сгенерированных описаний { stageName → { desc, bullets } }
-const _roadmapCache = {};
+const GAS_PROXY_URL = 'https://script.google.com/macros/s/AKfycbzOORdjpCpP8i1wHovBJ1qxxgvFCg72_bDxbKwRPUyOUgZ8eM7uYPabjPrafKhTx4Osdg/exec';
+
+// Нарратив — связный текст от GPT
+let _roadmapNarrative = '';
 
 function fillRoadmap() {
-  const container = el('prevRoadmapStages2');
-  if (!container) return;
+  const container   = el('prevRoadmapStages2');
+  const narrativeEl = el('prevRoadmapNarrative2');
 
+  // Нарратив (сгенерированный текст)
+  if (narrativeEl) {
+    if (_roadmapNarrative) {
+      narrativeEl.innerHTML = _roadmapNarrative
+        .split('\n\n')
+        .filter(p => p.trim())
+        .map(p => `<p style="margin:0 0 10px 0">${p.trim()}</p>`)
+        .join('');
+    } else {
+      narrativeEl.innerHTML = '';
+    }
+  }
+
+  // Список этапов с количеством дней
+  if (!container) return;
   const stages = getStagesWithTotals();
   if (!stages.length) {
     container.innerHTML = '<div style="color:#ccc;font-size:13px;padding:40px 0;text-align:center">Добавьте этапы в смету</div>';
@@ -316,17 +333,11 @@ function fillRoadmap() {
   }
 
   container.innerHTML = stages.map((stage, i) => {
-    const cached = _roadmapCache[stage.name];
-    const desc    = cached?.desc    || '';
-    const bullets = cached?.bullets || [];
     const num = String(i + 1).padStart(2, '0');
-
     return `<div class="kp-roadmap-item">
       <div class="kp-roadmap-num">${num}</div>
       <div class="kp-roadmap-body">
         <div class="kp-roadmap-title">${stage.name}</div>
-        ${desc ? `<div class="kp-roadmap-desc">${desc}</div>` : ''}
-        ${bullets.length ? `<ul class="kp-roadmap-bullets">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>` : ''}
       </div>
       <div>
         <div class="kp-roadmap-days">${stage.days || '—'}</div>
@@ -336,7 +347,7 @@ function fillRoadmap() {
   }).join('');
 }
 
-// Генерация описаний через Claude API
+// Генерация нарратива через GPT (GAS-прокси)
 async function generateRoadmapText() {
   const stages = getStagesWithTotals();
   if (!stages.length) return;
@@ -346,69 +357,130 @@ async function generateRoadmapText() {
   if (statusEl) statusEl.textContent = 'Генерирую...';
   if (btnEl)    btnEl.disabled = true;
 
-  // Формируем контекст для API
-  const stagesContext = stages.map((s, i) => {
-    const works = s.smrRows.map(r => r.name).filter(Boolean).slice(0, 8).join(', ');
-    return `${i + 1}. ${s.name} (${s.days} дн.)${works ? ': ' + works : ''}`;
-  }).join('\n');
+  // ── Контекст объекта ──────────────────────────────────────────
+  const smrRows   = appState.smrRows   || [];
+  const openings  = appState.openings  || [];
+  const totalDays = appState.totalDaysOverride || appState.totalDays || 0;
 
-  const prompt = `Ты — менеджер строительной компании. Напиши краткое описание каждого этапа ремонта для клиентского КП.
+  const doors   = openings.filter(o => o.type === 'door').length;
+  const windows = openings.filter(o => o.type === 'window').length;
+  const cleanRow = smrRows.find(r => r.name && r.name.includes('Генеральная уборка'));
+  const area = cleanRow ? cleanRow.qty : null;
 
-Этапы:
+  const objectContext = [
+    area      ? `Площадь объекта: около ${Math.round(area)} м²` : null,
+    (doors || windows) ? `Дверных проёмов: ${doors}, оконных: ${windows}` : null,
+    totalDays ? `Плановый срок работ: ${totalDays} рабочих дней` : null,
+  ].filter(Boolean).join('. ');
+
+  // ── Сигналы качества ─────────────────────────────────────────
+  const allWorkNames = smrRows
+    .filter(r => !r.isSection && r.name)
+    .map(r => r.name.toLowerCase());
+
+  const checks = [
+    [n => n.includes('заусовка') && n.includes('45'),             'заусовка керамогранита под 45°'],
+    [n => n.includes('эпоксидной затиркой'),                      'эпоксидная затирка швов'],
+    [n => n.includes('скрытого монтажа'),                         'двери скрытого монтажа'],
+    [n => n.includes('стеклохолст'),                              'армирование стен стеклохолстом под покраску'],
+    [n => n.includes('наливной пол'),                             'наливной пол под финишное покрытие'],
+    [n => n.includes('сшитый полиэтилен'),                        'водопровод из сшитого полиэтилена с гидроиспытанием'],
+    [n => n.includes('узла ввода') || n.includes('протечек'),     'узел ввода с защитой от протечек'],
+    [n => n.includes('теплого пола') || n.includes('теплый пол'), 'электрический тёплый пол'],
+    [n => n.includes('обмазочной гидроизоляции'),                 'двухслойная обмазочная гидроизоляция'],
+    [n => n.includes('перегородок из газоблока'),                 'перегородки из газоблока с перевязкой швов'],
+  ];
+  const qualitySignals = checks
+    .filter(([fn]) => allWorkNames.some(fn))
+    .map(([, label]) => label)
+    .join(', ');
+
+  // ── Этапы с работами из сметы ────────────────────────────────
+  const stagesContext = stages
+    .filter(s => s.smrRows.length > 0)
+    .map((s, i) => {
+      const works = s.smrRows
+        .filter(r => {
+          const n = (r.name || '').toLowerCase();
+          return !n.includes('вывоз') && !n.includes('мусор');
+        })
+        .map(r => `  - ${r.name}${r.qty ? ' (' + r.qty + ' ' + (r.unit || '') + ')' : ''}`)
+        .join('\n');
+      return `${i + 1}. ${s.name}:\n${works}`;
+    })
+    .join('\n\n');
+
+  // ── Промт ────────────────────────────────────────────────────
+  const prompt = `Ты — опытный прораб, который пишет клиенту обзор предстоящего ремонта в составе коммерческого предложения. Это документ на основании которого клиент решает работать с нами или с конкурентом. Твоя задача — показать экспертизу через конкретику, снять страх халтуры и нативно оправдать объём работ. Без единого слова рекламы.
+
+ИСХОДНЫЕ ДАННЫЕ ОБЪЕКТА
+
+${objectContext || 'данные не указаны'}
+
+ЭТАПЫ РАБОТ С КОНКРЕТНЫМИ ПОЗИЦИЯМИ ИЗ СМЕТЫ
+
 ${stagesContext}
 
-Для каждого этапа верни JSON-объект строго в таком формате (массив):
-[
-  {
-    "name": "название этапа точно как указано",
-    "desc": "1-2 предложения что делается и зачем, понятным языком для клиента",
-    "bullets": ["ключевая работа 1", "ключевая работа 2", "ключевая работа 3"]
-  }
-]
+КЛЮЧЕВЫЕ ТЕХНИЧЕСКИЕ РЕШЕНИЯ ПРОЕКТА
 
-Верни ТОЛЬКО JSON-массив, без пояснений и markdown.`;
+${qualitySignals || 'стандартный ремонт под чистовую отделку'}
 
+ФОРМАТ ВЫВОДА
+
+Связный текст из 5-7 абзацев. Каждый абзац 2-4 предложения. Без заголовков, без буллетов, без списков, без JSON, без пояснений до и после. Только готовый текст разделённый пустой строкой между абзацами.
+
+ХРОНОЛОГИЧЕСКИЕ СВЯЗКИ
+
+Абзацы идут в порядке этапов из сметы и логически перетекают один в другой. Используй: "Перед началом работ...", "Далее выполняется...", "В процессе ремонта...", "После этого переходим к...", "На финальном этапе...". Последний абзац всегда заканчивается на сдаче объекта.
+
+ОПОРА НА КОНКРЕТИКУ ИЗ СМЕТЫ
+
+Упоминай работы которые реально есть в этапе. Не выдумывай. Выбирай 3-5 самых ярких, остальные группируй обобщающими формулировками.
+
+АКЦЕНТЫ ДОВЕРИЯ
+
+В 2 абзацах из всех добавь короткую фразу-акцент: "здесь важно не торопиться потому что...", "этот этап критичный — если пропустить...". Лучшие места: гидроизоляция, разводка коммуникаций, подготовка стен.
+
+СТРОГИЕ ЗАПРЕТЫ
+
+Запрещены слова: качественно, профессионально, надёжный, современный, под ключ, наша команда, наши специалисты, опытные мастера, лучшие материалы, идеальный, премиум.
+Запрещены восклицательные знаки и эмоциональные оценки.
+Запрещены общие формулировки — только конкретные действия: монтаж, демонтаж, разводка, штукатурка по маякам.
+Запрещено упоминать цены, сроки в днях, метражи в цифрах.
+
+ПРИМЕРЫ ТОНА И СТИЛЯ
+
+Пример хорошего вступительного абзаца:
+"Перед началом работ производится подготовка объекта — мойка и защита окон, входной двери и существующих элементов плёнкой ПВХ, организация временного освещения, розеток, а также временных выводов ХВС, ГВС и канализации для проведения работ."
+
+Пример хорошего абзаца с акцентом доверия:
+"В санузле предусмотрены двухслойная обмазочная гидроизоляция, монтаж электрического тёплого пола, облицовка стен и пола керамогранитом с заусовкой углов под 45° и эпоксидной затиркой швов. Это один из самых ответственных этапов — от качества гидроизоляции и затирки зависит долговечность всей зоны, поэтому здесь нет смысла торопиться."
+
+Пример хорошего финального абзаца:
+"На финальном этапе выполняются окраска стен, укладка кварцвинила, монтаж и окраска плинтусов, установка сантехники, освещения, розеток и вентиляции согласно проекту. После этого производится генеральная уборка и подготовка квартиры к сдаче."
+
+Верни только готовый текст обзора, 5-7 абзацев, разделённых пустой строкой. Ничего больше.`;
+
+  // ── Запрос к GAS-прокси ──────────────────────────────────────
   try {
-    const GAS_PROXY_URL = 'https://script.google.com/macros/s/AKfycbzOORdjpCpP8i1wHovBJ1qxxgvFCg72_bDxbKwRPUyOUgZ8eM7uYPabjPrafKhTx4Osdg/exec';
+    const res = await fetch(GAS_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
+      body: JSON.stringify({ prompt })
     });
 
-    const data = await res.json();
-    const text = (data.content || []).map(c => c.text || '').join('');
+    const text = await res.text();
+    if (!text || text.startsWith('<')) throw new Error('Неверный ответ от прокси');
 
-    let parsed;
-    try {
-      const clean = text.replace(/```json|```/g, '').trim();
-      parsed = JSON.parse(clean);
-    } catch {
-      throw new Error('Не удалось распарсить ответ');
-    }
-
-    // Кладём в кэш
-    if (Array.isArray(parsed)) {
-      parsed.forEach(item => {
-        if (item.name) {
-          _roadmapCache[item.name] = {
-            desc:    item.desc    || '',
-            bullets: item.bullets || []
-          };
-        }
-      });
-    }
-
+    _roadmapNarrative = text.trim();
     fillRoadmap();
+
     if (statusEl) statusEl.textContent = '✓ Готово';
     setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
 
   } catch (e) {
     console.error('Roadmap gen error:', e);
-    if (statusEl) statusEl.textContent = '✗ Ошибка генерации';
+    if (statusEl) statusEl.textContent = '✗ Ошибка: ' + e.message;
   }
 
   if (btnEl) btnEl.disabled = false;
