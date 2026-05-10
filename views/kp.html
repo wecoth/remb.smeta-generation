@@ -832,7 +832,7 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════
-   ROADMAP MAP LAYOUT v4 — равномерно по высоте, линии край→край
+   ROADMAP MAP LAYOUT v5 — плавные S-кривые между краями пилюль
 ═══════════════════════════════════════════════════════════ */
 (function() {
 
@@ -875,11 +875,8 @@
     var PAD_X = 20;
     var PAD_Y = 16;
 
-    /* Измеряем пилюли */
     var sizes = items.map(function(item) { return measurePill(item, container); });
 
-    /* ── Равномерное распределение по высоте ── */
-    /* Шаг между центрами пилюль */
     var usableH = H - PAD_Y * 2;
     var step    = usableH / (N - 1 || 1);
 
@@ -887,25 +884,20 @@
       var pw = sizes[i].w;
       var ph = sizes[i].h;
 
-      /* Y: строго равномерно, центр пилюли */
       var cy = PAD_Y + i * step;
       var y  = Math.round(cy - ph / 2);
       y = Math.max(PAD_Y, Math.min(H - ph - PAD_Y, y));
 
-      /* X: случайный в пределах ширины */
       var maxX = W - pw - PAD_X;
       var rx   = sr(i * 7 + 3);
       var x    = Math.round(PAD_X + rx * Math.max(0, maxX - PAD_X));
 
-      /* Наклон ±4° */
       var rot = (sr(i * 17 + 9) - 0.5) * 8;
 
       return {
         x: x, y: y, w: pw, h: ph, rot: rot,
-        /* Центр пилюли с учётом позиции */
         cx: x + pw / 2,
         cy: y + ph / 2,
-        /* Края пилюли (без учёта поворота — пренебрегаем малым углом) */
         left:  x,
         right: x + pw,
         top:   y,
@@ -913,7 +905,6 @@
       };
     });
 
-    /* Убрать старый SVG */
     var oldSvg = container.querySelector('.rm-svg');
     if (oldSvg) oldSvg.remove();
 
@@ -928,39 +919,60 @@
       var p0 = positions[i];
       var p1 = positions[i + 1];
 
-      /* Определяем: выходим из правого или левого края p0,
-         входим в противоположный край p1.
-         Логика: если p1 правее центра p0 — выходим вправо,
-         если левее — выходим влево. */
       var goRight = p1.cx >= p0.cx;
 
+      /* Точки выхода/входа — с боков пилюль, по центру высоты */
       var x1, y1, x2, y2;
       if (goRight) {
-        /* выход из правого края p0, вход в левый край p1 */
-        x1 = p0.right;
-        y1 = p0.cy;
-        x2 = p1.left;
-        y2 = p1.cy;
+        x1 = p0.right; y1 = p0.cy;
+        x2 = p1.left;  y2 = p1.cy;
       } else {
-        /* выход из левого края p0, вход в правый край p1 */
-        x1 = p0.left;
-        y1 = p0.cy;
-        x2 = p1.right;
-        y2 = p1.cy;
+        x1 = p0.left;  y1 = p0.cy;
+        x2 = p1.right; y2 = p1.cy;
       }
 
-      /* Пунктирная линия */
-      var line = document.createElementNS(NS, 'line');
-      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
-      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
-      line.setAttribute('stroke', '#1c1c1c');
-      line.setAttribute('stroke-width', '0.8');
-      line.setAttribute('stroke-dasharray', '3 5');
-      line.setAttribute('opacity', '0.28');
-      svg.appendChild(line);
+      /* S-образная кривая Безье.
+         Контрольные точки уходят далеко в стороны —
+         cp1 продолжает направление из x1 горизонтально,
+         cp2 приходит в x2 тоже горизонтально.
+         Амплитуда изгиба = половина ширины контейнера. */
+      var bulge = W * 0.52;  /* насколько далеко уходят контрольные точки */
 
-      /* Стрелка у конца */
-      var angle = Math.atan2(y2 - y1, x2 - x1);
+      var cp1x, cp2x;
+      if (goRight) {
+        /* выходим вправо → cp1 ещё правее, cp2 ещё левее */
+        cp1x = x1 + bulge;
+        cp2x = x2 - bulge;
+      } else {
+        /* выходим влево → cp1 ещё левее, cp2 ещё правее */
+        cp1x = x1 - bulge;
+        cp2x = x2 + bulge;
+      }
+
+      /* cp по Y: между двумя пилюлями */
+      var cp1y = y1;
+      var cp2y = y2;
+
+      var d = 'M ' + x1 + ',' + y1 +
+              ' C ' + cp1x + ',' + cp1y +
+              ' '   + cp2x + ',' + cp2y +
+              ' '   + x2   + ',' + y2;
+
+      var path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', '#1c1c1c');
+      path.setAttribute('stroke-width', '0.9');
+      path.setAttribute('stroke-dasharray', '3 5');
+      path.setAttribute('opacity', '0.28');
+      svg.appendChild(path);
+
+      /* Стрелка — касательная к кривой в конечной точке */
+      /* Направление ≈ от cp2 к (x2,y2) */
+      var ax = x2 - cp2x;
+      var ay = y2 - cp2y;
+      var alen = Math.sqrt(ax*ax + ay*ay) || 1;
+      var angle = Math.atan2(ay / alen, ax / alen);
       var AS = 5, SP = 0.38;
       [SP, -SP].forEach(function(a) {
         var t = document.createElementNS(NS, 'line');
@@ -968,7 +980,7 @@
         t.setAttribute('y1', y2 - AS * Math.sin(angle - a));
         t.setAttribute('x2', x2); t.setAttribute('y2', y2);
         t.setAttribute('stroke', '#1c1c1c');
-        t.setAttribute('stroke-width', '0.8');
+        t.setAttribute('stroke-width', '0.9');
         t.setAttribute('opacity', '0.38');
         svg.appendChild(t);
       });
@@ -983,10 +995,10 @@
       var pos = positions[i];
       item.style.cssText = [
         'position:absolute',
-        'left:'      + pos.x + 'px',
-        'top:'       + pos.y + 'px',
-        'width:'     + pos.w + 'px',
-        'height:'    + pos.h + 'px',
+        'left:'   + pos.x + 'px',
+        'top:'    + pos.y + 'px',
+        'width:'  + pos.w + 'px',
+        'height:' + pos.h + 'px',
         'transform:rotate(' + pos.rot + 'deg)',
         'transform-origin:center center',
         'z-index:1',
