@@ -242,7 +242,7 @@
             </div>
 
             <!-- ПРАВАЯ: список этапов — карта с кривыми -->
-            <div style="position:relative;overflow:hidden;min-height:200px" id="prevRoadmapStages2">
+            <div style="position:relative;overflow:hidden;height:100%;min-height:300px" id="prevRoadmapStages2">
               <div class="kp-placeholder-text" style="text-align:center">Добавьте этапы в смету</div>
             </div>
 
@@ -832,166 +832,179 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════
-   ROADMAP MAP LAYOUT — пиратская карта этапов
-   Перехватывает .kp-roadmap-item и раскладывает зигзагом
-   с SVG-кривыми между пилюлями
+   ROADMAP MAP LAYOUT v3 — fit-content пилюли, наклон, scatter
 ═══════════════════════════════════════════════════════════ */
 (function() {
 
   var CONTAINER_ID = 'prevRoadmapStages2';
   var rendered = false;
 
-  /* ── Добавить дефис к title если есть дни ── */
+  /* ── Псевдорандом детерминированный ── */
+  function sr(seed) {
+    var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  /* ── Дефис ── */
   function applyDash(item) {
-    var title = item.querySelector('.kp-roadmap-title');
+    var title  = item.querySelector('.kp-roadmap-title');
     var daysEl = item.querySelector('.kp-roadmap-days');
     if (!title) return;
     var hasDays = daysEl && daysEl.textContent.trim().length > 0;
     title.classList.toggle('no-days', !hasDays);
   }
 
-  /* ── Детерминированный псевдорандом ── */
-  function seededRand(seed) {
-    var x = Math.sin(seed + 1) * 43758.5453123;
-    return x - Math.floor(x);
+  /* ── Измерить натуральную ширину пилюли ── */
+  function measurePill(item, container) {
+    /* Снимаем абсолютное позиционирование и даём fit-content */
+    item.style.cssText = 'position:static;width:auto;white-space:nowrap;visibility:hidden;display:inline-flex;padding:4px 16px;';
+    container.appendChild(item);
+    var w = item.offsetWidth + 2;   /* +2px запас */
+    var h = item.offsetHeight || 30;
+    return { w: w, h: h };
   }
 
-  /* ── Основной рендер карты ── */
+  /* ── Основной рендер ── */
   function renderMap(container) {
     var items = Array.from(container.querySelectorAll('.kp-roadmap-item'));
     if (items.length === 0) { rendered = false; return; }
     if (rendered && container.querySelector('.rm-svg')) return;
-
     rendered = true;
+
     items.forEach(applyDash);
 
     var W = container.offsetWidth  || 460;
-    var H = container.offsetHeight || 620;
+    var H = container.offsetHeight || 580;
 
-    var PILL_W = Math.round(Math.min(210, W * 0.70));
-    var PILL_H = 30;
-    var PAD_X  = 12;
-    var PAD_Y  = 14;
+    var PAD_X  = 18;
+    var PAD_Y  = 18;
     var N      = items.length;
 
-    /* Каждая пилюля получает горизонтальный пояс по Y */
+    /* Измеряем каждую пилюлю */
+    var sizes = items.map(function(item) { return measurePill(item, container); });
+
+    /* Вертикальные пояса — каждая пилюля в своём поясе */
     var zoneH = (H - PAD_Y * 2) / N;
 
     var positions = items.map(function(item, i) {
-      /* Случайный X в пределах доступной ширины */
-      var maxX = W - PILL_W - PAD_X;
-      var rx = seededRand(i * 3 + 7);
-      var x  = Math.round(PAD_X + rx * (maxX - PAD_X));
+      var pw = sizes[i].w;
+      var ph = sizes[i].h;
 
-      /* Y — центр пояса + небольшой jitter */
-      var zoneCenter = PAD_Y + i * zoneH + zoneH / 2;
-      var jitter = (seededRand(i * 5 + 13) - 0.5) * zoneH * 0.42;
-      var y = Math.round(zoneCenter + jitter - PILL_H / 2);
-      y = Math.max(PAD_Y, Math.min(H - PILL_H - PAD_Y, y));
+      /* X: случайный, но пилюля не вылезает за края */
+      var maxX = W - pw - PAD_X;
+      var minX = PAD_X;
+      var rx   = sr(i * 7 + 3);
+      var x    = Math.round(minX + rx * Math.max(0, maxX - minX));
 
-      return { x: x, y: y, cx: x + PILL_W / 2, cy: y + PILL_H / 2 };
+      /* Y: центр пояса + jitter */
+      var zc     = PAD_Y + i * zoneH + zoneH / 2;
+      var jitter = (sr(i * 13 + 5) - 0.5) * zoneH * 0.50;
+      var y      = Math.round(zc + jitter - ph / 2);
+      y = Math.max(PAD_Y, Math.min(H - ph - PAD_Y, y));
+
+      /* Лёгкий наклон ±4° */
+      var rot = (sr(i * 17 + 9) - 0.5) * 8;  /* -4..+4 градуса */
+
+      return { x: x, y: y, w: pw, h: ph, rot: rot,
+               cx: x + pw / 2, cy: y + ph / 2 };
     });
 
-    container.style.position = 'relative';
-    container.style.overflow = 'hidden';
-    container.style.display  = 'block';
-
+    /* Убрать старый SVG */
     var oldSvg = container.querySelector('.rm-svg');
     if (oldSvg) oldSvg.remove();
 
-    /* ── SVG: прямые пунктирные линии со стрелками ── */
-    var svgNS = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNS, 'svg');
+    /* ── SVG пунктир + стрелки ── */
+    var NS  = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('class', 'rm-svg');
     svg.setAttribute('width',  W);
     svg.setAttribute('height', H);
-    svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:0;';
+    svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:0;overflow:visible;';
 
     for (var i = 0; i < N - 1; i++) {
       var p0 = positions[i];
       var p1 = positions[i + 1];
 
+      /* Выход из нижнего центра → вход в верхний центр */
       var x1 = p0.cx;
-      var y1 = p0.y + PILL_H;
+      var y1 = p0.y + p0.h;
       var x2 = p1.cx;
       var y2 = p1.y;
 
-      /* Пунктирная прямая */
-      var line = document.createElementNS(svgNS, 'line');
-      line.setAttribute('x1', x1);
-      line.setAttribute('y1', y1);
-      line.setAttribute('x2', x2);
-      line.setAttribute('y2', y2);
+      var line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
       line.setAttribute('stroke', '#1c1c1c');
-      line.setAttribute('stroke-width', '1');
+      line.setAttribute('stroke-width', '0.8');
       line.setAttribute('stroke-dasharray', '3 5');
-      line.setAttribute('opacity', '0.28');
+      line.setAttribute('opacity', '0.25');
       svg.appendChild(line);
 
-      /* Стрелка у конца */
+      /* Стрелка */
       var angle = Math.atan2(y2 - y1, x2 - x1);
-      var AS = 5;
-      var SPREAD = 0.38;
-      [-SPREAD, SPREAD].forEach(function(a) {
-        var tick = document.createElementNS(svgNS, 'line');
-        tick.setAttribute('x1', x2 - AS * Math.cos(angle - a));
-        tick.setAttribute('y1', y2 - AS * Math.sin(angle - a));
-        tick.setAttribute('x2', x2);
-        tick.setAttribute('y2', y2);
-        tick.setAttribute('stroke', '#1c1c1c');
-        tick.setAttribute('stroke-width', '1');
-        tick.setAttribute('opacity', '0.38');
-        svg.appendChild(tick);
+      var AS = 5, SP = 0.38;
+      [SP, -SP].forEach(function(a) {
+        var t = document.createElementNS(NS, 'line');
+        t.setAttribute('x1', x2 - AS * Math.cos(angle - a));
+        t.setAttribute('y1', y2 - AS * Math.sin(angle - a));
+        t.setAttribute('x2', x2); t.setAttribute('y2', y2);
+        t.setAttribute('stroke', '#1c1c1c');
+        t.setAttribute('stroke-width', '0.8');
+        t.setAttribute('opacity', '0.35');
+        svg.appendChild(t);
       });
     }
 
+    container.style.position = 'relative';
+    container.style.overflow = 'hidden';
+    container.style.display  = 'block';
     container.insertBefore(svg, container.firstChild);
 
-    /* Разложить пилюли абсолютно */
+    /* ── Позиционировать пилюли ── */
     items.forEach(function(item, i) {
       var pos = positions[i];
       item.style.cssText = [
         'position:absolute',
-        'left:'   + pos.x + 'px',
-        'top:'    + pos.y + 'px',
-        'width:'  + PILL_W + 'px',
+        'left:'      + pos.x + 'px',
+        'top:'       + pos.y + 'px',
+        'width:'     + pos.w + 'px',
+        'height:'    + pos.h + 'px',
+        'transform:  rotate(' + pos.rot + 'deg)',
+        'transform-origin: center center',
         'z-index:1',
-        'box-sizing:border-box',
-        'justify-content:space-between',
-        'background:#fff'
+        'box-sizing: border-box',
+        'white-space: nowrap',
+        'display:    inline-flex',
+        'align-items:center',
+        'justify-content: center',
+        'padding:    4px 16px',
+        'background: #fff',
+        'visibility: visible'
       ].join(';');
     });
   }
 
-    /* ── Инициализация ── */
+  /* ── Init ── */
   function init() {
     var container = document.getElementById(CONTAINER_ID);
     if (!container) { setTimeout(init, 300); return; }
 
-    /* Наблюдаем за изменениями */
     var obs = new MutationObserver(function() {
       rendered = false;
-      setTimeout(function() { renderMap(container); }, 50);
+      setTimeout(function() { renderMap(container); }, 60);
     });
     obs.observe(container, { childList: true, subtree: false });
 
-    /* Первый рендер */
     renderMap(container);
 
-    /* Перерисовка при изменении размера */
     if (window.ResizeObserver) {
-      new ResizeObserver(function() {
-        rendered = false;
-        renderMap(container);
-      }).observe(container);
+      new ResizeObserver(function() { rendered = false; renderMap(container); }).observe(container);
     }
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  } else { init(); }
 
 })();
 </script>
