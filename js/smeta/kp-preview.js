@@ -465,7 +465,7 @@ ${qualitySignals || 'стандартный ремонт под чистовую
   try {
     const res = await fetch(GAS_PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      redirect: 'follow',
       body: JSON.stringify({ prompt })
     });
 
