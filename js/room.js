@@ -1092,7 +1092,11 @@ export function getComputedRooms() {
 // Комнаты создаются ТОЛЬКО вручную через computeRooms (инструмент «Комната»).
 // ══════════════════════════════════════════════════════════════════
 function refreshExistingRooms(wallHeightFallback = 2700) {
-  if (!appState.rooms?.length) return; // нет комнат — нечего обновлять, не создаём
+  // Если комнат ещё нет — создаём их автоматически при первом замыкании контура
+  if (!appState.rooms || appState.rooms.length === 0) {
+    computeRooms(wallHeightFallback);
+    return;
+  }
 
   const walls = appState.walls;
   const dividers = appState.dividers || [];
