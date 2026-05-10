@@ -222,18 +222,17 @@
     <!-- ═══════════════════════════════════════════════════════════
          ЛИСТ 4 — КАРТА РЕМОНТА
     ═══════════════════════════════════════════════════════════ -->
-    <div class="spp-page" data-page="roadmap">
+    <div class="spp-page" data-page="roadmap" style="display:flex;flex-direction:column;align-items:stretch">
       <div class="preview-page spp-a4" id="prevRoadmap2" data-be-page="roadmap" style="position:relative;">
 
         <div class="kp-pg-num">04</div>
 
         <div style="padding:48px 50px 48px;height:100%;box-sizing:border-box;display:flex;flex-direction:column">
 
-          <div class="kp-section-title" style="margin-bottom:4px">Карта ремонта</div>
-          <div class="kp-subtitle" style="margin-bottom:24px">Этапы и описание работ</div>
+          <div class="kp-section-title" style="margin-bottom:24px;text-align:center">Карта ремонта</div>
 
-          <!-- Двухколоночный контент -->
-          <div style="flex:1;min-height:0;display:grid;grid-template-columns:55% 45%;gap:32px;overflow:hidden">
+          <!-- Двухколоночный контент 50/50 -->
+          <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:32px;overflow:hidden">
 
             <!-- ЛЕВАЯ: нарратив-текст -->
             <div style="overflow:hidden;display:flex;flex-direction:column;gap:0">
@@ -249,15 +248,15 @@
 
           </div>
 
-          <!-- Кнопка генерации описания -->
-          <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-shrink:0">
-            <button id="btnGenerateRoadmap" onclick="window._kpPreview.generateRoadmapText()" style="padding:8px 18px;border:1px solid #1c1c1c;border-radius:6px;background:#fff;cursor:pointer;color:#1c1c1c;letter-spacing:.3px">
-              ✦ Сгенерировать описание
-            </button>
-            <span id="prevRoadmapGenStatus" class="kp-small-text"></span>
-          </div>
-
         </div>
+      </div>
+
+      <!-- Кнопка генерации — вне листа, не печатается -->
+      <div class="roadmap-gen-bar" style="display:flex;align-items:center;gap:10px;padding:10px 50px;flex-shrink:0">
+        <button id="btnGenerateRoadmap" onclick="window._kpPreview.generateRoadmapText()" style="padding:6px 14px;border:1px solid #bbb;border-radius:5px;background:#fff;cursor:pointer;color:#666;font-size:12px;letter-spacing:.3px">
+          ✦ Сгенерировать описание
+        </button>
+        <span id="prevRoadmapGenStatus" class="kp-small-text"></span>
       </div>
     </div>
 
@@ -781,6 +780,11 @@
 
 /* ── СКРЫТИЕ СТРАНИЦ ─────────────────────────────────────── */
 .spp-page.spp-hidden { display: none !important; }
+
+/* Кнопка генерации карты ремонта — только экран, не печать */
+@media print {
+  .roadmap-gen-bar { display: none !important; }
+}
 
 </style>
 
