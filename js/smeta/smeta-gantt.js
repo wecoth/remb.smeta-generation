@@ -219,6 +219,10 @@ export function syncSectionsToGantt() {
     }
   });
 
+  // Сортируем этапы в том же порядке, в котором секции идут в смете
+  const sectionOrder = sections.map(s => s.name.trim());
+  appState.stages.sort((a, b) => sectionOrder.indexOf(a.name) - sectionOrder.indexOf(b.name));
+
   renderGantt();
   _onDurationChanged();
 }
