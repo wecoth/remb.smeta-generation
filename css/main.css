@@ -548,7 +548,6 @@ html, body {
 .preview-page {
   background: #fff;
   box-shadow: 0 4px 24px rgba(0,0,0,0.25); position: relative; flex-shrink: 0;
-  font-family: 'Merriweather', serif;
 }
 /* Standalone context only (modal/print) — never .spp-a4 in the right panel */
 .preview-page:not(.spp-a4) {
