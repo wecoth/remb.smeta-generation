@@ -565,6 +565,21 @@ async function mountView(viewName) {
 
       initSmeta();
 
+      // ── Автообновление КП при изменении данных сметы ──────────
+      const { EventBus } = await import('./js/eventBus.js');
+      EventBus.on('state:smrRows:changed', () => {
+        if (window._smetaModule?.liveUpdate) window._smetaModule.liveUpdate();
+      });
+      EventBus.on('state:matRows:changed', () => {
+        if (window._smetaModule?.liveUpdate) window._smetaModule.liveUpdate();
+      });
+      EventBus.on('state:rooms:changed', () => {
+        if (window._smetaModule?.liveUpdate) window._smetaModule.liveUpdate();
+      });
+      EventBus.on('state:stages:changed', () => {
+        if (window._smetaModule?.liveUpdate) window._smetaModule.liveUpdate();
+      });
+
       // Автозаполнение поля "Смета сформирована" = сегодня
       (function fillSmetaDate() {
         const todayIso = new Date().toISOString().slice(0, 10);
@@ -591,12 +606,27 @@ async function mountView(viewName) {
         else             { label.classList.remove('active'); pageEl?.classList.add('spp-hidden'); }
       });
     });
-    setTimeout(() => {
-      if (window.BlockEditor) {
-        wrapper.querySelectorAll('.spp-a4').forEach(a4 => window.BlockEditor.initPage(a4));
-      }
-      if (typeof window.setA4Scale === 'function') window.setA4Scale();
-    }, 80);
+
+    // ── Загружаем модуль заполнения КП и вызываем его ──────────
+    try {
+      const { liveUpdateKP } = await import('./js/smeta/kp-preview.js');
+
+      // Сохраняем глобально — auth.js и другие модули могут вызвать liveUpdate()
+      window._smetaModule = window._smetaModule || {};
+      window._smetaModule.liveUpdate = liveUpdateKP;
+
+      // Заполняем страницы КП сразу после монтирования
+      setTimeout(() => {
+        liveUpdateKP();
+        if (typeof window.setA4Scale === 'function') window.setA4Scale();
+        setTimeout(window.setA4Scale, 80);
+      }, 80);
+    } catch(e) {
+      console.error('KP preview init error:', e);
+      setTimeout(() => {
+        if (typeof window.setA4Scale === 'function') window.setA4Scale();
+      }, 80);
+    }
   }
 }
 
