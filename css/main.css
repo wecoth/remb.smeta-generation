@@ -993,9 +993,14 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: #e8e8e8;
 }
 .kp-full-preview .spp-body {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px 48px;
 }
