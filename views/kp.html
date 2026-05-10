@@ -232,10 +232,10 @@
           <div class="kp-section-title" style="margin-bottom:24px;text-align:center">Карта ремонта</div>
 
           <!-- Двухколоночный контент 50/50 -->
-          <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:32px;overflow:hidden">
+          <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:32px;overflow:hidden;align-items:start">
 
             <!-- ЛЕВАЯ: нарратив-текст -->
-            <div style="overflow:hidden;display:flex;flex-direction:column;gap:0">
+            <div style="display:flex;flex-direction:column">
               <div id="prevRoadmapNarrative2" class="kp-body-text">
                 <div class="kp-placeholder-text">Нажмите «Сгенерировать описание» чтобы создать нарратив по этапам</div>
               </div>
@@ -714,22 +714,23 @@
   gap: 8px;
 }
 
-/* Карта ремонта — пилюли как в графике платежей */
+/* Карта ремонта — пилюли по содержимому, прижаты вправо */
 #prevRoadmapStages2 {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: flex-start;
+  align-items: flex-end;
 }
 .kp-roadmap-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 20px;
   border: 1px solid #1c1c1c;
   background: transparent;
   white-space: nowrap;
+  width: fit-content;
 }
 .kp-roadmap-dot { display: none; }
 .kp-roadmap-num { display: none; }
@@ -747,6 +748,7 @@
 .kp-roadmap-days-label {
   font-size: 14.67px;
   color: #888;
+  white-space: nowrap;
 }
 .kp-roadmap-body {}
 .kp-roadmap-desc { font-size: 14.67px; color: #666; line-height: 1.55; }
