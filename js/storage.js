@@ -77,7 +77,18 @@ export function loadProject(jsonStr) {
   }
   if (data.smrMode !== undefined) appState.smrMode = data.smrMode || 'client';
   if (data.matRows !== undefined) appState.matRows = (data.matRows || []).map(r => ({ ...r }));
-  if (data.stages !== undefined) appState.stages = (data.stages || []).map(s => ({ ...s }));
+  if (data.stages !== undefined) {
+    appState.stages = (data.stages || []).map(s => ({ ...s }));
+    // Сортируем этапы в порядке секций сметы (smrRows уже загружены выше)
+    const _sectionOrder = (appState.smrRows || [])
+      .filter(r => r.isSection && r.name?.trim())
+      .map(r => r.name.trim());
+    if (_sectionOrder.length) {
+      appState.stages.sort((a, b) =>
+        _sectionOrder.indexOf(a.name) - _sectionOrder.indexOf(b.name)
+      );
+    }
+  }
   if (data.payments !== undefined) appState.payments = (data.payments || []).map(p => ({ ...p, stageIds: [...(p.stageIds || [])] }));
   if (data.totalDays !== undefined) appState.totalDays = data.totalDays ?? 60;
   if (data.stageCounter !== undefined) appState.stageCounter = data.stageCounter ?? 0;
