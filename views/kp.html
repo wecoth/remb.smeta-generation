@@ -151,7 +151,7 @@
                   <span class="kp-param-value" id="prevObjMatCost2">—</span>
                 </div>
                 <div style="border-top:1.5px solid #1c1c1c;padding-top:8px;margin-top:4px">
-                  <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <div style="display:flex;align-items:baseline;gap:12px">
                     <span class="kp-total-label">Итого</span>
                     <span class="kp-total-value" id="prevObjTotal2">—</span>
                   </div>
@@ -653,6 +653,12 @@
 #prevObjRoomsFoot2 tr td:first-child {
   text-align: left !important;
   color: #1c1c1c;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  /* colspan охватывает №+Помещение, выравниваем текст вправо
+     чтобы итого стояло у левого края числовых колонок */
+  text-align: right !important;
+  padding-right: 8px;
 }
 
 /* Стиль таблицы смет — новый чистый */
