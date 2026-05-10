@@ -27,6 +27,11 @@ export class MeasureTool extends BaseTool {
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
 
+    // Для серых направляющих (с задержкой)
+    this._guideHoverCandidate = null;
+    this._guideHoverTimer = null;
+    this._guideHoverDelay = 1000;
+
     // Накопленное направление движения мыши (для ортогональной привязки)
     this._mouseDirX = 0;
     this._mouseDirY = 0;
@@ -39,6 +44,10 @@ export class MeasureTool extends BaseTool {
   }
 
   deactivate() {
+    clearTimeout(this._guideHoverTimer);
+    this._guideHoverTimer = null;
+    this._guideHoverCandidate = null;
+    this.currentGuideLine = null;
     this.reset();
   }
 
@@ -54,6 +63,9 @@ export class MeasureTool extends BaseTool {
     clearTimeout(this._snapHoverTimer);
     this._snapHoverTimer = null;
     this._snapHoverKey = null;
+    clearTimeout(this._guideHoverTimer);
+    this._guideHoverTimer = null;
+    this._guideHoverCandidate = null;
     this._mouseDirX = 0;
     this._mouseDirY = 0;
     this._lastMouseWorld = null;
@@ -82,7 +94,7 @@ export class MeasureTool extends BaseTool {
     this._snapHoverTimer = setTimeout(() => {
       this.activeTrackingPoint = { x: snap.x, y: snap.y, type: snap.type };
       this.ui.doRedraw();
-    }, 1500);
+    }, 1000);
   }
 
   getRenderState() {
@@ -235,7 +247,7 @@ export class MeasureTool extends BaseTool {
     return;
   }
 
-  // Если уже есть объектная направляющая — проверяем, не пора ли её сбросить
+  // Если уже есть активная направляющая (не start-axis) — держим или сбрасываем
   if (this.currentGuideLine && this.currentGuideLine.id !== 'measure:start-axis') {
     if (shouldKeepGuideLine(screenPoint, this.currentGuideLine, 36, 48)) {
       return;
@@ -244,13 +256,32 @@ export class MeasureTool extends BaseTool {
     }
   }
 
-  // Ищем только реальные объектные направляющие (стены, проёмы, другие рулетки)
+  // Ищем кандидата под курсором
   const candidate = findGuideCandidate(screenPoint);
-  if (candidate) {
-    this.currentGuideLine = candidate;
-  } else {
-    this.currentGuideLine = null;   // НЕ создаём автоматическую ось
+
+  // Если кандидат не изменился — ничего не делаем, ждём таймер
+  if (this._guideHoverCandidate && candidate &&
+      this._guideHoverCandidate.id === candidate.id) {
+    return;
   }
+
+  // Кандидат изменился → сбрасываем старый таймер
+  clearTimeout(this._guideHoverTimer);
+  this._guideHoverCandidate = candidate;
+  this._guideHoverTimer = null;
+
+  if (!candidate) {
+    this.currentGuideLine = null;
+    return;
+  }
+
+  // Запускаем таймер на активацию
+  this._guideHoverTimer = setTimeout(() => {
+    if (this._guideHoverCandidate && this._guideHoverCandidate === candidate) {
+      this.currentGuideLine = candidate;
+    }
+    this._guideHoverTimer = null;
+  }, this._guideHoverDelay);
 }
 
   getMeasureEnd(world) {
