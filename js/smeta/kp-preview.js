@@ -369,7 +369,7 @@ ${stagesContext}
 Верни ТОЛЬКО JSON-массив, без пояснений и markdown.`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const GAS_PROXY_URL = 'https://script.google.com/macros/s/AKfycbzOORdjpCpP8i1wHovBJ1qxxgvFCg72_bDxbKwRPUyOUgZ8eM7uYPabjPrafKhTx4Osdg/exec';
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
