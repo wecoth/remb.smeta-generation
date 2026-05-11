@@ -9,13 +9,10 @@ export async function generatePDF() {
   const flat   = document.getElementById('hdrFlat')?.value   || '';
   const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
 
-  // ★ Обновляем все страницы и футеры перед сбором HTML ★
+  // ★ Обновляем все страницы КП перед сбором HTML ★
   if (typeof window._kpPreview?.liveUpdateKP === 'function') {
     window._kpPreview.liveUpdateKP();
   }
-
-  const pageHtmlArr = [];
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
 
   const pageHtmlArr = [];
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
@@ -35,7 +32,7 @@ export async function generatePDF() {
     try { return Array.from(s.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; }
   }).join('\n');
 
-    const pdfCss = `
+  const pdfCss = `
     @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
     @font-face {
       font-family: 'Merriweather';
@@ -50,7 +47,7 @@ export async function generatePDF() {
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
 
-    /* ⬇ Скрываем пунктирную рамку, чтобы она не печаталась */
+    /* ⬇ Убираем пунктирную рамку из PDF */
     .spp-a4::before {
       border: none !important;
       display: none !important;
