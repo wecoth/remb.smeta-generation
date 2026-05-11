@@ -144,15 +144,25 @@ function fillCover(company) {
   const sloganEl = el('prevCovSlogan2');
   const circle   = el('prevCircle2');
   const logoImg  = el('prevLogoImg2');
+  const logoWrap = el('prevLogoWrap2');
 
   if (nameEl)   nameEl.textContent   = company.name;
   if (sloganEl) sloganEl.textContent = company.slogan;
 
   if (company.logoBase64) {
     if (logoImg)  { logoImg.src = company.logoBase64; logoImg.style.display = ''; }
+    if (logoWrap) logoWrap.style.display = '';
     if (circle)   circle.style.display = 'none';
+
+    // Применяем сохранённые размеры
+    if (appState.coverLogoWidth)  logoImg.style.maxWidth  = appState.coverLogoWidth  + 'px';
+    if (appState.coverLogoHeight) logoImg.style.maxHeight = appState.coverLogoHeight + 'px';
+
+    // Включаем ресайзер
+    initLogoResize(logoImg, logoWrap);
   } else {
     if (logoImg)  logoImg.style.display = 'none';
+    if (logoWrap) logoWrap.style.display = 'none';
     if (circle) { circle.style.display = ''; circle.textContent = company.letter; }
   }
 
@@ -172,6 +182,52 @@ function fillCover(company) {
 
   const siteEl = el('prevCovSite2');
   if (siteEl) siteEl.textContent = company.site || '';
+}
+
+function initLogoResize(imgEl, wrapEl) {
+  const resizer = document.getElementById('prevLogoResizer2');
+  if (!imgEl || !resizer) return;
+
+  // Сбрасываем старые слушатели клонированием
+  const freshResizer = resizer.cloneNode(true);
+  resizer.parentNode.replaceChild(freshResizer, resizer);
+
+  let startX, startY, startWidth, startHeight;
+
+  wrapEl.addEventListener('mouseenter', () => { freshResizer.style.display = ''; });
+  wrapEl.addEventListener('mouseleave', () => { freshResizer.style.display = 'none'; });
+
+  freshResizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startX      = e.clientX;
+    startY      = e.clientY;
+    startWidth  = imgEl.offsetWidth;
+    startHeight = imgEl.offsetHeight;
+
+    document.body.style.cursor     = 'nwse-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev) {
+      const newW = Math.max(50, startWidth  + ev.clientX - startX);
+      const newH = Math.max(50, startHeight + ev.clientY - startY);
+      imgEl.style.maxWidth  = newW + 'px';
+      imgEl.style.maxHeight = newH + 'px';
+    }
+
+    function onUp() {
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+
+      // Сохраняем в appState
+      appState.coverLogoWidth  = imgEl.offsetWidth;
+      appState.coverLogoHeight = imgEl.offsetHeight;
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -277,6 +333,41 @@ function fillObject(company, address, images) {
   set('prevCtSmr2',     smrT > 0 ? fmtMoney(smrT) : '—');
   set('prevCtMat2',     matT > 0 ? fmtMoney(matT) : '0 ₽');
   set('prevCtTotal2',   fmtMoney(smrT + matT));
+
+  // Редактируемые тексты приветствия
+  const greetingEl = el('prevObjGreeting2');
+  const intro1El   = el('prevObjIntro2');
+  const intro2El   = el('prevObjIntro2b');
+
+  if (greetingEl) {
+    greetingEl.textContent = appState.kpGreeting || 'Уважаемый клиент!';
+    makeEditable(greetingEl, 'kpGreeting', false);
+  }
+  if (intro1El) {
+    intro1El.innerHTML = appState.kpIntro1 ||
+      'На основании дизайн-проекта и проведённого осмотра подготовлена проектно-сметная документация.';
+    makeEditable(intro1El, 'kpIntro1', true);
+  }
+  if (intro2El) {
+    intro2El.innerHTML = appState.kpIntro2 ||
+      'Ниже представлены состав работ, сроки, стоимость и график реализации проекта.';
+    makeEditable(intro2El, 'kpIntro2', true);
+  }
+}
+
+// Вспомогательная функция — делает элемент редактируемым и сохраняет в appState
+function makeEditable(domEl, stateKey, useHtml = false) {
+  if (domEl.dataset.editableInited === 'true') return; // не вешать дважды
+  domEl.dataset.editableInited = 'true';
+  domEl.setAttribute('contenteditable', 'true');
+  domEl.style.outline = 'none';
+  domEl.style.cursor  = 'text';
+  domEl.addEventListener('input', () => {
+    appState[stateKey] = useHtml ? domEl.innerHTML : domEl.textContent;
+  });
+  domEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !useHtml) { e.preventDefault(); } // plain text — без переноса
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -1198,9 +1289,25 @@ function fillContacts(company) {
   // Список «что не входит»
   const listEl = el('prevExcludeList2');
   if (listEl) {
-    listEl.innerHTML = EXCLUDE_ITEMS.map(item =>
+    const items = (appState.excludeItems && appState.excludeItems.length)
+      ? appState.excludeItems
+      : EXCLUDE_ITEMS;
+
+    listEl.innerHTML = items.map(item =>
       `<li class="kp-exclude-item">${item}</li>`
     ).join('');
+
+    if (listEl.dataset.editableInited !== 'true') {
+      listEl.dataset.editableInited = 'true';
+      listEl.setAttribute('contenteditable', 'true');
+      listEl.style.outline = 'none';
+      listEl.style.cursor  = 'text';
+      listEl.addEventListener('input', () => {
+        const liEls    = listEl.querySelectorAll('li');
+        const newItems = Array.from(liEls).map(li => li.textContent.trim()).filter(Boolean);
+        appState.excludeItems = newItems.length ? newItems : null; // null → дефолт
+      });
+    }
   }
 
   // Контакты
