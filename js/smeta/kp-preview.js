@@ -335,7 +335,8 @@ function fillRoadmap() {
 
   container.innerHTML = stages.map((stage, i) => {
     const num = String(i + 1).padStart(2, '0');
-    return `<div class="kp-roadmap-item">
+    const borderColor = stage.color || '#1c1c1c';
+    return `<div class="kp-roadmap-item" style="border-color:${borderColor}">
       <div class="kp-roadmap-num">${num}</div>
       <div class="kp-roadmap-body">
         <div class="kp-roadmap-title">${stage.name}</div>
