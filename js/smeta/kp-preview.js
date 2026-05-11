@@ -484,9 +484,10 @@ ${stagesContext}
 // ─────────────────────────────────────────────────────────────────
 
 // Сколько строк таблицы помещается на один лист.
-// Подберите под реальную высоту строк и масштаб вашего .spp-page.
-// Заголовок этапа считается за 1 строку, строка данных — за 1.
-const SMR_ROWS_PER_PAGE = 22;
+// Заголовок этапа считается за 2 строки (он выше), строка данных — за 1.
+// Первый лист короче: заголовок «Смета СМР» занимает ~5 строк эквивалента.
+const SMR_ROWS_FIRST_PAGE = 17; // первый лист (с заголовком раздела)
+const SMR_ROWS_PER_PAGE   = 22; // листы продолжения (только шапка таблицы)
 
 // Общий заголовок таблицы (шапка колонок) — выводится на каждой странице
 function _smrTableHeader(label) {
@@ -540,15 +541,19 @@ function fillSmrPage(company) {
   }
 
   // ── Разбиваем на страницы ────────────────────────────────────
+  // Первый лист вмещает меньше строк (занят заголовком «Смета СМР»).
+  // Заголовок этапа (stage) считаем за 2 строки — он визуально выше.
   const pages = [];
   let cur = { items: [], count: 0 };
   for (const item of allItems) {
-    if (cur.count >= SMR_ROWS_PER_PAGE && cur.items.length > 0) {
+    const weight = item.type === 'stage' ? 2 : 1;
+    const limit  = pages.length === 0 ? SMR_ROWS_FIRST_PAGE : SMR_ROWS_PER_PAGE;
+    if (cur.count + weight > limit && cur.items.length > 0) {
       pages.push(cur);
       cur = { items: [], count: 0 };
     }
     cur.items.push(item);
-    cur.count++;
+    cur.count += weight;
   }
   if (cur.items.length) pages.push(cur);
 
@@ -615,6 +620,9 @@ function fillSmrPage(company) {
 
     if (isFirst) {
       // Первая страница — заполняем оригинальный контейнер
+      // Скрываем подзаголовок «Перечень позиций» — он не нужен
+      const smrPage = el('prevSmr2')?.closest('.spp-page');
+      if (smrPage) smrPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
       content.innerHTML = html;
       _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
     } else {
@@ -624,10 +632,8 @@ function fillSmrPage(company) {
       // Оставляем тот же data-page, чтобы чекбоксы управляли группой
       newPage.dataset.page = originalPage.dataset.page;
 
-      // На дополнительных листах убираем заголовок листа (h2/section title),
-      // оставляем только контент и футер
-      const pageTitle = newPage.querySelector('.spp-page-label, .kp-page-title, h2.kp-title');
-      if (pageTitle) pageTitle.style.display = 'none';
+      // На дополнительных листах скрываем заголовок «Смета СМР» и подзаголовок
+      newPage.querySelectorAll('.kp-section-title, .kp-subtitle').forEach(n => n.style.display = 'none');
 
       // Убираем empty-плейсхолдер
       const extraEmpty = newPage.querySelector('[id*="SmrEmpty"]');
@@ -657,7 +663,8 @@ function fillSmrPage(company) {
 // ЛИСТ 6 — Смета материалов (пагинация по страницам А4)
 // ─────────────────────────────────────────────────────────────────
 
-const MAT_ROWS_PER_PAGE = 22;
+const MAT_ROWS_FIRST_PAGE = 17;
+const MAT_ROWS_PER_PAGE   = 22;
 
 function fillMatPage(company) {
   const content  = el('prevMatContent2');
@@ -704,12 +711,14 @@ function fillMatPage(company) {
   const pages = [];
   let cur = { items: [], count: 0 };
   for (const item of allItems) {
-    if (cur.count >= MAT_ROWS_PER_PAGE && cur.items.length > 0) {
+    const weight = item.type === 'stage' ? 2 : 1;
+    const limit  = pages.length === 0 ? MAT_ROWS_FIRST_PAGE : MAT_ROWS_PER_PAGE;
+    if (cur.count + weight > limit && cur.items.length > 0) {
       pages.push(cur);
       cur = { items: [], count: 0 };
     }
     cur.items.push(item);
-    cur.count++;
+    cur.count += weight;
   }
   if (cur.items.length) pages.push(cur);
 
@@ -765,6 +774,9 @@ function fillMatPage(company) {
     }
 
     if (isFirst) {
+      // Скрываем подзаголовок «Перечень позиций»
+      const matPage = el('prevMat2')?.closest('.spp-page');
+      if (matPage) matPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
       content.innerHTML = html;
       _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
     } else {
@@ -772,8 +784,8 @@ function fillMatPage(company) {
       newPage.classList.add('spp-page--mat-extra');
       newPage.dataset.page = originalPage.dataset.page;
 
-      const pageTitle = newPage.querySelector('.spp-page-label, .kp-page-title, h2.kp-title');
-      if (pageTitle) pageTitle.style.display = 'none';
+      // Скрываем заголовок «Смета материалов» и подзаголовок на доп. листах
+      newPage.querySelectorAll('.kp-section-title, .kp-subtitle').forEach(n => n.style.display = 'none');
 
       const extraEmpty = newPage.querySelector('[id*="MatEmpty"]');
       if (extraEmpty) extraEmpty.style.display = 'none';
