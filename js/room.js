@@ -1029,32 +1029,69 @@ export function updateExpl(explBody, roomCountEl) {
   if (!explBody) return;
   if (roomCountEl) roomCountEl.textContent = appState.rooms.length;
 
+  // Очищаем таблицу корректно
+  while (explBody.firstChild) explBody.removeChild(explBody.firstChild);
+
   if (!appState.rooms.length) {
-    explBody.innerHTML = `<tr class="empty-row"><td colspan="9">Нарисуйте замкнутый контур — появятся все метрики</td></tr>`;
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    const td = document.createElement('td');
+    td.colSpan = 9;
+    td.textContent = 'Нарисуйте замкнутый контур — появятся все метрики';
+    tr.appendChild(td);
+    explBody.appendChild(tr);
     return;
   }
 
-  explBody.innerHTML = appState.rooms.map((r, i) => {
+  const fmt = v => (v != null && v > 0) ? v.toFixed(2) : '—';
+
+  appState.rooms.forEach((r, i) => {
     const m = r.metrics || {};
     const color = ROOM_STROKES[i % ROOM_STROKES.length].replace('0.4', '0.8');
-    const fmt = v => (v != null && v > 0) ? v.toFixed(2) : '—';
 
-    return `<tr>
-      <td><div class="room-name-cell">
-        <span class="room-dot" style="background:${color}"></span>
-        <input class="room-name-input" type="text" value="${escHtml(r.name)}"
-          data-room-key="${escHtml(r.key)}" data-room-default="${escHtml(r.defaultName)}">
-      </div></td>
-      <td>${r.area.toFixed(2)}</td>
-      <td>${fmt(m.perimeterFloorM ?? r.perimeter)}</td>
-      <td>${fmt(m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea)}</td>
-      <td>${fmt(m.wallAreaCleanM2 ?? r.wallArea)}</td>
-      <td>${fmt(m.windowAreaM2)}</td>
-      <td>${fmt(m.windowRevealsLm)}</td>
-      <td>${fmt(m.outerAnglesLm)}</td>
-      <td>${fmt(m.narrowWallsLm)}</td>
-    </tr>`;
-  }).join('');
+    const tr = document.createElement('tr');
+
+    // Первая ячейка: название
+    const tdName = document.createElement('td');
+    const divCell = document.createElement('div');
+    divCell.className = 'room-name-cell';
+
+    const dot = document.createElement('span');
+    dot.className = 'room-dot';
+    dot.style.background = color;
+
+    const input = document.createElement('input');
+    input.className = 'room-name-input';
+    input.type = 'text';
+    input.value = r.name;
+    input.dataset.roomKey = r.key;
+    input.dataset.roomDefault = r.defaultName;
+
+    divCell.appendChild(dot);
+    divCell.appendChild(input);
+    tdName.appendChild(divCell);
+    tr.appendChild(tdName);
+
+    // Остальные ячейки
+    const values = [
+      r.area.toFixed(2),
+      fmt(m.perimeterFloorM ?? r.perimeter),
+      fmt(m.wallAreaNominalM2 ?? m.wallAreaNetM2 ?? r.wallArea),
+      fmt(m.wallAreaCleanM2 ?? r.wallArea),
+      fmt(m.windowAreaM2),
+      fmt(m.windowRevealsLm),
+      fmt(m.outerAnglesLm),
+      fmt(m.narrowWallsLm),
+    ];
+
+    values.forEach(v => {
+      const td = document.createElement('td');
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+
+    explBody.appendChild(tr);
+  });
 }
 
 function escHtml(s) {
