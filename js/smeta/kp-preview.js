@@ -497,29 +497,83 @@ function _smrTableHeader(label) {
     <tbody>`;
 }
 
-// ── Пагинация через фиксированные px-константы ───────────────────
-// Отказ от DOM-измерения: высоты считаются заранее по CSS.
-// Это устраняет ошибку probe-div, который не наследует transform/scale
-// и шрифтовый контекст родителя .spp-a4, что давало неверный scrollHeight.
+// ── Пагинация: динамическое измерение высот внутри .spp-a4 ──────
 //
-// Правила:
+// Probe-div создаётся ВНУТРИ реальной страницы .spp-a4, поэтому
+// наследует font-size !important, transform scale и все CSS родителя.
+// Это решает исходную проблему _paginateByDOM, где probe был в document.body
+// и не получал правильный контекст стилей.
+//
+// Правила пагинации:
 // 1. Заголовок этапа + минимум 1 строка — атомарный блок.
-//    Если не влезают вместе — оба уходят на следующий лист.
-// 2. Если этап разрывается — на новом листе плашка «продолжение: [этап]».
+// 2. Если этап разрывается — на новом листе плашка «продолжение».
 // 3. Потерь строк нет — каждая строка либо здесь, либо на следующем листе.
 
-// ── Настройки пагинации (правьте здесь при изменении CSS) ────────
-const PAGINATION = {
-  PAGE_H:        686,   // рабочая высота листа: 794 − 48(top) − 60(bottom) = 686px
-  ROW_H:          29,   // высота строки <tr>: 14.67px × 1.4lh + 8px padding ≈ 29px
-  THEAD_H:        29,   // высота шапки <thead>
-  STAGE_TITLE_H:  35,   // высота .kp-smr-stage-title
-  CONT_LABEL_H:   35,   // высота плашки «продолжение» на новом листе
-  SECTION_TOTAL_H: 0,   // итого по разделу встроено в STAGE_TITLE_H, отдельно не считаем
-};
+// ── Измерение реальных высот внутри страницы ─────────────────────
+// pageEl — элемент .spp-a4 или .spp-page (родитель контента).
+// Возвращает объект с реальными px-высотами всех элементов пагинации.
+function _measurePaginationHeights(pageEl) {
+  // Создаём скрытый probe внутри pageEl — он наследует все его стили
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;top:0;left:0;right:0;z-index:-1;';
+  pageEl.appendChild(probe);
 
-function _paginateByHeight(allItems, label, counterStart) {
-  const P = PAGINATION;
+  function measure(html) {
+    probe.innerHTML = html;
+    // offsetHeight учитывает padding но не margin — для margin используем getBoundingClientRect
+    const el = probe.firstElementChild;
+    if (!el) return 0;
+    const style = window.getComputedStyle(el);
+    const marginTop    = parseFloat(style.marginTop)    || 0;
+    const marginBottom = parseFloat(style.marginBottom) || 0;
+    return el.offsetHeight + marginTop + marginBottom;
+  }
+
+  // Измеряем одну строку: рендерим таблицу с 2 строками и с 1, берём разницу.
+  // Это исключает влияние margin-bottom самой таблицы и border-collapse.
+  function measureRow(tag, cells2, cells1) {
+    const h2 = measure(`<table class="kp-smr-table" style="width:100%"><${tag}>${cells2}</${tag}></table>`);
+    const h1 = measure(`<table class="kp-smr-table" style="width:100%"><${tag}>${cells1}</${tag}></table>`);
+    return Math.max(h2 - h1, 1);
+  }
+
+  const _tdRow = (n) => `<tr><td>${n}</td><td>Тестовая строка работы</td><td>шт</td><td>1</td><td>1 000</td><td>1 000</td></tr>`;
+  const _thRow = `<tr><th>№</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th><th>Цена, ₽</th><th>Сумма, ₽</th></tr>`;
+
+  const ROW_H   = measureRow('tbody', _tdRow(1) + _tdRow(2), _tdRow(1));
+  const THEAD_H = measureRow('thead', _thRow + '<tr><td colspan="6"></td></tr>', _thRow);
+
+  // Высота заголовка этапа (включая margin-bottom)
+  const STAGE_TITLE_H = measure(`<div class="kp-smr-stage-title">
+    <span>Тестовый этап</span>
+    <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: 0 ₽</span>
+  </div>`);
+
+  // Высота плашки «продолжение»
+  const CONT_LABEL_H = measure(`<div class="kp-smr-stage-title kp-smr-stage-continuation">
+    <span style="color:#aaa;font-style:italic">продолжение: Тестовый этап</span>
+  </div>`);
+
+  // Рабочая высота страницы — clientHeight враппера контента
+  // Ищем элемент-обёртку с overflow:hidden (он ограничивает видимую область)
+  const wrapEl = pageEl.querySelector('[id*="SmrTableWrap"], [id*="MatTableWrap"], [id*="Content"]');
+  const PAGE_H = wrapEl ? wrapEl.clientHeight : (pageEl.clientHeight - 108); // 108 = 48 top + 60 bottom padding
+
+  pageEl.removeChild(probe);
+
+  // Защита от нуля при вызове до рендера
+  return {
+    PAGE_H:       PAGE_H  || 686,
+    ROW_H:        ROW_H   || 29,
+    THEAD_H:      THEAD_H || 29,
+    STAGE_TITLE_H: STAGE_TITLE_H || 35,
+    CONT_LABEL_H:  CONT_LABEL_H  || 35,
+  };
+}
+
+function _paginateByHeight(allItems, label, counterStart, P) {
+  // P — объект высот, полученный из _measurePaginationHeights()
+  if (!P) throw new Error('_paginateByHeight: передай объект P из _measurePaginationHeights()');
 
   // used — пикселей занято на ТЕКУЩЕМ листе.
   // Инвариант: used всегда отражает реально добавленный контент.
@@ -721,8 +775,10 @@ function fillSmrPage(company) {
   // Удаляем ранее добавленные дополнительные страницы
   pagesContainer.querySelectorAll('.spp-page--smr-extra').forEach(n => n.remove());
 
-  // ── Пагинация по фиксированным высотам ──────────────────────
-  const { pages, finalCounter } = _paginateByHeight(allItems, 'Наименование работ', 0);
+  // ── Измеряем реальные высоты внутри страницы и запускаем пагинацию ─
+  const _smrA4 = originalPage.querySelector('.spp-a4') || originalPage;
+  const _smrP  = _measurePaginationHeights(_smrA4);
+  const { pages, finalCounter } = _paginateByHeight(allItems, 'Наименование работ', 0, _smrP);
 
   // ── Рендерим страницы ────────────────────────────────────────
   let lastInsertedPage = originalPage;
@@ -827,8 +883,10 @@ function fillMatPage(company) {
   const matPage = el('prevMat2')?.closest('.spp-page');
   if (matPage) matPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
 
-  // ── Пагинация по фиксированным высотам ──────────────────────
-  const { pages } = _paginateByHeight(allItems, 'Наименование материала', 0);
+  // ── Измеряем реальные высоты внутри страницы и запускаем пагинацию ─
+  const _matA4 = originalPage.querySelector('.spp-a4') || originalPage;
+  const _matP  = _measurePaginationHeights(_matA4);
+  const { pages } = _paginateByHeight(allItems, 'Наименование материала', 0, _matP);
 
   // ── Рендерим страницы ────────────────────────────────────────
   let lastInsertedPage = originalPage;
