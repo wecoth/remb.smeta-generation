@@ -1379,20 +1379,26 @@ function applyFooterLogoSize(company) {
   const h = appState.footerLogoHeight;
   const hasLogo = !!(company && company.logoBase64);
 
-  // все футеры на разных листах
+  // Устанавливаем src и размер для всех картинок футера
   document.querySelectorAll('[id$="FtLogoImg2"]').forEach(img => {
-    if (h != null) {
-      img.style.maxHeight = h + 'px';
-      img.style.maxWidth  = 'none';
+    if (hasLogo) {
+      img.src = company.logoBase64;
+      img.style.display = '';
+      if (h != null) {
+        img.style.maxHeight = h + 'px';
+        img.style.maxWidth  = 'none';
+      }
+    } else {
+      img.style.display = 'none';
     }
-    img.style.display = hasLogo ? '' : 'none';
   });
 
+  // Показываем/скрываем обёртки логотипов
   document.querySelectorAll('[id$="FootLogoWrap2"]').forEach(wrap => {
     wrap.style.display = hasLogo ? '' : 'none';
   });
 
-  // Кружки и имена — скрываем всегда
+  // Кружки и имена — всегда скрыты
   document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
     c.style.display = 'none';
   });
@@ -1417,7 +1423,7 @@ function applyFooterLogoPosition() {
 function initFooterLogoDrag(company) {
   const footers = document.querySelectorAll('[id$="Foot2"]');
   footers.forEach(footer => {
-    if (footer.id === 'prevCovFoot2') return; // обложку не трогаем
+    if (footer.id === 'prevCovFoot2') return;
     if (footer.dataset.dragInit === '1') return;
     footer.dataset.dragInit = '1';
     footer.style.cursor = 'grab';
@@ -1425,7 +1431,6 @@ function initFooterLogoDrag(company) {
     let startX, startY, startRight, startBottom, dragging = false;
 
     function onMouseDown(e) {
-      // не реагируем, если пользователь тянет за ресайзер (уголок)
       if (e.target.closest('[id$="FootResizer2"]')) return;
       e.preventDefault();
       dragging = true;
@@ -1433,7 +1438,6 @@ function initFooterLogoDrag(company) {
       startY = e.clientY;
       const rect = footer.getBoundingClientRect();
       const parentRect = footer.parentElement.getBoundingClientRect();
-      // вычисляем начальные right/bottom относительно родителя
       startRight = parentRect.right - rect.right;
       startBottom = parentRect.bottom - rect.bottom;
       footer.style.cursor = 'grabbing';
@@ -1442,11 +1446,15 @@ function initFooterLogoDrag(company) {
 
     function onMouseMove(e) {
       if (!dragging) return;
-      const dx = startX - e.clientX; // двигаем вправо -> right уменьшается
-      const dy = startY - e.clientY; // двигаем вниз -> bottom уменьшается
-      const newRight = Math.max(0, startRight + dx);
-      const newBottom = Math.max(0, startBottom + dy);
-      // обновляем ВСЕ футеры сразу
+      // Учитываем масштаб листа A4
+      const parentEl = footer.parentElement;
+      const scale = parentEl.getBoundingClientRect().width / parentEl.offsetWidth;
+      const dx = (startX - e.clientX) / scale;
+      const dy = (startY - e.clientY) / scale;
+
+      const newRight = Math.max(0, Math.min(startRight + dx, parentEl.offsetWidth));
+      const newBottom = Math.max(0, Math.min(startBottom + dy, parentEl.offsetHeight));
+
       document.querySelectorAll('[id$="Foot2"]').forEach(f => {
         if (f.id === 'prevCovFoot2') return;
         f.style.right = newRight + 'px';
@@ -1454,7 +1462,6 @@ function initFooterLogoDrag(company) {
         f.style.left = 'auto';
         f.style.top = 'auto';
       });
-      // запоминаем новую позицию в appState
       appState.footerLogoPosition = { right: newRight, bottom: newBottom };
     }
 
@@ -1465,7 +1472,6 @@ function initFooterLogoDrag(company) {
       document.body.style.userSelect = '';
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      // сохраняем позицию в профиль
       saveLogoSizesToProfile();
     }
 
