@@ -1429,104 +1429,102 @@ function applyFooterLogoPosition() {
 }
 
 // ── Универсальное перетаскивание и ресайз футер‑логотипа (делегирование) ──
-function initFooterLogoInteraction(company) {
-  if (document.body.dataset.footerInteractionInit === '1') return;
-  document.body.dataset.footerInteractionInit = '1';
+function initFooterLogoResize(company) {
+  const resizers = document.querySelectorAll('[id$="FootResizer2"]');
+  resizers.forEach(resizer => {
+    if (resizer.dataset.init === '1') return;
+    resizer.dataset.init = '1';
 
-  let dragState = null;      // { footer, startX, startY, startRight, startBottom, dragging }
-  let resizeState = null;    // { footer, startY, startHeight }
+    const wrap = resizer.parentElement; // FootLogoWrap
+    const img  = wrap.querySelector('img');
+
+    let startY, startHeight;
+
+    wrap.addEventListener('mouseenter', () => { resizer.style.display = ''; });
+    wrap.addEventListener('mouseleave', () => { resizer.style.display = 'none'; });
+
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startY      = e.clientY;
+      startHeight = img.offsetHeight;
+      document.body.style.cursor     = 'nwse-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(ev) {
+        const newH = Math.max(10, startHeight + ev.clientY - startY);
+        appState.footerLogoHeight = newH;
+        updateFooterLogoSize();
+      }
+
+      function onUp() {
+        document.body.style.cursor     = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup',   onUp);
+        saveLogoSizesToProfile();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onUp);
+    });
+  });
+}
+
+function initFooterLogoDrag(company) {
+  if (document.body.dataset.footerDragInit === '1') return;
+  document.body.dataset.footerDragInit = '1';
+
+  let dragState = null;
 
   function getScale(el) {
-    // вычисляем итоговый масштаб для координат внутри .spp-a4
     const a4 = el.closest('.spp-a4');
-    if (!a4) return 1;
-    return a4.getBoundingClientRect().width / a4.offsetWidth;
+    return a4 ? a4.getBoundingClientRect().width / a4.offsetWidth : 1;
   }
 
-  function startDrag(footer, e) {
-    const rect = footer.getBoundingClientRect();
-    const parentRect = footer.parentElement.getBoundingClientRect();
-    const scale = getScale(footer);
+  function onMouseDown(e) {
+    const foot = e.target.closest('[id$="Foot2"]');
+    if (!foot || foot.id === 'prevCovFoot2') return;
+    if (e.target.closest('[id$="FootResizer2"]')) return; // ресайзер обрабатывается отдельно
+
+    e.preventDefault();
+    const rect = foot.getBoundingClientRect();
+    const parentRect = foot.parentElement.getBoundingClientRect();
+    const scale = getScale(foot);
     dragState = {
-      footer,
+      footer: foot,
       startX: e.clientX,
       startY: e.clientY,
       startRight: (parentRect.right - rect.right) / scale,
       startBottom: (parentRect.bottom - rect.bottom) / scale,
-      dragging: true,
     };
-    footer.style.cursor = 'grabbing';
-  }
-
-  function startResize(footer, e) {
-    const img = footer.querySelector('img');
-    if (!img) return;
-    resizeState = {
-      footer,
-      startY: e.clientY,
-      startHeight: img.offsetHeight,
-    };
-    document.body.style.cursor = 'nwse-resize';
-  }
-
-  function onMouseDown(e) {
-    const target = e.target;
-    // Ресайзер — приоритет
-    if (target.closest('[id$="FootResizer2"]')) {
-      const foot = target.closest('[id$="Foot2"]');
-      if (foot && foot.id !== 'prevCovFoot2') {
-        e.preventDefault();
-        startResize(foot, e);
-        return;
-      }
-    }
-    // Сам футер (не обложка)
-    const foot = target.closest('[id$="Foot2"]');
-    if (foot && foot.id !== 'prevCovFoot2') {
-      e.preventDefault();
-      startDrag(foot, e);
-    }
+    foot.style.cursor = 'grabbing';
   }
 
   function onMouseMove(e) {
-    if (dragState && dragState.dragging) {
-      const { footer, startX, startY, startRight, startBottom } = dragState;
-      const scale = getScale(footer);
-      const dx = (startX - e.clientX) / scale;
-      const dy = (startY - e.clientY) / scale;
-      // Разрешаем отрицательные значения для выхода за границы
-      const newRight = startRight + dx;
-      const newBottom = startBottom + dy;
+    if (!dragState) return;
+    const { footer, startX, startY, startRight, startBottom } = dragState;
+    const scale = getScale(footer);
+    const dx = (startX - e.clientX) / scale;
+    const dy = (startY - e.clientY) / scale;
+    // разрешаем отрицательные значения для выхода за границы
+    const newRight = startRight + dx;
+    const newBottom = startBottom + dy;
 
-      document.querySelectorAll('[id$="Foot2"]').forEach(f => {
-        if (f.id === 'prevCovFoot2') return;
-        f.style.right = newRight + 'px';
-        f.style.bottom = newBottom + 'px';
-        f.style.left = 'auto';
-        f.style.top = 'auto';
-      });
-      appState.footerLogoPosition = { right: newRight, bottom: newBottom };
-    }
-
-    if (resizeState) {
-      const { footer, startY, startHeight } = resizeState;
-      const newH = Math.max(10, startHeight + e.clientY - startY);
-      appState.footerLogoHeight = newH;
-      updateFooterLogoSize();   // плавное изменение размера
-    }
+    document.querySelectorAll('[id$="Foot2"]').forEach(f => {
+      if (f.id === 'prevCovFoot2') return;
+      f.style.right = newRight + 'px';
+      f.style.bottom = newBottom + 'px';
+      f.style.left = 'auto';
+      f.style.top = 'auto';
+    });
+    appState.footerLogoPosition = { right: newRight, bottom: newBottom };
   }
 
-  function onMouseUp(e) {
-    if (dragState) {
-      dragState.footer.style.cursor = 'grab';
-      dragState = null;
-      saveLogoSizesToProfile();
-    }
-    if (resizeState) {
-      document.body.style.cursor = '';
-      resizeState = null;
-      saveLogoSizesToProfile();
-    }
+  function onMouseUp() {
+    if (!dragState) return;
+    dragState.footer.style.cursor = 'grab';
+    dragState = null;
+    saveLogoSizesToProfile();
   }
 
   document.addEventListener('mousedown', onMouseDown, { passive: false });
@@ -1595,7 +1593,8 @@ export function liveUpdateKP() {
   // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
   applyFooterLogoSize(company);
   applyFooterLogoPosition();
-  initFooterLogoInteraction(company);
+  initFooterLogoResize(company);
+  initFooterLogoDrag(company);
 }
 
 if (typeof window !== 'undefined') {
