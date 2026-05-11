@@ -1495,18 +1495,6 @@ export function liveUpdateKP() {
 
   // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
   applyFooterLogoSize(company);
-  // Восстанавливаем размеры логотипов из localStorage, если они там есть,
-// и при этом они ещё не заданы или устарели (например, профиль пришёл без размеров)
-const cachedSizes = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
-if (cachedSizes.coverLogoWidth != null && appState.coverLogoWidth == null) {
-  appState.coverLogoWidth = cachedSizes.coverLogoWidth;
-}
-if (cachedSizes.coverLogoHeight != null && appState.coverLogoHeight == null) {
-  appState.coverLogoHeight = cachedSizes.coverLogoHeight;
-}
-if (cachedSizes.footerLogoHeight != null && appState.footerLogoHeight == null) {
-  appState.footerLogoHeight = cachedSizes.footerLogoHeight;
-}
   initFooterLogoResize();
 }
 
