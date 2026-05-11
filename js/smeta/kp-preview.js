@@ -800,16 +800,17 @@ function fillMatPage(company) {
 // ─────────────────────────────────────────────────────────────────
 
 function fillPayments(company) {
-  const tbody    = el('prevPayBody2');
-  const tfoot    = el('prevPayFoot2');
-  const theadRow = el('prevPayTable2')?.querySelector('thead tr');
-  if (!tbody) return;
+  const cardsWrap = el('prevPayCards2');
+  const totalWrap = el('prevPayTotal2');
+  if (!cardsWrap) return;
 
-  const payments    = appState.payments   || [];
-  const stages      = appState.stages     || [];
-  const defaultPct  = appState.defaultAdvancePct ?? 30;
+  const payments   = appState.payments  || [];
+  const stages     = appState.stages    || [];
+  const defaultPct = appState.defaultAdvancePct ?? 30;
 
-  // ── Хелпер: сумма СМР по stageName ──────────────────────────────
+  const fmt = n => (n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+
+  // ── Хелпер: сумма СМР по имени этапа ────────────────────────────
   function _getStageAmount(stageName) {
     let total = 0, inside = false;
     for (const r of appState.smrRows || []) {
@@ -819,119 +820,112 @@ function fillPayments(company) {
     return total;
   }
 
-  // ── Обновляем заголовок колонки «Этап» → «Платёж» ───────────────
-  if (theadRow) {
-    const th = theadRow.cells[1];
-    if (th) th.textContent = 'Платёж';
+  // ── Рендер одной карточки ─────────────────────────────────────────
+  function _renderCard(idx, payName, stageObjs, amount, pct, adv, pay, grandTotal) {
+    const remPct   = 100 - pct;
+    const sharePct = grandTotal > 0 ? Math.round(amount / grandTotal * 100) : 0;
+
+    const tagsHtml = stageObjs.map(st =>
+      `<span style="
+        display:inline-flex;align-items:center;gap:4px;
+        border:1px solid ${st.color || '#ddd'};color:${st.color || '#888'};
+        border-radius:20px;padding:2px 8px 2px 6px;
+        font-size:10px;line-height:1.5;white-space:nowrap
+      "><span style="width:5px;height:5px;border-radius:50%;background:${st.color || '#ccc'};flex-shrink:0"></span>${st.name}</span>`
+    ).join('');
+
+    return `<div style="
+      border:1px solid #ebebeb;border-radius:6px;
+      padding:11px 14px;margin-bottom:7px;
+      display:flex;align-items:center;gap:12px;
+    ">
+      <div style="font-size:11px;font-weight:600;color:#ccc;min-width:22px;text-align:center;flex-shrink:0;letter-spacing:.3px">${String(idx).padStart(2,'0')}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:#1c1c1c;margin-bottom:5px">${payName}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${tagsHtml}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;min-width:80px">
+        <div style="font-size:10px;color:#bbb;margin-bottom:1px">${sharePct}% от проекта</div>
+        <div style="font-size:14px;font-weight:700;color:#1c1c1c">${fmt(amount)} ₽</div>
+      </div>
+      <div style="width:1px;height:32px;background:#ebebeb;flex-shrink:0"></div>
+      <div style="flex-shrink:0;min-width:128px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:10px;color:#aaa">Аванс ${pct}%</span>
+          <span style="font-size:11px;font-weight:700;color:#2d7ff9">${fmt(adv)} ₽</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:10px;color:#aaa">Остаток ${remPct}%</span>
+          <span style="font-size:11px;font-weight:500;color:#555">${fmt(pay)} ₽</span>
+        </div>
+      </div>
+    </div>`;
   }
 
-  // ── Если платежей нет — фолбэк на старое отображение по этапам ──
-  if (!payments.length) {
-    const stagesData = getStagesWithTotals();
-    let grandSmr = 0, grandAdv = 0, grandPay = 0;
-    tbody.innerHTML = stagesData.map((stage, i) => {
-      const cost = stage.smrTotal;
-      if (!cost) return '';
-      grandSmr += cost;
-      const adv = Math.round(cost * defaultPct / 100);
-      const pay = cost - adv;
-      grandAdv += adv;
-      grandPay += pay;
-      return `<tr style="border-bottom:1px solid #f0f0f0">
-        <td style="padding:7px 0;font-size:12px;color:#bbb">${String(i + 1).padStart(2, '0')}</td>
-        <td style="padding:7px 8px;font-size:12px;color:#333">${stage.name}</td>
-        <td style="padding:7px 8px;font-size:12px;text-align:right;color:#333">${cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-        <td style="padding:7px 8px;font-size:12px;text-align:center;color:#888">${defaultPct}%</td>
-        <td style="padding:7px 8px;font-size:12px;text-align:right;color:#333">${adv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-        <td style="padding:7px 8px;font-size:12px;text-align:right;color:#333">${pay.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-      </tr>`;
-    }).join('');
-    if (tfoot) {
-      tfoot.innerHTML = `<tr style="border-top:2px solid #1c1c1c">
-        <td colspan="2" style="padding:8px 0;font-size:12px;font-weight:600;color:#1c1c1c">итого:</td>
-        <td style="padding:8px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandSmr.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-        <td style="padding:8px 8px;font-size:11px;text-align:center;color:#888">${defaultPct}%</td>
-        <td style="padding:8px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandAdv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-        <td style="padding:8px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandPay.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-      </tr>`;
-    }
-    const ownerEl = el('prevPayOwner2');
-    if (ownerEl) ownerEl.textContent = company.ownerName || '';
-    return;
+  // ── Собираем данные платежей ──────────────────────────────────────
+  let sourceData;
+
+  if (payments.length > 0) {
+    // Основной режим: из редактора платежей
+    sourceData = payments.map((payment, i) => {
+      const stageObjs = (payment.stageIds || [])
+        .map(sid => stages.find(s => s.id === sid))
+        .filter(Boolean);
+      const amount = stageObjs.reduce((sum, st) => sum + _getStageAmount(st.name), 0);
+      const pct    = (payment.advancePct != null && payment.advancePct >= 0 && payment.advancePct <= 100)
+        ? payment.advancePct : defaultPct;
+      const adv = Math.round(amount * pct / 100);
+      const pay = amount - adv;
+      // Нумерация с 1
+      return { idx: i + 1, payName: payment.name || `Платёж ${i + 1}`, stageObjs, amount, pct, adv, pay };
+    }).filter(r => r.amount > 0);
+  } else {
+    // Фолбэк: по этапам
+    sourceData = getStagesWithTotals()
+      .filter(s => s.smrTotal > 0)
+      .map((s, i) => {
+        const pct = defaultPct;
+        const adv = Math.round(s.smrTotal * pct / 100);
+        return {
+          idx: i + 1,
+          payName: s.name,
+          stageObjs: [{ name: s.name, color: s.color }],
+          amount: s.smrTotal, pct, adv, pay: s.smrTotal - adv,
+        };
+      });
   }
 
-  // ── Основной режим: читаем из appState.payments ──────────────────
-  let grandTotal = 0, grandAdv = 0, grandPay = 0;
+  const grandTotal = sourceData.reduce((s, r) => s + r.amount, 0);
+  const grandAdv   = sourceData.reduce((s, r) => s + r.adv,    0);
+  const grandPay   = sourceData.reduce((s, r) => s + r.pay,    0);
 
-  // Считаем сумму каждого платежа из составляющих этапов
-  const payRows = payments.map((payment, i) => {
-    // Сумма = сумма СМР всех stageIds платежа
-    const amount = (payment.stageIds || []).reduce((sum, sid) => {
-      const stage = stages.find(s => s.id === sid);
-      return sum + (stage ? _getStageAmount(stage.name) : 0);
-    }, 0);
+  // ── Рендер карточек ───────────────────────────────────────────────
+  cardsWrap.innerHTML = sourceData
+    .map(r => _renderCard(r.idx, r.payName, r.stageObjs, r.amount, r.pct, r.adv, r.pay, grandTotal))
+    .join('');
 
-    // Процент аванса: локальный или глобальный
-    const pct = (payment.advancePct != null && payment.advancePct >= 0 && payment.advancePct <= 100)
-      ? payment.advancePct
-      : defaultPct;
-
-    const adv = Math.round(amount * pct / 100);
-    const pay = amount - adv;
-
-    // Название платежа + перечень этапов
-    const stageNames = (payment.stageIds || [])
-      .map(sid => stages.find(s => s.id === sid)?.name)
-      .filter(Boolean);
-
-    return { i, payment, amount, pct, adv, pay, stageNames };
-  }).filter(r => r.amount > 0);
-
-  // Считаем общие итоги
-  payRows.forEach(r => {
-    grandTotal += r.amount;
-    grandAdv   += r.adv;
-    grandPay   += r.pay;
-  });
-
-  // ── Рендерим строки ───────────────────────────────────────────────
-  tbody.innerHTML = payRows.map(({ i, payment, amount, pct, adv, pay, stageNames }) => {
-    // Цветные точки этапов перед названием
-    const dots = stageNames.map(name => {
-      const st = stages.find(s => s.name === name);
-      const color = st?.color || '#aaa';
-      return `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${color};margin-right:3px;flex-shrink:0;vertical-align:middle"></span>`;
-    }).join('');
-
-    // Подстрока с названиями этапов (мелко, серым)
-    const stagesLine = stageNames.length
-      ? `<div style="font-size:10px;color:#aaa;margin-top:2px;line-height:1.3">${stageNames.join(' · ')}</div>`
-      : '';
-
-    const payName = payment.name || `Платёж ${i + 1}`;
-
-    return `<tr style="border-bottom:1px solid #f0f0f0">
-      <td style="padding:9px 0 9px;font-size:12px;color:#bbb;white-space:nowrap;vertical-align:top">${String(i + 1).padStart(2, '0')}</td>
-      <td style="padding:9px 8px;vertical-align:top">
-        <div style="font-size:12px;color:#333;font-weight:500">${payName}</div>
-        ${stagesLine}
-      </td>
-      <td style="padding:9px 8px;font-size:12px;text-align:right;color:#333;vertical-align:top">${amount.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-      <td style="padding:9px 8px;font-size:12px;text-align:center;color:#888;vertical-align:top">${pct}%</td>
-      <td style="padding:9px 8px;font-size:12px;text-align:right;color:#333;vertical-align:top">${adv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-      <td style="padding:9px 8px;font-size:12px;text-align:right;color:#333;vertical-align:top">${pay.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-    </tr>`;
-  }).join('');
-
-  // ── Итоговая строка ────────────────────────────────────────────────
-  if (tfoot) {
-    tfoot.innerHTML = `<tr style="border-top:2px solid #1c1c1c">
-      <td colspan="2" style="padding:9px 0;font-size:12px;font-weight:600;color:#1c1c1c">итого:</td>
-      <td style="padding:9px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-      <td style="padding:9px 8px;font-size:11px;text-align:center;color:#888"></td>
-      <td style="padding:9px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandAdv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-      <td style="padding:9px 8px;font-size:12px;font-weight:600;text-align:right;color:#1c1c1c">${grandPay.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</td>
-    </tr>`;
+  // ── Итог ──────────────────────────────────────────────────────────
+  if (totalWrap) {
+    totalWrap.innerHTML = `<div style="
+      display:flex;justify-content:space-between;align-items:center;
+      border-top:1.5px solid #1c1c1c;padding-top:10px
+    ">
+      <span style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px">Итого</span>
+      <div style="display:flex;gap:28px;align-items:center">
+        <div style="text-align:right">
+          <div style="font-size:10px;color:#bbb;margin-bottom:1px">Аванс</div>
+          <div style="font-size:13px;font-weight:700;color:#2d7ff9">${fmt(grandAdv)} ₽</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:#bbb;margin-bottom:1px">Остаток</div>
+          <div style="font-size:13px;font-weight:600;color:#555">${fmt(grandPay)} ₽</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:#bbb;margin-bottom:1px">Всего</div>
+          <div style="font-size:16px;font-weight:700;color:#1c1c1c">${fmt(grandTotal)} ₽</div>
+        </div>
+      </div>
+    </div>`;
   }
 
   const ownerEl = el('prevPayOwner2');
