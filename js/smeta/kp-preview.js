@@ -1497,8 +1497,8 @@ export function liveUpdateKP() {
   // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
   applyFooterLogoSize(company);
   initFooterLogoResize(company);
+}
 
-// Экспорт в window
 if (typeof window !== 'undefined') {
   window._kpPreview = {
     liveUpdateKP,
