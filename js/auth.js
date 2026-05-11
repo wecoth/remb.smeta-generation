@@ -18,6 +18,13 @@ window._auth = {
       const data = await res.json();
       if (data.success) {
         this.applyProfile(data.profile);
+        // Fallback: если сервер не вернул размеры логотипов — берём из localStorage
+        if (!data.profile?.coverLogoWidth && window.appState) {
+          const cached = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
+          if (cached.coverLogoWidth   != null) window.appState.coverLogoWidth   = cached.coverLogoWidth;
+          if (cached.coverLogoHeight  != null) window.appState.coverLogoHeight  = cached.coverLogoHeight;
+          if (cached.footerLogoHeight != null) window.appState.footerLogoHeight = cached.footerLogoHeight;
+        }
         this.showApp();
       } else {
         localStorage.removeItem('remb_token');
@@ -118,7 +125,11 @@ window._auth = {
       ownerName:   document.getElementById('profileOwnerName').value,
       phone:       document.getElementById('profilePhone').value,
       ogrn:        document.getElementById('profileOgrn').value,
-      logoBase64:  this._pendingLogoBase64 || (this._currentProfile && this._currentProfile.logoBase64) || ''
+      logoBase64:  this._pendingLogoBase64 || (this._currentProfile && this._currentProfile.logoBase64) || '',
+      // Размеры логотипов
+      coverLogoWidth:   (window.appState && window.appState.coverLogoWidth   != null) ? window.appState.coverLogoWidth   : null,
+      coverLogoHeight:  (window.appState && window.appState.coverLogoHeight  != null) ? window.appState.coverLogoHeight  : null,
+      footerLogoHeight: (window.appState && window.appState.footerLogoHeight != null) ? window.appState.footerLogoHeight : null,
     };
     try {
       const res  = await fetch(N8N_BASE + '/profile/save', {
@@ -173,6 +184,21 @@ window._auth = {
         window._smetaModule.liveUpdate();
       }
     }, 100);
+
+    // Применяем размеры логотипов из профиля
+    if (window.appState) {
+      if (profile.coverLogoWidth   != null) window.appState.coverLogoWidth   = profile.coverLogoWidth;
+      if (profile.coverLogoHeight  != null) window.appState.coverLogoHeight  = profile.coverLogoHeight;
+      if (profile.footerLogoHeight != null) window.appState.footerLogoHeight = profile.footerLogoHeight;
+    }
+
+    // Сохраняем в localStorage как fallback
+    const sizes = {
+      coverLogoWidth:   profile.coverLogoWidth   ?? null,
+      coverLogoHeight:  profile.coverLogoHeight  ?? null,
+      footerLogoHeight: profile.footerLogoHeight ?? null,
+    };
+    localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
   },
 
   logout() {
