@@ -566,6 +566,19 @@ function _measurePaginationHeights(pageEl) {
     PAGE_H = wrapEl.clientHeight - padTop - padBottom;
   }
 
+  // Вычитаем высоту заголовка раздела («Смета строительно-монтажных работ» и т.п.),
+  // если он видим на этой странице. На первом листе он занимает место, которое
+  // не входит в wrapEl, но сжимает flex-контейнер и уменьшает реальную высоту контента.
+  // На доп. страницах заголовок скрыт (display:none → offsetParent === null) — вычитания нет.
+  const sectionTitle = pageEl.querySelector('.kp-section-title');
+  if (sectionTitle && sectionTitle.offsetParent !== null) {
+    const csTitle = window.getComputedStyle(sectionTitle);
+    const titleH  = sectionTitle.offsetHeight
+                  + (parseFloat(csTitle.marginTop)    || 0)
+                  + (parseFloat(csTitle.marginBottom) || 0);
+    PAGE_H -= titleH;
+  }
+
   // Измеряем margin-bottom таблицы (класс kp-smr-table задаёт margin-bottom: 14px).
   // Этот отступ добавляется браузером после </table>, но не учитывается в used
   // при закрытии таблицы — _closeTable должен его прибавлять.
