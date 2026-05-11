@@ -1392,11 +1392,11 @@ function applyFooterLogoSize(company) {
     wrap.style.display = hasLogo ? '' : 'none';
   });
 
-  document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
-    c.style.display = hasLogo ? 'none' : '';
+    document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
+    c.style.display = 'none';
   });
   document.querySelectorAll('[id$="FtName2"]').forEach(n => {
-    n.style.display = hasLogo ? 'none' : '';
+    n.style.display = 'none';
   });
 }
 
@@ -1425,7 +1425,7 @@ function initFooterLogoResize() {
         const newH = Math.max(10, startHeight + ev.clientY - startY);
         // Обновляем все футеры через общее состояние
         appState.footerLogoHeight = newH;
-        applyFooterLogoSize();
+        applyFooterLogoSize(company);
       }
 
       function onUp() {
@@ -1495,8 +1495,7 @@ export function liveUpdateKP() {
 
   // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
   applyFooterLogoSize(company);
-  initFooterLogoResize();
-}
+  initFooterLogoResize(company);
 
 // Экспорт в window
 if (typeof window !== 'undefined') {
