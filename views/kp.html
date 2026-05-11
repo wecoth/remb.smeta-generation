@@ -1047,3 +1047,105 @@
 
 })();
 </script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   ROADMAP STAGE COLOR SYNC v1
+   Считывает цвета пилюль из #prevPayCards2 (график платежей)
+   и применяет border-color к совпадающим пилюлям в #prevRoadmapStages2
+═══════════════════════════════════════════════════════════ */
+(function() {
+
+  function norm(s) {
+    return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  /* Извлекает «цветной» цвет из пилюли (не чёрный, не прозрачный) */
+  function extractColor(el) {
+    if (!el) return null;
+
+    /* 1. Ищем dot / circle с цветным фоном */
+    var dot = el.querySelector('[class*="dot"],[class*="circle"],[class*="badge"]');
+    if (dot) {
+      var bg = window.getComputedStyle(dot).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+      var bc = window.getComputedStyle(dot).borderColor;
+      if (bc && bc !== 'rgba(0, 0, 0, 0)' && bc !== 'transparent') return bc;
+    }
+
+    /* 2. border-color самой пилюли — если не чёрный */
+    var st  = window.getComputedStyle(el);
+    var bcs = [st.borderTopColor, st.borderColor];
+    var black = ['rgb(28, 28, 28)', 'rgb(0, 0, 0)', 'rgba(0, 0, 0, 1)'];
+    for (var i = 0; i < bcs.length; i++) {
+      var c = bcs[i];
+      if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent' && black.indexOf(c) === -1) return c;
+    }
+
+    /* 3. color текста — если не чёрный */
+    var col = st.color;
+    if (col && black.indexOf(col) === -1 && col !== 'rgba(0,0,0,0)') return col;
+
+    /* 4. inline borderColor */
+    if (el.style && el.style.borderColor && el.style.borderColor !== 'transparent') return el.style.borderColor;
+
+    return null;
+  }
+
+  /* Строим карту: норм.текст → цвет  из всех tag/pill-элементов в prevPayCards2 */
+  function buildColorMap() {
+    var map = {};
+    var pay = document.getElementById('prevPayCards2');
+    if (!pay) return map;
+    var pills = pay.querySelectorAll('[class*="tag"],[class*="pill"],[class*="chip"],[class*="stage-label"],[class*="badge"]');
+    pills.forEach(function(p) {
+      var t = norm(p.textContent);
+      if (!t) return;
+      var c = extractColor(p);
+      if (c) map[t] = c;
+    });
+    return map;
+  }
+
+  function applyColors() {
+    var map = buildColorMap();
+    if (!Object.keys(map).length) return;
+    var rm = document.getElementById('prevRoadmapStages2');
+    if (!rm) return;
+    rm.querySelectorAll('.kp-roadmap-item').forEach(function(item) {
+      var titleEl = item.querySelector('.kp-roadmap-title');
+      /* Берём только текст title-элемента, без дочерних пустышек ::after */
+      var rawText = titleEl ? (titleEl.firstChild ? titleEl.firstChild.textContent : titleEl.textContent) : item.textContent;
+      var text = norm(rawText);
+      /* Прямое совпадение */
+      var color = map[text];
+      /* Частичное */
+      if (!color) {
+        for (var k in map) {
+          if (text && (k.indexOf(text) !== -1 || text.indexOf(k) !== -1)) { color = map[k]; break; }
+        }
+      }
+      if (color) item.style.borderColor = color;
+    });
+  }
+
+  function init() {
+    setTimeout(applyColors, 600);
+    setTimeout(applyColors, 1800);
+    setTimeout(applyColors, 4000);
+
+    function watch(id) {
+      var el = document.getElementById(id);
+      if (el) new MutationObserver(function() { setTimeout(applyColors, 250); })
+               .observe(el, { childList: true, subtree: true });
+    }
+    watch('prevPayCards2');
+    watch('prevRoadmapStages2');
+  }
+
+  document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', init)
+    : init();
+
+})();
+</script>
