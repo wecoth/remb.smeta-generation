@@ -1042,3 +1042,25 @@ html, body {
 #prevLogoWrap2:hover #prevLogoResizer2 {
   display: block;
 }
+
+/* ── Защита таблицы экспликации от разрушения ── */
+.expl-table,
+.expl-table tbody,
+.expl-table thead {
+  display: table !important;
+}
+.expl-table tbody {
+  display: table-row-group !important;
+}
+.expl-table tr {
+  display: table-row !important;
+}
+.expl-table td,
+.expl-table th {
+  display: table-cell !important;
+  vertical-align: middle !important;
+}
+.expl-table {
+  border-collapse: collapse !important;
+  table-layout: auto !important;
+}
