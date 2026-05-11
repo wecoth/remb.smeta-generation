@@ -722,24 +722,25 @@ function _paginateByHeight(allItems, label, counterStart, P) {
     if (item.type === 'stage') {
       activeStage = item.name;
 
-      // Атомарный блок: заголовок этапа + шапка + минимум 1 строка данных.
-      // Если всё это не влезает на текущий лист — переносим на следующий.
-      // Проверяем ВСЕГДА (не только когда pageHasRows), иначе этап может
-      // оказаться последним на листе без единой строки под ним.
-      const atomicH = P.STAGE_TITLE_H + P.THEAD_H + P.ROW_H;
-
-      if (used + atomicH > _curPageH()) {
-        // Атомарный блок не влезает — сбрасываем лист.
-        // Если страница пустая (used=0) — всё равно переносим, иначе уйдём в бесконечный цикл.
-        if (used > 0 || pageHasRows) {
-          _closeTable();
-          flushPage();
-          startNewPage(false);
-        }
-      }
-
-      // Добавляем заголовок этапа на текущий лист.
+      // Сохраняем состояние перед открытием этапа.
+      // Если после заголовка+шапки не влезает даже одна строка —
+      // откатываем и переносим весь этап на следующий лист.
+      const savedHtml      = curHtml;
+      const savedUsed      = used;
+      const savedOpenTable = openTable;
       _openStage(item);
+
+      if (used + P.ROW_H > _curPageH()) {
+        // Откат: восстанавливаем состояние до _openStage
+        curHtml   = savedHtml;
+        used      = savedUsed;
+        openTable = savedOpenTable;
+        // Сбрасываем текущий лист и открываем этап на новом
+        _closeTable();
+        flushPage();
+        startNewPage(false);
+        _openStage(item);
+      }
 
     } else {
       // Обычная строка данных.
