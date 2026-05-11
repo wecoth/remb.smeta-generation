@@ -64,18 +64,18 @@ export function convertRemPlanToProject(jsonString) {
     const nx = -dy;
     const ny =  dx;
 
-    // Внешняя грань (x/y) = p1/p2 смещённые влево на halfT
-    const x1  = p1x + nx * halfT;
-    const y1  = p1y + ny * halfT;
-    const x2  = p2x + nx * halfT;
-    const y2  = p2y + ny * halfT;
+    // Внешняя грань (x/y) = p1/p2 смещённые ВПРАВО от нормали (наружу)
+    const x1  = p1x - nx * halfT;
+    const y1  = p1y - ny * halfT;
+    const x2  = p2x - nx * halfT;
+    const y2  = p2y - ny * halfT;
 
-    // Базовая линия (cx/cy) = p1/p2 смещённые вправо (внутрь) на halfT
+    // Базовая линия (cx/cy) = p1/p2 смещённые ВЛЕВО от нормали (внутрь комнаты)
     // БЕЗ удлинений в углах — чистое геометрическое смещение оси.
-    const cx1 = p1x - nx * halfT;
-    const cy1 = p1y - ny * halfT;
-    const cx2 = p2x - nx * halfT;
-    const cy2 = p2y - ny * halfT;
+    const cx1 = p1x + nx * halfT;
+    const cy1 = p1y + ny * halfT;
+    const cx2 = p2x + nx * halfT;
+    const cy2 = p2y + ny * halfT;
 
     walls.push({
       id:               nextWallId,
