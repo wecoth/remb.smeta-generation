@@ -566,17 +566,18 @@ function _measurePaginationHeights(pageEl) {
     PAGE_H = wrapEl.clientHeight - padTop - padBottom;
   }
 
-  // Вычитаем высоту заголовка раздела («Смета строительно-монтажных работ» и т.п.),
-  // если он видим на этой странице. На первом листе он занимает место, которое
-  // не входит в wrapEl, но сжимает flex-контейнер и уменьшает реальную высоту контента.
-  // На доп. страницах заголовок скрыт (display:none → offsetParent === null) — вычитания нет.
+  // PAGE_H_REST — рабочая высота для доп. страниц (без заголовка раздела).
+  // PAGE_H_FIRST — рабочая высота для первого листа: вычитаем заголовок раздела,
+  // который занимает место и сжимает flex-контейнер (но только если он видим).
+  const PAGE_H_REST  = PAGE_H;
+  let   PAGE_H_FIRST = PAGE_H;
   const sectionTitle = pageEl.querySelector('.kp-section-title');
   if (sectionTitle && sectionTitle.offsetParent !== null) {
     const csTitle = window.getComputedStyle(sectionTitle);
     const titleH  = sectionTitle.offsetHeight
                   + (parseFloat(csTitle.marginTop)    || 0)
                   + (parseFloat(csTitle.marginBottom) || 0);
-    PAGE_H -= titleH;
+    PAGE_H_FIRST -= titleH;
   }
 
   // Измеряем margin-bottom таблицы (класс kp-smr-table задаёт margin-bottom: 14px).
@@ -597,7 +598,8 @@ function _measurePaginationHeights(pageEl) {
 
   // Защита от нуля при вызове до рендера
   return {
-    PAGE_H:             PAGE_H             || 686,
+    PAGE_H_FIRST:       PAGE_H_FIRST       || 686,
+    PAGE_H_REST:        PAGE_H_REST        || 686,
     ROW_H:              ROW_H              || 29,
     THEAD_H:            THEAD_H            || 29,
     STAGE_TITLE_H:      STAGE_TITLE_H      || 35,
@@ -625,6 +627,12 @@ function _paginateByHeight(allItems, label, counterStart, P) {
   let globalCounter   = counterStart || 0;
   let openTable       = false;
   let used            = 0;
+  let pageCount       = 0;      // номер текущей страницы (0 = первая)
+
+  // Рабочая высота текущей страницы: первый лист меньше (есть заголовок раздела)
+  function _curPageH() {
+    return pageCount === 0 ? P.PAGE_H_FIRST : P.PAGE_H_REST;
+  }
 
   // ── Вспомогательные генераторы HTML ────────────────────────────
 
@@ -662,6 +670,7 @@ function _paginateByHeight(allItems, label, counterStart, P) {
     openTable       = false;
     pageHasRows     = false;
     used            = 0;
+    pageCount++;
   }
 
   // Начать новый лист.
@@ -718,7 +727,7 @@ function _paginateByHeight(allItems, label, counterStart, P) {
       // последним элементом на листе без единой строки.
       const atomicH = P.STAGE_TITLE_H + P.THEAD_H + P.ROW_H;
 
-      if (used + atomicH > P.PAGE_H && pageHasRows) {
+      if (used + atomicH > _curPageH() && pageHasRows) {
         // На листе уже есть строки предыдущего этапа — сбрасываем лист.
         // Новый лист начнём без continuation (этап начинается заново).
         _closeTable();
@@ -731,7 +740,7 @@ function _paginateByHeight(allItems, label, counterStart, P) {
 
     } else {
       // Обычная строка данных.
-      if (used + P.ROW_H > P.PAGE_H) {
+      if (used + P.ROW_H > _curPageH()) {
         // Строка не влезает → сбрасываем лист, новый с continuation.
         _closeTable();
         flushPage();
