@@ -575,19 +575,21 @@ function _paginateByHeight(allItems, label, counterStart) {
     used            = 0;
   }
 
-  // Начать новый лист. asContinuation=true → плашка «продолжение» + шапка таблицы.
-  // asContinuation=false → только шапка таблицы (новый этап начинается сам через _openStage).
+  // Начать новый лист.
+  // asContinuation=true  → плашка «продолжение» + шапка (этап продолжается).
+  // asContinuation=false → пустой лист, первый _openStage сам добавит шапку.
   function startNewPage(asContinuation) {
     if (asContinuation && activeStage) {
       curContinuation = activeStage;
-      curHtml  = _contHtml(activeStage) + _smrTableHeader(label);
-      used     = P.CONT_LABEL_H + P.THEAD_H;
+      curHtml   = _contHtml(activeStage) + _smrTableHeader(label);
+      used      = P.CONT_LABEL_H + P.THEAD_H;
+      openTable = true;
     } else {
       curContinuation = null;
-      curHtml  = _smrTableHeader(label);
-      used     = P.THEAD_H;
+      curHtml   = '';
+      used      = 0;
+      openTable = false;
     }
-    openTable   = true;
     pageHasRows = false;
   }
 
@@ -680,17 +682,28 @@ function fillSmrPage(company) {
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // ── Собираем плоский список «элементов» ──────────────────────
-  const allItems = [];
+  // ── Собираем плоский список напрямую из smrRows ─────────────
+  // Не через getStagesWithTotals() — матчинг по имени может терять строки.
+  // Проходим smrRows в оригинальном порядке: isSection → заголовок, строка → данные.
   const grandTotal = dataRows.reduce((s, r) => s + (r.total || 0), 0);
-  if (stages.length) {
-    stages.forEach(stage => {
-      if (!stage.smrRows.length) return;
-      allItems.push({ type: 'stage', name: stage.name, total: stage.smrTotal });
-      stage.smrRows.forEach(r => allItems.push({ type: 'row', data: r }));
-    });
-  } else {
-    dataRows.forEach(r => allItems.push({ type: 'row', data: r }));
+
+  // Считаем итог каждой секции заранее
+  const _secTotals = {};
+  let _curSec = null;
+  for (const r of (appState.smrRows || [])) {
+    if (r.isSection) { _curSec = r.name?.trim(); _secTotals[_curSec] = 0; continue; }
+    if (_curSec && r.name) _secTotals[_curSec] = (_secTotals[_curSec] || 0) + (r.total || 0);
+  }
+
+  const allItems = [];
+  _curSec = null;
+  for (const r of (appState.smrRows || [])) {
+    if (r.isSection) {
+      _curSec = r.name?.trim();
+      allItems.push({ type: 'stage', name: _curSec, total: _secTotals[_curSec] || 0 });
+      continue;
+    }
+    if (r.name) allItems.push({ type: 'row', data: r });
   }
 
   // ── Ссылки на DOM ────────────────────────────────────────────
