@@ -1,5 +1,5 @@
 // js/import/remplan-converter.js
-// Конвертер .plan (RemPlanner) → формат REMB
+// Конвертер .plan (RemPlanner v3) → формат REMB
 // Без зависимостей от остального кода приложения
 
 export function convertRemPlanToProject(jsonString) {
@@ -41,6 +41,7 @@ export function convertRemPlanToProject(jsonString) {
       continue;
     }
 
+    // RemPlanner хранит координаты в сантиметрах → переводим в миллиметры (* 10)
     const p1x = wd.p1.x * 10;
     const p1y = wd.p1.y * 10;
     const p2x = wd.p2.x * 10;
@@ -54,9 +55,12 @@ export function convertRemPlanToProject(jsonString) {
       continue;
     }
 
-    const thickness = (wd.depth  || 10)  * 10;
-    const height    = (wd.height || 270) * 10;
+    // depth и height в RemPlanner — сантиметры → миллиметры
+    const thickness = Math.round((wd.depth  || 10)  * 10);
+    const height    = Math.round((wd.height || 270) * 10);
 
+    // При импорте ставим offset='right' и cx/cy = x/y (без смещения).
+    // fixOffsets в import-handler скорректирует после построения комнат.
     walls.push({
       id:               nextWallId,
       x1:               p1x,
@@ -69,7 +73,7 @@ export function convertRemPlanToProject(jsonString) {
       cy2:              p2y,
       thickness,
       height,
-      offset:           'center',
+      offset:           'center',   // fixOffsets скорректирует
       horizontalOffset: 0,
       priority:         nextWallId,
       material:         wd.material || null,
@@ -90,6 +94,7 @@ export function convertRemPlanToProject(jsonString) {
     const newWallId = oldIdToNewId[oldId];
     if (!newWallId) continue;
 
+    // Длина стены в сантиметрах (для расчёта t)
     const wallLenCm = Math.hypot(wd.p2.x - wd.p1.x, wd.p2.y - wd.p1.y);
     if (wallLenCm < 0.1) continue;
 
@@ -97,24 +102,49 @@ export function convertRemPlanToProject(jsonString) {
 
     for (const [holeId, hole] of Object.entries(wd.holes)) {
       const holeType = hole.type === 'window' ? 'window' : 'door';
-      const p1d      = hole.p1d || 0;
-      const t        = p1d / wallLenCm;
-      const width    = (hole.width  || 80)  * 10;
-      const height   = (hole.height || 200) * 10;
-      const hinge    = (hole.opening === 'l') ? 'start' : 'end';
 
-      console.log('  проём ' + holeId + ': type=' + hole.type + '→' + holeType + ' p1d=' + p1d + ' t=' + t.toFixed(3) + ' width=' + width + ' height=' + height);
+      // p1d — расстояние от p1 стены до НАЧАЛА проёма (в сантиметрах)
+      const p1d         = hole.p1d || 0;
+      const holeWidthCm = hole.width || (holeType === 'window' ? 120 : 80);
 
-      openings.push({
+      // t указывает на ЦЕНТР проёма вдоль стены (0..1)
+      const t = (p1d + holeWidthCm / 2) / wallLenCm;
+
+      // Размеры в RemPlanner — сантиметры → миллиметры
+      const width  = Math.round(holeWidthCm * 10);
+      const height = Math.round((hole.height || (holeType === 'window' ? 150 : 200)) * 10);
+
+      // opening: 'l' = петли слева (hinge=start), 'r' = петли справа (hinge=end)
+      const hinge = (hole.opening === 'l') ? 'start' : 'end';
+
+      console.log('  проём ' + holeId + ': type=' + hole.type + '→' + holeType
+        + ' p1d=' + p1d + ' widthCm=' + holeWidthCm
+        + ' t=' + t.toFixed(3) + ' width=' + width + ' height=' + height);
+
+      const opening = {
         id:     nextOpenId++,
         wallId: newWallId,
         t,
         width,
         height,
         type:   holeType,
-        hinge,
-        swing:  1,
-      });
+      };
+
+      if (holeType === 'door') {
+        opening.hinge = hinge;
+        opening.swing = 1;
+        // Двустворчатая дверь
+        if (hole.type === 'double') {
+          opening.isDouble = true;
+        }
+      }
+
+      // Высота подоконника для окна
+      if (holeType === 'window' && hole.floor_height != null) {
+        opening.sillHeight = Math.round(hole.floor_height * 10);
+      }
+
+      openings.push(opening);
     }
   }
 
