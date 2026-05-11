@@ -1350,8 +1350,8 @@ function _fillFooterEl(logoImg, circle, nameEl, company) {
     if (nameEl)  nameEl.style.display = 'none';
   } else {
     if (logoImg) logoImg.style.display = 'none';
-    if (circle)  { circle.style.display = ''; circle.textContent = company.letter; }
-    if (nameEl)  { nameEl.style.display = ''; nameEl.textContent = company.name; }
+    if (circle)  circle.style.display = 'none';   // скрываем кружок, если нет лого
+    if (nameEl)  nameEl.style.display = 'none';
   }
 }
 
@@ -1366,8 +1366,8 @@ function _fillFooter(logoImgId, circleId, nameId, company) {
     if (nameEl)  nameEl.style.display = 'none';
   } else {
     if (logoImg) logoImg.style.display = 'none';
-    if (circle)  { circle.style.display = ''; circle.textContent = company.letter; }
-    if (nameEl)  { nameEl.style.display = ''; nameEl.textContent = company.name; }
+    if (circle)  circle.style.display = 'none';
+    if (nameEl)  nameEl.style.display = 'none';
   }
 }
 
@@ -1398,6 +1398,80 @@ function applyFooterLogoSize(company) {
   });
   document.querySelectorAll('[id$="FtName2"]').forEach(n => {
     n.style.display = 'none';
+  });
+}
+
+function applyFooterLogoPosition() {
+  const pos = appState.footerLogoPosition;
+  if (!pos) return;
+
+  document.querySelectorAll('[id$="Foot2"]').forEach(foot => {
+    if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
+    foot.style.right = pos.right + 'px';
+    foot.style.bottom = pos.bottom + 'px';
+    foot.style.left = 'auto';
+    foot.style.top = 'auto';
+  });
+}
+
+function initFooterLogoDrag(company) {
+  const footers = document.querySelectorAll('[id$="Foot2"]');
+  footers.forEach(footer => {
+    if (footer.id === 'prevCovFoot2') return; // обложку не трогаем
+    if (footer.dataset.dragInit === '1') return;
+    footer.dataset.dragInit = '1';
+    footer.style.cursor = 'grab';
+
+    let startX, startY, startRight, startBottom, dragging = false;
+
+    function onMouseDown(e) {
+      // не реагируем, если пользователь тянет за ресайзер (уголок)
+      if (e.target.closest('[id$="FootResizer2"]')) return;
+      e.preventDefault();
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = footer.getBoundingClientRect();
+      const parentRect = footer.parentElement.getBoundingClientRect();
+      // вычисляем начальные right/bottom относительно родителя
+      startRight = parentRect.right - rect.right;
+      startBottom = parentRect.bottom - rect.bottom;
+      footer.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+    }
+
+    function onMouseMove(e) {
+      if (!dragging) return;
+      const dx = startX - e.clientX; // двигаем вправо -> right уменьшается
+      const dy = startY - e.clientY; // двигаем вниз -> bottom уменьшается
+      const newRight = Math.max(0, startRight + dx);
+      const newBottom = Math.max(0, startBottom + dy);
+      // обновляем ВСЕ футеры сразу
+      document.querySelectorAll('[id$="Foot2"]').forEach(f => {
+        if (f.id === 'prevCovFoot2') return;
+        f.style.right = newRight + 'px';
+        f.style.bottom = newBottom + 'px';
+        f.style.left = 'auto';
+        f.style.top = 'auto';
+      });
+      // запоминаем новую позицию в appState
+      appState.footerLogoPosition = { right: newRight, bottom: newBottom };
+    }
+
+    function onMouseUp() {
+      if (!dragging) return;
+      dragging = false;
+      footer.style.cursor = 'grab';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      // сохраняем позицию в профиль
+      saveLogoSizesToProfile();
+    }
+
+    footer.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   });
 }
 
@@ -1446,17 +1520,18 @@ function initFooterLogoResize(company) {
 
 function saveLogoSizesToProfile() {
   const profile = window._auth?._currentProfile || {};
-  profile.coverLogoWidth   = appState.coverLogoWidth;
-  profile.coverLogoHeight  = appState.coverLogoHeight;
-  profile.footerLogoHeight = appState.footerLogoHeight;
-  // Сохраняем в localStorage немедленно
+  profile.coverLogoWidth    = appState.coverLogoWidth;
+  profile.coverLogoHeight   = appState.coverLogoHeight;
+  profile.footerLogoHeight  = appState.footerLogoHeight;
+  profile.footerLogoPosition = appState.footerLogoPosition; // ← добавить
+
   const sizes = {
-    coverLogoWidth:   appState.coverLogoWidth,
-    coverLogoHeight:  appState.coverLogoHeight,
-    footerLogoHeight: appState.footerLogoHeight,
+    coverLogoWidth:    appState.coverLogoWidth,
+    coverLogoHeight:   appState.coverLogoHeight,
+    footerLogoHeight:  appState.footerLogoHeight,
+    footerLogoPosition: appState.footerLogoPosition,        // ← добавить
   };
   localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
-  // Если пользователь авторизован, отправляем на сервер
   if (window._auth?.saveProfile) {
     window._auth.saveProfile();
   }
@@ -1484,6 +1559,13 @@ export function liveUpdateKP() {
   if (appState.footerLogoHeight == null && cachedSizes.footerLogoHeight != null) {
     appState.footerLogoHeight = cachedSizes.footerLogoHeight;
   }
+    // Восстанавливаем позицию футер-логотипа из localStorage
+  if (appState.footerLogoPosition == null && cachedSizes.footerLogoPosition != null) {
+    appState.footerLogoPosition = cachedSizes.footerLogoPosition;
+  }
+  if (!appState.footerLogoPosition) {
+    appState.footerLogoPosition = { right: 50, bottom: 15 }; // значения по умолчанию
+  }
 
   fillCover(company);
   fillObject(company, address, images);
@@ -1496,7 +1578,9 @@ export function liveUpdateKP() {
 
   // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
   applyFooterLogoSize(company);
+  applyFooterLogoPosition();          // <-- новая строка
   initFooterLogoResize(company);
+  initFooterLogoDrag(company);        // <-- новая строка
 }
 
 if (typeof window !== 'undefined') {
