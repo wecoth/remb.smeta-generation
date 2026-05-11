@@ -483,15 +483,7 @@ ${stagesContext}
 // ЛИСТ 5 — Смета работ (пагинация по страницам А4)
 // ─────────────────────────────────────────────────────────────────
 
-// Сколько строк таблицы помещается на один лист.
-// Заголовок этапа весит 2 единицы (он выше строки данных).
-// Первый лист короче: заголовок «Смета СМР» занимает место.
-const SMR_ROWS_FIRST_PAGE = 19; // первый лист (с заголовком раздела)
-const SMR_ROWS_PER_PAGE   = 24; // листы продолжения (без заголовка раздела)
-const STAGE_WEIGHT        = 2;  // вес заголовка этапа в условных строках
-const STAGE_MIN_ROWS      = 1;  // минимум строк этапа на листе перед переносом
-
-// Общий заголовок таблицы (шапка колонок) — выводится на каждой странице
+// Шапка таблицы — выводится на каждой странице
 function _smrTableHeader(label) {
   return `<table class="kp-smr-table">
     <thead><tr>
@@ -505,80 +497,148 @@ function _smrTableHeader(label) {
     <tbody>`;
 }
 
-// ── Умная разбивка на страницы ────────────────────────────────────
+// ── DOM-based пагинация ───────────────────────────────────────────
+// Рендерим элементы в реальный DOM, меряем высоту, при переполнении
+// — начинаем новую страницу. Это единственный надёжный способ.
+//
 // Правила:
-// 1. Заголовок этапа никогда не остаётся последним на листе —
-//    за ним должна идти хотя бы одна строка на том же листе.
-// 2. Если строка не влезает — переносим на следующий лист.
-// 3. Если этап разрывается между листами — на следующем листе
-//    помечаем page.continuationOf = stageName (рендерим как «продолжение»).
-function _paginateItems(allItems, firstPageLimit, otherPageLimit) {
-  const pages = [];
+// 1. Заголовок этапа + минимум 1 строка данных — атомарный блок.
+//    Если не влезают вместе — оба уходят на следующий лист.
+// 2. Если этап разрывается (часть строк на следующем листе) —
+//    на новом листе показываем плашку «продолжение: [этап]».
+// 3. Контент строго внутри рабочей области (измеряем clientHeight враппера).
 
-  let curItems        = [];
-  let curCount        = 0;
+function _paginateByDOM(allItems, wrapEl, label, counterStart) {
+  // wrapEl — элемент-контейнер с overflow:hidden, его clientHeight = рабочая высота
+  const maxH = wrapEl.clientHeight;
+
+  const pages = [];          // массив { html, continuationOf }
+  let curHtml         = '';
   let curContinuation = null;
-  let pageLimit       = firstPageLimit;
   let activeStage     = null;
+  let globalCounter   = counterStart || 0;
+  let openTable       = false;
 
-  // Плашка «продолжение» + шапка таблицы занимают место на листе продолжения
-  const CONTINUATION_OVERHEAD = 2;
+  // Временный невидимый контейнер для измерения
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;top:-9999px;left:0;width:' + wrapEl.clientWidth + 'px;';
+  probe.className = wrapEl.className;
+  document.body.appendChild(probe);
+
+  function probeHeight(html) {
+    probe.innerHTML = html + (openTable ? '</tbody></table>' : '');
+    return probe.scrollHeight;
+  }
+
+  function rowHtml(r) {
+    globalCounter++;
+    return `<tr>
+      <td>${globalCounter}</td>
+      <td>${r.name || ''}</td>
+      <td style="text-align:center">${r.unit || ''}</td>
+      <td>${r.qty != null ? r.qty : ''}</td>
+      <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+      <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+    </tr>`;
+  }
+
+  function stageHtml(item) {
+    return `<div class="kp-smr-stage-title">
+      <span>${item.name}</span>
+      <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
+    </div>`;
+  }
+
+  function continuationHtml(name) {
+    return `<div class="kp-smr-stage-title kp-smr-stage-continuation">
+      <span style="color:#aaa;font-style:italic">продолжение: ${name}</span>
+    </div>`;
+  }
 
   function flushPage() {
-    if (curItems.length > 0) {
-      pages.push({ items: curItems, continuationOf: curContinuation });
-    }
-    curItems        = [];
-    curCount        = 0;
+    const finalHtml = curHtml + (openTable ? '</tbody></table>' : '');
+    pages.push({ html: finalHtml, continuationOf: curContinuation });
+    curHtml         = '';
     curContinuation = null;
-    pageLimit       = otherPageLimit;
+    openTable       = false;
+    // Сбрасываем probe
+    probe.innerHTML = '';
+  }
+
+  function startContinuation() {
+    curContinuation = activeStage;
+    curHtml = continuationHtml(activeStage) + _smrTableHeader(label);
+    openTable = true;
   }
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
 
     if (item.type === 'stage') {
-      // Нужно место: заголовок этапа + минимум 1 строка после него
-      const nextItem   = allItems[i + 1];
-      const nextWeight = (nextItem && nextItem.type === 'row') ? 1 : 0;
-      const needed     = STAGE_WEIGHT + nextWeight;
+      activeStage = item.name;
 
-      if (curCount + needed > pageLimit && curItems.length > 0) {
-        // Этап не влезает с минимальной строкой — переносим на следующий лист
-        // Продолжения нет: этап целиком начнётся на новом листе
+      // Строим гипотетический блок: заголовок этапа + шапка таблицы + первая строка
+      const nextRow = allItems[i + 1];
+      const testRow = nextRow && nextRow.type === 'row' ? nextRow : null;
+
+      // Временно сохраняем счётчик — тестовая строка не должна его двигать
+      const savedCounter = globalCounter;
+
+      let atomicHtml = '';
+      if (openTable) atomicHtml += '</tbody></table>';
+      atomicHtml += stageHtml(item) + _smrTableHeader(label);
+      if (testRow) {
+        globalCounter++;
+        atomicHtml += `<tr>
+          <td>${globalCounter}</td>
+          <td>${testRow.name || ''}</td>
+          <td style="text-align:center">${testRow.unit || ''}</td>
+          <td>${testRow.qty != null ? testRow.qty : ''}</td>
+          <td>${testRow.price ? testRow.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+          <td style="font-weight:500">${testRow.total ? testRow.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
+        </tr>`;
+        atomicHtml += '</tbody></table>';
+      }
+      globalCounter = savedCounter; // откатываем
+
+      if (probeHeight(curHtml + atomicHtml) > maxH && curHtml !== '') {
+        // Атомарный блок не влезает — сбрасываем страницу
         flushPage();
         curContinuation = null;
-        curCount        = 0;
       }
 
-      activeStage = item.name;
-      curItems.push(item);
-      curCount += STAGE_WEIGHT;
+      // Добавляем заголовок этапа
+      if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
+      curHtml += stageHtml(item) + _smrTableHeader(label);
+      openTable = true;
 
     } else {
-      // Обычная строка данных
-      if (curCount + 1 > pageLimit) {
-        // Строка не влезает — сбрасываем страницу
-        // Если на текущей странице уже есть строки этапа — следующая будет продолжением
-        const hadRows = curItems.some(it => it.type === 'row');
+      // Обычная строка — сначала тест
+      const savedCounter = globalCounter;
+      const testHtml = curHtml + rowHtml(item.data) + '</tbody></table>';
+      globalCounter = savedCounter;
+
+      if (probeHeight(testHtml) > maxH) {
+        // Не влезает — проверяем есть ли на текущей странице строки этапа
+        const hadRows = curHtml.includes('<tr>');
         flushPage();
         if (activeStage && hadRows) {
-          // Резервируем место под плашку «продолжение» + шапку таблицы
-          curContinuation = activeStage;
-          curCount        = CONTINUATION_OVERHEAD;
+          startContinuation();
         }
       }
 
-      curItems.push(item);
-      curCount += 1;
+      curHtml += rowHtml(item.data);
     }
   }
 
-  if (curItems.length > 0) {
-    pages.push({ items: curItems, continuationOf: curContinuation });
+  // Последняя страница
+  const finalHtml = curHtml + (openTable ? '</tbody></table>' : '');
+  if (finalHtml.trim()) {
+    pages.push({ html: finalHtml, continuationOf: curContinuation });
   }
 
-  return pages;
+  document.body.removeChild(probe);
+  return { pages, finalCounter: globalCounter };
 }
 
 function fillSmrPage(company) {
@@ -594,7 +654,6 @@ function fillSmrPage(company) {
     if (emptyEl) emptyEl.style.display = '';
     content.innerHTML = '';
     _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
-    // Удаляем ранее добавленные дополнительные страницы
     const originalPage = el('prevSmr2')?.closest('.spp-page');
     if (originalPage) {
       originalPage.parentNode.querySelectorAll('.spp-page--smr-extra').forEach(n => n.remove());
@@ -604,10 +663,8 @@ function fillSmrPage(company) {
   if (emptyEl) emptyEl.style.display = 'none';
 
   // ── Собираем плоский список «элементов» ──────────────────────
-  // Каждый элемент — либо заголовок этапа, либо строка данных.
   const allItems = [];
   const grandTotal = dataRows.reduce((s, r) => s + (r.total || 0), 0);
-
   if (stages.length) {
     stages.forEach(stage => {
       if (!stage.smrRows.length) return;
@@ -618,68 +675,40 @@ function fillSmrPage(company) {
     dataRows.forEach(r => allItems.push({ type: 'row', data: r }));
   }
 
-  // ── Разбиваем на страницы (умная разбивка) ───────────────────
-  const pages = _paginateItems(allItems, SMR_ROWS_FIRST_PAGE, SMR_ROWS_PER_PAGE);
-
   // ── Ссылки на DOM ────────────────────────────────────────────
   const originalPage   = el('prevSmr2')?.closest('.spp-page');
   const pagesContainer = originalPage?.parentNode;
   if (!originalPage || !pagesContainer) {
-    // Фолбэк: просто рендерим в content без пагинации
     _renderSmrFlat(content, allItems, grandTotal, company, true);
     return;
   }
 
+  // Скрываем подзаголовок на первом листе
+  const smrPage = el('prevSmr2')?.closest('.spp-page');
+  if (smrPage) smrPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
+
   // Удаляем ранее добавленные дополнительные страницы
   pagesContainer.querySelectorAll('.spp-page--smr-extra').forEach(n => n.remove());
 
-  // ── Рендерим каждую страницу ─────────────────────────────────
-  let globalCounter = 0;
+  // ── Пагинация через DOM-измерение ────────────────────────────
+  // Враппер первого листа задаёт рабочую высоту
+  const wrapEl = el('prevSmrTableWrap');
+  if (!wrapEl || !wrapEl.clientHeight) {
+    // DOM ещё не отрисован — откладываем
+    setTimeout(() => fillSmrPage(company), 50);
+    return;
+  }
+
+  const { pages, finalCounter } = _paginateByDOM(allItems, wrapEl, 'Наименование работ', 0);
+
+  // ── Рендерим страницы ────────────────────────────────────────
   let lastInsertedPage = originalPage;
 
   pages.forEach((page, pageIdx) => {
     const isFirst = pageIdx === 0;
     const isLast  = pageIdx === pages.length - 1;
-    let html = '';
-    let openTable = false;
 
-    // Если это продолжение этапа с предыдущего листа — показываем плашку
-    if (page.continuationOf) {
-      html += `<div class="kp-smr-stage-title kp-smr-stage-continuation">
-        <span style="color:#aaa;font-style:italic">продолжение: ${page.continuationOf}</span>
-      </div>`;
-      html += _smrTableHeader('Наименование работ');
-      openTable = true;
-    }
-
-    page.items.forEach(item => {
-      if (item.type === 'stage') {
-        if (openTable) { html += '</tbody></table>'; openTable = false; }
-        html += `<div class="kp-smr-stage-title">
-          <span>${item.name}</span>
-          <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
-        </div>`;
-        html += _smrTableHeader('Наименование работ');
-        openTable = true;
-      } else {
-        if (!openTable) {
-          html += _smrTableHeader('Наименование работ');
-          openTable = true;
-        }
-        globalCounter++;
-        const r = item.data;
-        html += `<tr>
-          <td>${globalCounter}</td>
-          <td>${r.name || ''}</td>
-          <td style="text-align:center">${r.unit || ''}</td>
-          <td>${r.qty != null ? r.qty : ''}</td>
-          <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-          <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-        </tr>`;
-      }
-    });
-
-    if (openTable) html += '</tbody></table>';
+    let html = page.html;
 
     // Итог — только на последней странице
     if (isLast) {
@@ -690,15 +719,12 @@ function fillSmrPage(company) {
     }
 
     if (isFirst) {
-      const smrPage = el('prevSmr2')?.closest('.spp-page');
-      if (smrPage) smrPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
       content.innerHTML = html;
       _fillFooter('prevSmrFtLogoImg2', 'prevSmrFtC2', 'prevSmrFtN2', company);
     } else {
       const newPage = originalPage.cloneNode(true);
       newPage.classList.add('spp-page--smr-extra');
       newPage.dataset.page = originalPage.dataset.page;
-
       newPage.querySelectorAll('.kp-section-title, .kp-subtitle').forEach(n => n.style.display = 'none');
 
       const extraEmpty = newPage.querySelector('[id*="SmrEmpty"]');
@@ -725,8 +751,8 @@ function fillSmrPage(company) {
 // ЛИСТ 6 — Смета материалов (пагинация по страницам А4)
 // ─────────────────────────────────────────────────────────────────
 
-const MAT_ROWS_FIRST_PAGE = 19;
-const MAT_ROWS_PER_PAGE   = 24;
+// ЛИСТ 6 — Смета материалов (пагинация по страницам А4)
+// ─────────────────────────────────────────────────────────────────
 
 function fillMatPage(company) {
   const content  = el('prevMatContent2');
@@ -737,7 +763,7 @@ function fillMatPage(company) {
   const stages   = getStagesWithTotals();
   const dataRows = (appState.matRows || []).filter(r => !r.isSection);
 
-  // ── Удаляем ранее добавленные дополнительные страницы ────────
+  // Удаляем ранее добавленные дополнительные страницы
   const originalPage   = el('prevMat2')?.closest('.spp-page');
   const pagesContainer = originalPage?.parentNode;
   if (pagesContainer) {
@@ -769,61 +795,32 @@ function fillMatPage(company) {
     dataRows.forEach(r => allItems.push({ type: 'row', data: r }));
   }
 
-  // ── Разбиваем на страницы (умная разбивка) ───────────────────
-  const pages = _paginateItems(allItems, MAT_ROWS_FIRST_PAGE, MAT_ROWS_PER_PAGE);
-
   if (!originalPage || !pagesContainer) {
     _renderMatFlat(content, allItems, grandTotal, company);
     return;
   }
 
-  // ── Рендерим каждую страницу ─────────────────────────────────
-  let globalCounter = 0;
+  // Скрываем подзаголовок
+  const matPage = el('prevMat2')?.closest('.spp-page');
+  if (matPage) matPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
+
+  // ── Пагинация через DOM-измерение ────────────────────────────
+  const wrapEl = el('prevMatTableWrap');
+  if (!wrapEl || !wrapEl.clientHeight) {
+    setTimeout(() => fillMatPage(company), 50);
+    return;
+  }
+
+  const { pages } = _paginateByDOM(allItems, wrapEl, 'Наименование материала', 0);
+
+  // ── Рендерим страницы ────────────────────────────────────────
   let lastInsertedPage = originalPage;
 
   pages.forEach((page, pageIdx) => {
     const isFirst = pageIdx === 0;
     const isLast  = pageIdx === pages.length - 1;
-    let html = '';
-    let openTable = false;
 
-    // Продолжение этапа с предыдущего листа
-    if (page.continuationOf) {
-      html += `<div class="kp-smr-stage-title kp-smr-stage-continuation">
-        <span style="color:#aaa;font-style:italic">продолжение: ${page.continuationOf}</span>
-      </div>`;
-      html += _smrTableHeader('Наименование материала');
-      openTable = true;
-    }
-
-    page.items.forEach(item => {
-      if (item.type === 'stage') {
-        if (openTable) { html += '</tbody></table>'; openTable = false; }
-        html += `<div class="kp-smr-stage-title">
-          <span>${item.name}</span>
-          <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
-        </div>`;
-        html += _smrTableHeader('Наименование материала');
-        openTable = true;
-      } else {
-        if (!openTable) {
-          html += _smrTableHeader('Наименование материала');
-          openTable = true;
-        }
-        globalCounter++;
-        const r = item.data;
-        html += `<tr>
-          <td>${globalCounter}</td>
-          <td>${r.name || ''}</td>
-          <td style="text-align:center">${r.unit || ''}</td>
-          <td>${r.qty != null ? r.qty : ''}</td>
-          <td>${r.price ? r.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-          <td style="font-weight:500">${r.total ? r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-        </tr>`;
-      }
-    });
-
-    if (openTable) html += '</tbody></table>';
+    let html = page.html;
 
     if (isLast) {
       html += `<div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid #1c1c1c;padding-top:10px;margin-top:4px">
@@ -833,15 +830,12 @@ function fillMatPage(company) {
     }
 
     if (isFirst) {
-      const matPage = el('prevMat2')?.closest('.spp-page');
-      if (matPage) matPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
       content.innerHTML = html;
       _fillFooter('prevMatFtLogoImg2', 'prevMatFtC2', 'prevMatFtN2', company);
     } else {
       const newPage = originalPage.cloneNode(true);
       newPage.classList.add('spp-page--mat-extra');
       newPage.dataset.page = originalPage.dataset.page;
-
       newPage.querySelectorAll('.kp-section-title, .kp-subtitle').forEach(n => n.style.display = 'none');
 
       const extraEmpty = newPage.querySelector('[id*="MatEmpty"]');
@@ -864,8 +858,6 @@ function fillMatPage(company) {
   });
 }
 
-
-// ─────────────────────────────────────────────────────────────────
 // ЛИСТ 7 — График платежей
 // ─────────────────────────────────────────────────────────────────
 
