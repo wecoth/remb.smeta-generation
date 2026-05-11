@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ── Autosave every 30s ──
-  setInterval(autosaveToLocalStorage, 30000);
+  //setInterval(autosaveToLocalStorage, 30000);
 
   // ── Start on smeta tab ──
   switchTab('smeta');
