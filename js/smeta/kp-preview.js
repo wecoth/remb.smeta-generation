@@ -653,14 +653,14 @@ function _paginateByHeight(allItems, label, counterStart, P) {
   }
 
   function _stageHtml(item) {
-    return `<div class="kp-smr-stage-title">
+    return `<div class="kp-smr-stage-title" style="margin-top:4px">
       <span>${item.name}</span>
     </div>`;
   }
 
   function _stageFooterHtml(item) {
-    return `<div class="kp-smr-stage-footer" style="display:flex;justify-content:flex-end;padding:4px 0 8px 0;margin-top:2px">
-      <span style="font-size:11px;color:#888;font-weight:400;font-style:italic">Итого по разделу: ${fmtMoney(item.total)}</span>
+    return `<div class="kp-smr-stage-footer" style="display:flex;justify-content:flex-end;padding:2px 0 2px 0;margin-top:-10px">
+      <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
     </div>`;
   }
 
