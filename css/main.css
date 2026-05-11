@@ -700,7 +700,7 @@ html, body {
   width: 100%;
   display: flex;
   justify-content: center;
-  overflow: visible;
+  overflow: visible !important;
   margin-bottom: 24px;
   flex-shrink: 0;
   position: relative;
@@ -1040,4 +1040,11 @@ html, body {
 [id$="FootLogoWrap2"]:hover [id$="FootResizer2"],
 #prevLogoWrap2:hover #prevLogoResizer2 {
   display: block;
+}
+
+/* Разрешаем футеру выходить за границы A4 */
+.spp-body,
+.spp-page,
+.spp-a4 {
+  overflow: visible !important;
 }
