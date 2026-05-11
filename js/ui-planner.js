@@ -12,6 +12,7 @@ import { autosaveToLocalStorage } from './storage.js';
 import { createTool } from './tools/index.js';
 import { VoiceInput } from './voiceInput.js';
 import { UpdateWallCommand } from './commands/UpdateWallCommand.js';
+import { handlePlanImport } from './import/import-handler.js';
 
 // ── Module state ──────────────────────────────────────────────────
 let canvas, canvasWrap;
@@ -128,6 +129,13 @@ export function initPlanner(domRefs) {
     clearHistory();
     EventBus.emit('walls:changed');
     doRedraw();
+  });
+
+  // ── Импорт .plan ─────────────────────────────────────────────────
+  dom.btnImportPlan?.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) handlePlanImport(file, doRedraw);
+    e.target.value = ''; // сброс, чтобы можно было повторно выбрать тот же файл
   });
 
     dom.btnRecalc?.addEventListener('click', () => {
