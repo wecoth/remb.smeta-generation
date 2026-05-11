@@ -1034,6 +1034,7 @@ html, body {
 #prevLogoWrap2 {
   position: relative;
   display: inline-block;
+  pointer-events: auto;
 }
 
 /* При наведении на обёртку показываем ресайзер */
