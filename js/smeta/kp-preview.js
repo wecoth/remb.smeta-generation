@@ -182,7 +182,7 @@ function fillObject(company, address, images) {
   // Заголовок и адрес
   const titleEl = el('prevObjTitle2');
   const addrEl  = el('prevObjAddress2');
-  if (titleEl) titleEl.textContent = 'Объект';
+  if (titleEl) titleEl.textContent = 'Информация по объекту';
   if (addrEl)  addrEl.textContent  = address;
 
   // Чертёж
