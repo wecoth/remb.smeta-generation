@@ -68,73 +68,72 @@ export async function handlePlanImport(file, onDone) {
 
   // Автоматическая коррекция offset'ов и смещение базовых линий внутрь комнат
   const fixOffsets = () => {
-    if (!appState.rooms || appState.rooms.length === 0) return;
+  if (!appState.rooms || appState.rooms.length === 0) return;
 
-    const wallsInRooms = new Map(); // wallId -> { side: 'left'|'right' }
+  const wallsInRooms = new Map(); // wallId -> { side: 'left'|'right' }
 
-    // Определяем для каждой стены, с какой стороны находится центр комнаты
-    for (const room of appState.rooms) {
-      const center = room.center;
-      if (!room.boundarySegments) continue;
-      for (const seg of room.boundarySegments) {
-        const wall = seg.wall;
-        if (!wall || wall.offset !== 'center') continue; // только стены с center
-
-        const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-        const normal = { x: -Math.sin(angle), y: Math.cos(angle) }; // левая нормаль
-        const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
-        const toCenter = { x: center.x - mid.x, y: center.y - mid.y };
-        const dot = toCenter.x * normal.x + toCenter.y * normal.y;
-        const side = dot >= 0 ? 'left' : 'right'; // если центр слева от оси – left
-
-        if (!wallsInRooms.has(wall.id)) {
-          wallsInRooms.set(wall.id, { side });
-        } else {
-          // если стена граничит с несколькими комнатами, используем последнюю
-          wallsInRooms.get(wall.id).side = side;
-        }
-      }
-    }
-
-    // Применяем изменения к стенам
-    for (const [wallId, info] of wallsInRooms.entries()) {
-      const wall = appState.walls.find(w => w.id === wallId);
-      if (!wall) continue;
+  // Определяем для каждой стены, с какой стороны находится центр комнаты
+  for (const room of appState.rooms) {
+    const center = room.center;
+    if (!room.boundarySegments) continue;
+    for (const seg of room.boundarySegments) {
+      const wall = seg.wall;
+      if (!wall || wall.offset !== 'center') continue;
 
       const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
       const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
-      const halfT = wall.thickness / 2;
+      const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
+      const toCenter = { x: center.x - mid.x, y: center.y - mid.y };
+      const dot = toCenter.x * normal.x + toCenter.y * normal.y;
+      const side = dot >= 0 ? 'left' : 'right';
 
-      // Направление от оси к внутренней грани (туда, где комната)
-      const dir = info.side === 'left' ? normal : { x: -normal.x, y: -normal.y };
-
-      // Смещаем базовую линию внутрь на половину толщины стены
-      wall.cx1 = (wall.cx1 ?? wall.x1) + dir.x * halfT;
-      wall.cy1 = (wall.cy1 ?? wall.y1) + dir.y * halfT;
-      wall.cx2 = (wall.cx2 ?? wall.x2) + dir.x * halfT;
-      wall.cy2 = (wall.cy2 ?? wall.y2) + dir.y * halfT;
-
-      // Устанавливаем правильный offset – теперь cx/cy будет внутренней гранью
-      wall.offset = info.side;
-
-      // Пересчитываем контур стены (x1/y1/x2/y2) под новый offset и толщину
-      import('./wall.js').then(({ recalculateContourFromBase }) => {
-        recalculateContourFromBase(wall);
-      });
+      if (!wallsInRooms.has(wall.id)) {
+        wallsInRooms.set(wall.id, { side });
+      } else {
+        wallsInRooms.get(wall.id).side = side;
+      }
     }
+  }
 
+  // Применяем изменения к стенам (собираем промисы для пересчёта контуров)
+  const recalcPromises = [];
+  for (const [wallId, info] of wallsInRooms.entries()) {
+    const wall = appState.walls.find(w => w.id === wallId);
+    if (!wall) continue;
+
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const normal = { x: -Math.sin(angle), y: Math.cos(angle) };
+    const halfT = wall.thickness / 2;
+    const dir = info.side === 'left' ? normal : { x: -normal.x, y: -normal.y };
+
+    // Смещаем базовую линию внутрь на половину толщины стены
+    wall.cx1 = (wall.cx1 ?? wall.x1) + dir.x * halfT;
+    wall.cy1 = (wall.cy1 ?? wall.y1) + dir.y * halfT;
+    wall.cx2 = (wall.cx2 ?? wall.x2) + dir.x * halfT;
+    wall.cy2 = (wall.cy2 ?? wall.y2) + dir.y * halfT;
+    wall.offset = info.side;
+
+    // Пересчитываем контур стены (правильный путь: ../wall.js)
+    recalcPromises.push(
+      import('../wall.js').then(({ recalculateContourFromBase }) => {
+        recalculateContourFromBase(wall);
+      })
+    );
+  }
+
+  // Ждём завершения всех пересчётов, затем обновляем комнаты
+  Promise.all(recalcPromises).then(() => {
     // Стены, которые не попали ни в одну комнату, просто переводим в 'right'
     appState.walls.forEach(w => {
       if (w.offset === 'center') w.offset = 'right';
     });
-
-    // Отписываемся от события и перестраиваем комнаты заново
     EventBus.off('rooms:computed', fixOffsets);
     EventBus.emit('walls:changed');
-  };
+  });
+};
 
-  // Одноразовый обработчик первого построения комнат
-  EventBus.on('rooms:computed', fixOffsets);
+// Одноразовый обработчик первого построения комнат
+EventBus.on('rooms:computed', fixOffsets);
 
   console.log('[handler] Вызываем onDone (zoom-to-fit + redraw)...');
   if (typeof onDone === 'function') onDone();
