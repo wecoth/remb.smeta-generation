@@ -754,11 +754,14 @@ function _paginateByHeight(allItems, label, counterStart, P) {
 
     } else if (item.type === 'stage_footer') {
       // Футер этапа — «Итого по разделу» после последней строки.
-      // Закрываем таблицу, затем вставляем строку итога.
-      // Если не влезает — переносим на новую страницу (без continuation).
+      // _closeTable() добавил TABLE_MARGIN_BOTTOM в used, но футер имеет
+      // margin-top:-10px и визуально перекрывает этот отступ.
+      // При проверке вместимости вычитаем TABLE_MARGIN_BOTTOM чтобы
+      // футер не улетал на следующую страницу когда места фактически хватает.
       _closeTable();
-      const footerH = P.STAGE_FOOTER_H || 28;
-      if (used + footerH > _curPageH()) {
+      const footerH   = P.STAGE_FOOTER_H || 28;
+      const effectiveUsed = used - (P.TABLE_MARGIN_BOTTOM || 0);
+      if (effectiveUsed + footerH > _curPageH()) {
         flushPage();
         startNewPage(false);
       }
