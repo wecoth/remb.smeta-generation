@@ -117,13 +117,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Restore planner project from local storage (if exists) ──
-    if (loadFromLocalStorage()) {
+    //if (loadFromLocalStorage()) {
     // комнаты больше не пересчитываются автоматически
     // computeRooms(...) – вызов удалён
-    updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
-    clearHistory();
-    forceRedraw();
-  }
+   // updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
+   // clearHistory();
+   // forceRedraw();
+  //}
 
   // ── Init smeta ──
   initSmeta();
