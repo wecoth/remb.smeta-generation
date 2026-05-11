@@ -1064,3 +1064,8 @@ html, body {
   border-collapse: collapse !important;
   table-layout: auto !important;
 }
+
+.expl-table tbody td:first-child {
+  min-width: 85px;
+  white-space: nowrap;
+}
