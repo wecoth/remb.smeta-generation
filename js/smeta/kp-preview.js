@@ -150,16 +150,25 @@ function fillCover(company) {
   if (sloganEl) sloganEl.textContent = company.slogan;
 
   if (company.logoBase64) {
-    if (logoImg)  { logoImg.src = company.logoBase64; logoImg.style.display = ''; }
+    if (logoImg) {
+      logoImg.src = company.logoBase64;
+      logoImg.style.display = '';
+      // Применяем сохранённый размер из профиля или appState
+      const w = appState.coverLogoWidth;
+      const h = appState.coverLogoHeight;
+      if (w) logoImg.style.maxWidth  = w + 'px';
+      if (h) logoImg.style.maxHeight = h + 'px';
+      else {
+        // дефолтные, если не задано
+        logoImg.style.maxWidth  = '260px';
+        logoImg.style.maxHeight = '120px';
+      }
+    }
     if (logoWrap) logoWrap.style.display = '';
     if (circle)   circle.style.display = 'none';
 
-    // Применяем сохранённые размеры
-    if (appState.coverLogoWidth)  logoImg.style.maxWidth  = appState.coverLogoWidth  + 'px';
-    if (appState.coverLogoHeight) logoImg.style.maxHeight = appState.coverLogoHeight + 'px';
-
-    // Включаем ресайзер
-    initLogoResize(logoImg, logoWrap);
+    // Включаем ресайз для обложки
+    initCoverLogoResize(logoImg, logoWrap);
   } else {
     if (logoImg)  logoImg.style.display = 'none';
     if (logoWrap) logoWrap.style.display = 'none';
@@ -184,7 +193,11 @@ function fillCover(company) {
   if (siteEl) siteEl.textContent = company.site || '';
 }
 
-function initLogoResize(imgEl, wrapEl) {
+function initCoverLogoResize(imgEl, wrapEl) {
+  // single initialization guard
+  if (wrapEl.dataset.resizerInit === '1') return;
+  wrapEl.dataset.resizerInit = '1';
+
   const resizer = document.getElementById('prevLogoResizer2');
   if (!imgEl || !resizer) return;
 
@@ -208,8 +221,8 @@ function initLogoResize(imgEl, wrapEl) {
     document.body.style.userSelect = 'none';
 
     function onMove(ev) {
-      const newW = Math.max(50, startWidth  + ev.clientX - startX);
-      const newH = Math.max(50, startHeight + ev.clientY - startY);
+      const newW = Math.max(20, startWidth  + ev.clientX - startX);
+      const newH = Math.max(20, startHeight + ev.clientY - startY);
       imgEl.style.maxWidth  = newW + 'px';
       imgEl.style.maxHeight = newH + 'px';
     }
@@ -220,9 +233,10 @@ function initLogoResize(imgEl, wrapEl) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
 
-      // Сохраняем в appState
+      // Сохраняем в appState и профиль
       appState.coverLogoWidth  = imgEl.offsetWidth;
       appState.coverLogoHeight = imgEl.offsetHeight;
+      saveLogoSizesToProfile();
     }
 
     document.addEventListener('mousemove', onMove);
@@ -1362,6 +1376,90 @@ function _fillFooter(logoImgId, circleId, nameId, company) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Футер-логотип — синхронизация размера по всем листам
+// ─────────────────────────────────────────────────────────────────
+
+function applyFooterLogoSize() {
+  const h = appState.footerLogoHeight;
+  if (!h && h !== 0) return; // не задано
+  // Все футеры на разных листах
+  const footers = document.querySelectorAll('[id$="FtLogoImg2"]');
+  footers.forEach(img => {
+    img.style.maxHeight = h + 'px';
+    img.style.maxWidth  = 'none'; // ширина подстраивается автоматически
+  });
+  // Скрываем круги и имена, если логотип активен
+  const hasLogo = !!(window._auth?._currentProfile?.logoBase64 || appState.logoData);
+  document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
+    c.style.display = hasLogo ? 'none' : '';
+  });
+  document.querySelectorAll('[id$="FtName2"]').forEach(n => {
+    n.style.display = hasLogo ? 'none' : '';
+  });
+}
+
+function initFooterLogoResize() {
+  const resizers = document.querySelectorAll('[id$="FootResizer2"]');
+  resizers.forEach(resizer => {
+    if (resizer.dataset.init === '1') return;
+    resizer.dataset.init = '1';
+
+    const wrap = resizer.parentElement; // FootLogoWrap
+    const img  = wrap.querySelector('img');
+
+    let startY, startHeight;
+
+    wrap.addEventListener('mouseenter', () => { resizer.style.display = ''; });
+    wrap.addEventListener('mouseleave', () => { resizer.style.display = 'none'; });
+
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startY      = e.clientY;
+      startHeight = img.offsetHeight;
+      document.body.style.cursor     = 'nwse-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(ev) {
+        const newH = Math.max(10, startHeight + ev.clientY - startY);
+        // Обновляем все футеры через общее состояние
+        appState.footerLogoHeight = newH;
+        applyFooterLogoSize();
+      }
+
+      function onUp() {
+        document.body.style.cursor     = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup',   onUp);
+        // Сохраняем в профиль
+        saveLogoSizesToProfile();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onUp);
+    });
+  });
+}
+
+function saveLogoSizesToProfile() {
+  const profile = window._auth?._currentProfile || {};
+  profile.coverLogoWidth   = appState.coverLogoWidth;
+  profile.coverLogoHeight  = appState.coverLogoHeight;
+  profile.footerLogoHeight = appState.footerLogoHeight;
+  // Сохраняем в localStorage немедленно
+  const sizes = {
+    coverLogoWidth:   appState.coverLogoWidth,
+    coverLogoHeight:  appState.coverLogoHeight,
+    footerLogoHeight: appState.footerLogoHeight,
+  };
+  localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
+  // Если пользователь авторизован, отправляем на сервер
+  if (window._auth?.saveProfile) {
+    window._auth.saveProfile();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // ГЛАВНАЯ ФУНКЦИЯ
 // ─────────────────────────────────────────────────────────────────
 
@@ -1380,6 +1478,10 @@ export function liveUpdateKP() {
   fillMatPage(company);
   fillPayments(company);
   fillContacts(company);
+
+  // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
+  applyFooterLogoSize();
+  initFooterLogoResize();
 }
 
 // Экспорт в window
