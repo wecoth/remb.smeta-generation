@@ -4,6 +4,11 @@ import { polygonArea, polygonCentroid } from '../geometry.js';
 import { roomDefaultName, computeRoomMetrics, exteriorWallIds, findAllWallsForEdge, updateExpl } from '../room.js';
 import { EventBus } from '../eventBus.js';
 
+function generateRoomKey(poly) {
+  const c = polygonCentroid(poly);
+  return `${Math.round(c.x / 50) * 50},${Math.round(c.y / 50) * 50}`;
+}
+
 export class AddRoomCommand extends BaseCommand {
   constructor(polygon) {
     super();
@@ -13,7 +18,7 @@ export class AddRoomCommand extends BaseCommand {
 
   execute() {
     // Генерируем ключ, имя, метрики (упрощённо, без полного пересчёта всех комнат)
-    const key = `${Math.round(polygonCentroid(this.polygon).x)},${Math.round(polygonCentroid(this.polygon).y)}`;
+    const key = generateRoomKey(this.polygon);
     const defaultName = roomDefaultName(appState.rooms.length);
     const name = appState.roomNameOverrides[key] || defaultName;
     
