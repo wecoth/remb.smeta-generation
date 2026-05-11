@@ -1392,7 +1392,8 @@ function applyFooterLogoSize(company) {
     wrap.style.display = hasLogo ? '' : 'none';
   });
 
-    document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
+  // Кружки и имена — скрываем всегда
+  document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
     c.style.display = 'none';
   });
   document.querySelectorAll('[id$="FtName2"]').forEach(n => {
@@ -1400,7 +1401,7 @@ function applyFooterLogoSize(company) {
   });
 }
 
-function initFooterLogoResize() {
+function initFooterLogoResize(company) {
   const resizers = document.querySelectorAll('[id$="FootResizer2"]');
   resizers.forEach(resizer => {
     if (resizer.dataset.init === '1') return;
