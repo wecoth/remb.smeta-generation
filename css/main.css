@@ -1014,3 +1014,29 @@ html, body {
 /* Иконки-заглушки — декоративные символы, не текст */
 .spp-a4 .kp-placeholder-icon  { font-size: 40px !important; }
 .spp-a4 .kp-placeholder-large { font-size: 48px !important; }
+
+/* ── Resizer handles for logo scaling ── */
+[id$="FootResizer2"],
+#prevLogoResizer2 {
+  background: #4a6fe3;
+  border-radius: 2px;
+  width: 12px;
+  height: 12px;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+  display: none;           /* скрыт по умолчанию */
+}
+
+[id$="FootLogoWrap2"],
+#prevLogoWrap2 {
+  position: relative;
+  display: inline-block;
+}
+
+/* При наведении на обёртку показываем ресайзер */
+[id$="FootLogoWrap2"]:hover [id$="FootResizer2"],
+#prevLogoWrap2:hover #prevLogoResizer2 {
+  display: block;
+}
