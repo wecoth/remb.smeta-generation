@@ -155,14 +155,10 @@ function fillCover(company) {
       logoImg.style.display = '';
       // Применяем сохранённый размер из профиля или appState
       const w = appState.coverLogoWidth;
-      const h = appState.coverLogoHeight;
-      if (w) logoImg.style.maxWidth  = w + 'px';
-      if (h) logoImg.style.maxHeight = h + 'px';
-      else {
-        // дефолтные, если не задано
-        logoImg.style.maxWidth  = '260px';
-        logoImg.style.maxHeight = '120px';
-      }
+const h = appState.coverLogoHeight;
+if (w) logoImg.style.maxWidth  = w + 'px';
+if (h) logoImg.style.maxHeight = h + 'px';
+// Если размеры не заданы – оставляем без ограничений
     }
     if (logoWrap) logoWrap.style.display = '';
     if (circle)   circle.style.display = 'none';
@@ -1379,17 +1375,23 @@ function _fillFooter(logoImgId, circleId, nameId, company) {
 // Футер-логотип — синхронизация размера по всем листам
 // ─────────────────────────────────────────────────────────────────
 
-function applyFooterLogoSize() {
+function applyFooterLogoSize(company) {
   const h = appState.footerLogoHeight;
-  if (!h && h !== 0) return; // не задано
-  // Все футеры на разных листах
-  const footers = document.querySelectorAll('[id$="FtLogoImg2"]');
-  footers.forEach(img => {
-    img.style.maxHeight = h + 'px';
-    img.style.maxWidth  = 'none'; // ширина подстраивается автоматически
+  const hasLogo = !!(company && company.logoBase64);
+
+  // все футеры на разных листах
+  document.querySelectorAll('[id$="FtLogoImg2"]').forEach(img => {
+    if (h != null) {
+      img.style.maxHeight = h + 'px';
+      img.style.maxWidth  = 'none';
+    }
+    img.style.display = hasLogo ? '' : 'none';
   });
-  // Скрываем круги и имена, если логотип активен
-  const hasLogo = !!(window._auth?._currentProfile?.logoBase64 || appState.logoData);
+
+  document.querySelectorAll('[id$="FootLogoWrap2"]').forEach(wrap => {
+    wrap.style.display = hasLogo ? '' : 'none';
+  });
+
   document.querySelectorAll('[id$="FtCircle2"]').forEach(c => {
     c.style.display = hasLogo ? 'none' : '';
   });
@@ -1470,6 +1472,18 @@ export function liveUpdateKP() {
   const address = getAddress();
   const images  = generateImages();
 
+  // Восстанавливаем размеры логотипов из localStorage, если в appState они ещё не заданы
+  const cachedSizes = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
+  if (appState.coverLogoWidth == null && cachedSizes.coverLogoWidth != null) {
+    appState.coverLogoWidth = cachedSizes.coverLogoWidth;
+  }
+  if (appState.coverLogoHeight == null && cachedSizes.coverLogoHeight != null) {
+    appState.coverLogoHeight = cachedSizes.coverLogoHeight;
+  }
+  if (appState.footerLogoHeight == null && cachedSizes.footerLogoHeight != null) {
+    appState.footerLogoHeight = cachedSizes.footerLogoHeight;
+  }
+
   fillCover(company);
   fillObject(company, address, images);
   fillBlueprint(company, images);
@@ -1480,7 +1494,19 @@ export function liveUpdateKP() {
   fillContacts(company);
 
   // Синхронизируем размер логотипа в футерах и инициализируем ресайзеры
-  applyFooterLogoSize();
+  applyFooterLogoSize(company);
+  // Восстанавливаем размеры логотипов из localStorage, если они там есть,
+// и при этом они ещё не заданы или устарели (например, профиль пришёл без размеров)
+const cachedSizes = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
+if (cachedSizes.coverLogoWidth != null && appState.coverLogoWidth == null) {
+  appState.coverLogoWidth = cachedSizes.coverLogoWidth;
+}
+if (cachedSizes.coverLogoHeight != null && appState.coverLogoHeight == null) {
+  appState.coverLogoHeight = cachedSizes.coverLogoHeight;
+}
+if (cachedSizes.footerLogoHeight != null && appState.footerLogoHeight == null) {
+  appState.footerLogoHeight = cachedSizes.footerLogoHeight;
+}
   initFooterLogoResize();
 }
 
