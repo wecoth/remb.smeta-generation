@@ -18,6 +18,13 @@
 //
 //   x/y = ось стены = l + nx*(thick/2) = середина между l и r
 //   (x/y используется только рендером для тела стены через getWallWorldGeometry)
+//
+// ИСПРАВЛЕНИЕ T-примыканий (тип 'edge'):
+//   В RemPlanner T-стена может подключаться к грани несущей стены:
+//   - z0='l' → к l-грани хоста = к cx хоста → cx T-стены уже корректен
+//   - z0='r' → к r-грани хоста → cx T-стены попадает на r-грань,
+//               но должен быть на cx хоста (= l-грань).
+//               Фикс: проецируем cx-конец T-стены на cx-линию (l1→l2) хоста.
 
 export function convertRemPlanToProject(jsonString) {
   console.log('[converter] START — длина строки:', jsonString.length);
@@ -37,12 +44,24 @@ export function convertRemPlanToProject(jsonString) {
   const wallEntries = Object.entries(data.plan.walls);
   console.log('[converter] Стен в файле:', wallEntries.length);
 
+  // Быстрый доступ к сырым RP-стенам по id (нужен для T-фикса)
+  const rpWallById = data.plan.walls; // объект { rpId: wallData }
+
   const walls        = [];
   const openings     = [];
   const oldIdToNewId = {};
 
   let nextWallId = 1;
   let nextOpenId = 1;
+
+  // ── Вспомогательная: проекция точки на линию A→B ────────────────
+  function projectPointOntoLine(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-10) return { x: ax, y: ay };
+    const t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    return { x: ax + t * dx, y: ay + t * dy };
+  }
 
   // ── Стены ────────────────────────────────────────────────────────
   for (const [oldId, wd] of wallEntries) {
@@ -72,13 +91,44 @@ export function convertRemPlanToProject(jsonString) {
 
     if (L1 && L2 && R1 && R2) {
       // cx/cy = l (левая грань RemPlanner)
-      // Тогда wallOppositeFace('right') строит outer = cx + nx*thick = r (внутри комнаты)
-      // и polygon комнаты = 3000мм ✓
       cx1 = L1.x * 10;  cy1 = L1.y * 10;
       cx2 = L2.x * 10;  cy2 = L2.y * 10;
 
-      // x/y = ось стены = l + halfT в сторону r (середина тела стены)
-      // Вектор от l к r (перпендикуляр, внутрь):
+      // ── Фикс T-примыканий z0='r' ──────────────────────────────
+      // Если конец стены подключается к r-грани несущей (z0='r'),
+      // текущий cx-конец лежит на r-грани хоста, а нужно — на его cx (= l-грани).
+      // Проецируем cx-конец на cx-линию (l1→l2) хоста.
+      for (const endKey of ['p1', 'p2']) {
+        const endPt = wd[endKey];
+        const link  = endPt?.link;
+        if (!link || link.ct !== 'edge' || link.z0 !== 'r') continue;
+
+        const host = rpWallById[link.id];
+        if (!host?.l1 || !host?.l2) continue;
+
+        // cx-линия хоста: l1→l2 (в мм)
+        const hL1x = host.l1.x * 10, hL1y = host.l1.y * 10;
+        const hL2x = host.l2.x * 10, hL2y = host.l2.y * 10;
+
+        if (endKey === 'p1') {
+          // cx1 нужно спроецировать на линию хоста
+          const proj = projectPointOntoLine(cx1, cy1, hL1x, hL1y, hL2x, hL2y);
+          console.log('[converter] T-фикс ' + oldId + '.p1 (z0=r → ' + link.id + '):'
+            + ' cx1 (' + cx1.toFixed(1) + ',' + cy1.toFixed(1) + ')'
+            + ' → (' + proj.x.toFixed(1) + ',' + proj.y.toFixed(1) + ')');
+          cx1 = proj.x;  cy1 = proj.y;
+        } else {
+          // cx2
+          const proj = projectPointOntoLine(cx2, cy2, hL1x, hL1y, hL2x, hL2y);
+          console.log('[converter] T-фикс ' + oldId + '.p2 (z0=r → ' + link.id + '):'
+            + ' cx2 (' + cx2.toFixed(1) + ',' + cy2.toFixed(1) + ')'
+            + ' → (' + proj.x.toFixed(1) + ',' + proj.y.toFixed(1) + ')');
+          cx2 = proj.x;  cy2 = proj.y;
+        }
+      }
+      // ────────────────────────────────────────────────────────────
+
+      // x/y = ось стены = cx + halfT * (l→r единичный вектор)
       const rMidX = (R1.x + R2.x) / 2;
       const rMidY = (R1.y + R2.y) / 2;
       const lMidX = (L1.x + L2.x) / 2;
@@ -90,7 +140,6 @@ export function convertRemPlanToProject(jsonString) {
       if (lrLen > 0.01) {
         const nox = lrDX / lrLen;
         const noy = lrDY / lrLen;
-        // ось = l + halfT * (l→r)
         x1 = cx1 + nox * halfT;
         y1 = cy1 + noy * halfT;
         x2 = cx2 + nox * halfT;
