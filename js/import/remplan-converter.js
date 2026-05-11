@@ -2,12 +2,14 @@
 // Конвертер .plan (RemPlanner v3) → формат REMB
 // Без зависимостей от остального кода приложения
 //
-// Стратегия offset='right':
-//   x/y  = внешняя грань (l1/l2 из RemPlanner * 10)
-//   cx/cy = ось стены (p1/p2) смещённая на thickness/2 перпендикулярно ВНУТРЬ
-//           без удлинений в углах — твой движок сам замыкает углы при рендере.
+// Стратегия:
+//   r1/r2 (внутренняя грань, БЕЗ суффикса f) = чистый внутренний размер комнаты.
+//   l1/l2 (внешняя грань) = снаружи.
+//   cx/cy = r1/r2 * 10  (базовая линия, жёлтая — идёт по внутреннему контуру)
+//   x/y   = l1/l2 * 10  (внешняя грань)
+//   offset = 'right'
 //
-// import-handler.js: fixOffsets НЕ НУЖЕН, убери его.
+//   fixOffsets в import-handler НЕ НУЖЕН — убери его.
 
 export function convertRemPlanToProject(jsonString) {
   console.log('[converter] START — длина строки:', jsonString.length);
@@ -27,8 +29,8 @@ export function convertRemPlanToProject(jsonString) {
   const wallEntries = Object.entries(data.plan.walls);
   console.log('[converter] Стен в файле:', wallEntries.length);
 
-  const walls    = [];
-  const openings = [];
+  const walls        = [];
+  const openings     = [];
   const oldIdToNewId = {};
 
   let nextWallId = 1;
@@ -38,7 +40,6 @@ export function convertRemPlanToProject(jsonString) {
   for (const [oldId, wd] of wallEntries) {
     if (wd.archive === 1 || wd.demount === 1) continue;
 
-    // Ось стены (сантиметры → миллиметры)
     const p1x = wd.p1.x * 10;
     const p1y = wd.p1.y * 10;
     const p2x = wd.p2.x * 10;
@@ -52,30 +53,28 @@ export function convertRemPlanToProject(jsonString) {
 
     const thickness = Math.round((wd.depth  || 10) * 10);
     const height    = Math.round((wd.height || 270) * 10);
-    const halfT     = thickness / 2;
 
-    // Единичный вектор вдоль стены
-    const dx = (p2x - p1x) / lenMm;
-    const dy = (p2y - p1y) / lenMm;
+    // r1/r2 — внутренняя грань (без 'f', без подрезок по пересечениям)
+    // l1/l2 — внешняя грань
+    const L1 = wd.l1;
+    const L2 = wd.l2;
+    const R1 = wd.r1;
+    const R2 = wd.r2;
 
-    // Нормаль, повёрнутая на 90° влево (перпендикуляр)
-    // В RemPlanner "левая" грань (l) = снаружи, "правая" (r) = внутри комнаты.
-    // Нормаль влево: nx = -dy, ny = dx
-    const nx = -dy;
-    const ny =  dx;
+    let x1, y1, x2, y2, cx1, cy1, cx2, cy2, offset;
 
-    // Внешняя грань (x/y) = p1/p2 смещённые ВПРАВО от нормали (наружу)
-    const x1  = p1x - nx * halfT;
-    const y1  = p1y - ny * halfT;
-    const x2  = p2x - nx * halfT;
-    const y2  = p2y - ny * halfT;
-
-    // Базовая линия (cx/cy) = p1/p2 смещённые ВЛЕВО от нормали (внутрь комнаты)
-    // БЕЗ удлинений в углах — чистое геометрическое смещение оси.
-    const cx1 = p1x + nx * halfT;
-    const cy1 = p1y + ny * halfT;
-    const cx2 = p2x + nx * halfT;
-    const cy2 = p2y + ny * halfT;
+    if (L1 && L2 && R1 && R2) {
+      x1  = L1.x * 10;  y1  = L1.y * 10;
+      x2  = L2.x * 10;  y2  = L2.y * 10;
+      cx1 = R1.x * 10;  cy1 = R1.y * 10;
+      cx2 = R2.x * 10;  cy2 = R2.y * 10;
+      offset = 'right';
+    } else {
+      // Fallback: нет данных о гранях — ставим по оси
+      x1 = p1x; y1 = p1y; x2 = p2x; y2 = p2y;
+      cx1 = p1x; cy1 = p1y; cx2 = p2x; cy2 = p2y;
+      offset = 'center';
+    }
 
     walls.push({
       id:               nextWallId,
@@ -83,16 +82,16 @@ export function convertRemPlanToProject(jsonString) {
       cx1, cy1, cx2, cy2,
       thickness,
       height,
-      offset:           'right',
+      offset,
       horizontalOffset: 0,
       priority:         nextWallId,
       material:         wd.material || null,
     });
 
     console.log('[converter] стена ' + oldId + ' → id=' + nextWallId
-      + ' thickness=' + thickness
-      + ' p1=(' + p1x.toFixed(0) + ',' + p1y.toFixed(0) + ')'
-      + ' cx1=(' + cx1.toFixed(0) + ',' + cy1.toFixed(0) + ')');
+      + ' offset=' + offset + ' thickness=' + thickness
+      + ' cx1=(' + cx1.toFixed(0) + ',' + cy1.toFixed(0) + ')'
+      + ' cx2=(' + cx2.toFixed(0) + ',' + cy2.toFixed(0) + ')');
 
     oldIdToNewId[oldId] = nextWallId;
     nextWallId++;
@@ -108,7 +107,6 @@ export function convertRemPlanToProject(jsonString) {
     const newWallId = oldIdToNewId[oldId];
     if (!newWallId) continue;
 
-    // Длина стены по оси (сантиметры) — для расчёта t
     const wallLenCm = Math.hypot(wd.p2.x - wd.p1.x, wd.p2.y - wd.p1.y);
     if (wallLenCm < 0.1) continue;
 
@@ -116,8 +114,7 @@ export function convertRemPlanToProject(jsonString) {
       const holeType    = hole.type === 'window' ? 'window' : 'door';
       const holeWidthCm = hole.width || (holeType === 'window' ? 120 : 80);
 
-      // p1d — расстояние от p1 до НАЧАЛА проёма (см).
-      // t = центр проёма вдоль стены (0..1)
+      // p1d — расстояние от p1 до НАЧАЛА проёма (см). t = центр (0..1)
       const p1d = hole.p1d || 0;
       const t   = (p1d + holeWidthCm / 2) / wallLenCm;
 
