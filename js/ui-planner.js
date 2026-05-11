@@ -134,7 +134,28 @@ export function initPlanner(domRefs) {
   // ── Импорт .plan ─────────────────────────────────────────────────
   dom.btnImportPlan?.addEventListener('change', e => {
     const file = e.target.files[0];
-    if (file) handlePlanImport(file, doRedraw);
+    if (file) handlePlanImport(file, () => {
+      // Zoom-to-fit: подгоняем viewport под импортированный чертёж
+      if (appState.walls.length > 0) {
+        const xs = appState.walls.flatMap(w => [w.cx1, w.cx2]);
+        const ys = appState.walls.flatMap(w => [w.cy1, w.cy2]);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        const pad  = 800; // отступ вокруг чертежа в мм
+        const cw   = canvas.width  || 1200;
+        const ch   = canvas.height || 700;
+        const fitScale = Math.min(
+          cw / (maxX - minX + pad * 2),
+          ch / (maxY - minY + pad * 2),
+          1.5
+        );
+        scale = Math.max(0.03, fitScale);
+        panX  = cw / 2 - ((minX + maxX) / 2) * scale;
+        panY  = ch / 2 - ((minY + maxY) / 2) * scale;
+        syncViewport();
+      }
+      doRedraw();
+    });
     e.target.value = ''; // сброс, чтобы можно было повторно выбрать тот же файл
   });
 
