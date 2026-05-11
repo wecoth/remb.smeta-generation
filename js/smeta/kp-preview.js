@@ -543,10 +543,14 @@ function _measurePaginationHeights(pageEl) {
   const ROW_H   = measureRow('tbody', _tdRow(1) + _tdRow(2), _tdRow(1));
   const THEAD_H = measureRow('thead', _thRow + '<tr><td colspan="6"></td></tr>', _thRow);
 
-  // Высота заголовка этапа (включая margin-bottom)
+  // Высота заголовка этапа (без итога — итог теперь в футере)
   const STAGE_TITLE_H = measure(`<div class="kp-smr-stage-title">
     <span>Тестовый этап</span>
-    <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: 0 ₽</span>
+  </div>`);
+
+  // Высота футера этапа «Итого по разделу»
+  const STAGE_FOOTER_H = measure(`<div class="kp-smr-stage-footer">
+    <span style="font-size:11px;color:#888;font-weight:400;font-style:italic">Итого по разделу: 0 ₽</span>
   </div>`);
 
   // Высота плашки «продолжение»
@@ -603,6 +607,7 @@ function _measurePaginationHeights(pageEl) {
     ROW_H:              ROW_H              || 29,
     THEAD_H:            THEAD_H            || 29,
     STAGE_TITLE_H:      STAGE_TITLE_H      || 35,
+    STAGE_FOOTER_H:     STAGE_FOOTER_H     || 28,
     CONT_LABEL_H:       CONT_LABEL_H       || 35,
     TABLE_MARGIN_BOTTOM: TABLE_MARGIN_BOTTOM || 14,
   };
@@ -650,7 +655,12 @@ function _paginateByHeight(allItems, label, counterStart, P) {
   function _stageHtml(item) {
     return `<div class="kp-smr-stage-title">
       <span>${item.name}</span>
-      <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
+    </div>`;
+  }
+
+  function _stageFooterHtml(item) {
+    return `<div class="kp-smr-stage-footer" style="display:flex;justify-content:flex-end;padding:4px 0 8px 0;margin-top:2px">
+      <span style="font-size:11px;color:#888;font-weight:400;font-style:italic">Итого по разделу: ${fmtMoney(item.total)}</span>
     </div>`;
   }
 
@@ -742,6 +752,19 @@ function _paginateByHeight(allItems, label, counterStart, P) {
         _openStage(item);
       }
 
+    } else if (item.type === 'stage_footer') {
+      // Футер этапа — «Итого по разделу» после последней строки.
+      // Закрываем таблицу, затем вставляем строку итога.
+      // Если не влезает — переносим на новую страницу (без continuation).
+      _closeTable();
+      const footerH = P.STAGE_FOOTER_H || 28;
+      if (used + footerH > _curPageH()) {
+        flushPage();
+        startNewPage(false);
+      }
+      curHtml += _stageFooterHtml(item);
+      used    += footerH;
+
     } else {
       // Обычная строка данных.
       if (used + P.ROW_H > _curPageH()) {
@@ -803,13 +826,23 @@ function fillSmrPage(company) {
 
   const allItems = [];
   _curSec = null;
+  let _pendingStage = null;  // { name, total } — текущий открытый этап
   for (const r of (appState.smrRows || [])) {
     if (r.isSection) {
+      // Перед новым этапом закрываем предыдущий футером
+      if (_pendingStage) {
+        allItems.push({ type: 'stage_footer', name: _pendingStage.name, total: _pendingStage.total });
+      }
       _curSec = r.name?.trim();
+      _pendingStage = { name: _curSec, total: _secTotals[_curSec] || 0 };
       allItems.push({ type: 'stage', name: _curSec, total: _secTotals[_curSec] || 0 });
       continue;
     }
     if (r.name) allItems.push({ type: 'row', data: r });
+  }
+  // Закрываем последний этап
+  if (_pendingStage) {
+    allItems.push({ type: 'stage_footer', name: _pendingStage.name, total: _pendingStage.total });
   }
 
   // ── Ссылки на DOM ────────────────────────────────────────────
