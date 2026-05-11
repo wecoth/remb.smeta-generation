@@ -497,43 +497,44 @@ function _smrTableHeader(label) {
     <tbody>`;
 }
 
-// ── DOM-based пагинация ───────────────────────────────────────────
-// Рендерим элементы в реальный DOM, меряем высоту, при переполнении
-// — начинаем новую страницу. Это единственный надёжный способ.
+// ── Пагинация через фиксированные px-константы ───────────────────
+// Отказ от DOM-измерения: высоты считаются заранее по CSS.
+// Это устраняет ошибку probe-div, который не наследует transform/scale
+// и шрифтовый контекст родителя .spp-a4, что давало неверный scrollHeight.
 //
 // Правила:
-// 1. Заголовок этапа + минимум 1 строка данных — атомарный блок.
+// 1. Заголовок этапа + минимум 1 строка — атомарный блок.
 //    Если не влезают вместе — оба уходят на следующий лист.
-// 2. Если этап разрывается (часть строк на следующем листе) —
-//    на новом листе показываем плашку «продолжение: [этап]».
-// 3. Контент строго внутри рабочей области (измеряем clientHeight враппера).
+// 2. Если этап разрывается — на новом листе плашка «продолжение: [этап]».
+// 3. Потерь строк нет — каждая строка либо здесь, либо на следующем листе.
 
-function _paginateByDOM(allItems, wrapEl, label, counterStart) {
-  // wrapEl — элемент-контейнер с overflow:hidden, его clientHeight = рабочая высота
-  const maxH = wrapEl.clientHeight;
+// ── Настройки пагинации (правьте здесь при изменении CSS) ────────
+const PAGINATION = {
+  PAGE_H:        686,   // рабочая высота листа: 794 − 48(top) − 60(bottom) = 686px
+  ROW_H:          29,   // высота строки <tr>: 14.67px × 1.4lh + 8px padding ≈ 29px
+  THEAD_H:        29,   // высота шапки <thead>
+  STAGE_TITLE_H:  35,   // высота .kp-smr-stage-title
+  CONT_LABEL_H:   35,   // высота плашки «продолжение» на новом листе
+  SECTION_TOTAL_H: 0,   // итого по разделу встроено в STAGE_TITLE_H, отдельно не считаем
+};
 
-  const pages = [];          // массив { html, continuationOf }
+function _paginateByHeight(allItems, label, counterStart) {
+  const P = PAGINATION;
+
+  const pages = [];
   let curHtml         = '';
   let curContinuation = null;
   let activeStage     = null;
   let globalCounter   = counterStart || 0;
   let openTable       = false;
 
-  // Временный невидимый контейнер для измерения
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:absolute;visibility:hidden;top:-9999px;left:0;width:' + wrapEl.clientWidth + 'px;';
-  probe.className = wrapEl.className;
-  document.body.appendChild(probe);
+  // used — сколько px уже занято на текущем листе
+  // Первый лист: шапка таблицы
+  let used = P.THEAD_H;
 
-  function probeHeight(html) {
-    probe.innerHTML = html + (openTable ? '</tbody></table>' : '');
-    return probe.scrollHeight;
-  }
-
-  function rowHtml(r) {
-    globalCounter++;
+  function rowHtml(r, counter) {
     return `<tr>
-      <td>${globalCounter}</td>
+      <td>${counter}</td>
       <td>${r.name || ''}</td>
       <td style="text-align:center">${r.unit || ''}</td>
       <td>${r.qty != null ? r.qty : ''}</td>
@@ -561,15 +562,24 @@ function _paginateByDOM(allItems, wrapEl, label, counterStart) {
     curHtml         = '';
     curContinuation = null;
     openTable       = false;
-    // Сбрасываем probe
-    probe.innerHTML = '';
   }
 
-  function startContinuation() {
-    curContinuation = activeStage;
-    curHtml = continuationHtml(activeStage) + _smrTableHeader(label);
+  function startNewPage(asContinuation) {
+    if (asContinuation && activeStage) {
+      curContinuation = activeStage;
+      curHtml  = continuationHtml(activeStage) + _smrTableHeader(label);
+      used     = P.CONT_LABEL_H + P.THEAD_H;
+    } else {
+      curContinuation = null;
+      curHtml  = _smrTableHeader(label);
+      used     = P.THEAD_H;
+    }
     openTable = true;
   }
+
+  // Инициализация первого листа
+  curHtml   = _smrTableHeader(label);
+  openTable = true;
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
@@ -577,57 +587,42 @@ function _paginateByDOM(allItems, wrapEl, label, counterStart) {
     if (item.type === 'stage') {
       activeStage = item.name;
 
-      // Строим гипотетический блок: заголовок этапа + шапка таблицы + первая строка
-      const nextRow = allItems[i + 1];
-      const testRow = nextRow && nextRow.type === 'row' ? nextRow : null;
+      // Закрываем текущую таблицу (если открыта) и считаем высоту атомарного блока:
+      // заголовок этапа + шапка новой таблицы + минимум одна строка
+      const atomicH = (openTable ? 0 : 0)   // закрытие таблицы без высоты
+        + P.STAGE_TITLE_H
+        + P.THEAD_H
+        + P.ROW_H;
 
-      // Временно сохраняем счётчик — тестовая строка не должна его двигать
-      const savedCounter = globalCounter;
-
-      let atomicHtml = '';
-      if (openTable) atomicHtml += '</tbody></table>';
-      atomicHtml += stageHtml(item) + _smrTableHeader(label);
-      if (testRow) {
-        globalCounter++;
-        atomicHtml += `<tr>
-          <td>${globalCounter}</td>
-          <td>${testRow.name || ''}</td>
-          <td style="text-align:center">${testRow.unit || ''}</td>
-          <td>${testRow.qty != null ? testRow.qty : ''}</td>
-          <td>${testRow.price ? testRow.price.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-          <td style="font-weight:500">${testRow.total ? testRow.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : ''}</td>
-        </tr>`;
-        atomicHtml += '</tbody></table>';
-      }
-      globalCounter = savedCounter; // откатываем
-
-      if (probeHeight(curHtml + atomicHtml) > maxH && curHtml !== '') {
-        // Атомарный блок не влезает — сбрасываем страницу
+      // Нужно ли переносить на новый лист?
+      // Учитываем текущую used (уже включает всё до этого заголовка)
+      const usedAfterClose = used; // закрытие </tbody></table> высоту не добавляет
+      if (usedAfterClose + atomicH > P.PAGE_H && curHtml.replace(_smrTableHeader(label), '').trim() !== '') {
+        // На текущем листе есть контент — сбрасываем
+        if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
         flushPage();
-        curContinuation = null;
+        startNewPage(false);
       }
 
       // Добавляем заголовок этапа
       if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
       curHtml += stageHtml(item) + _smrTableHeader(label);
       openTable = true;
+      used += P.STAGE_TITLE_H + P.THEAD_H;
 
     } else {
-      // Обычная строка — сначала тест
-      const savedCounter = globalCounter;
-      const testHtml = curHtml + rowHtml(item.data) + '</tbody></table>';
-      globalCounter = savedCounter;
-
-      if (probeHeight(testHtml) > maxH) {
-        // Не влезает — проверяем есть ли на текущей странице строки этапа
+      // Обычная строка
+      if (used + P.ROW_H > P.PAGE_H) {
+        // Не влезает — фиксируем есть ли уже строки на листе
         const hadRows = curHtml.includes('<tr>');
+        if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
         flushPage();
-        if (activeStage && hadRows) {
-          startContinuation();
-        }
+        startNewPage(hadRows); // continuation только если этап уже начался и есть строки
       }
 
-      curHtml += rowHtml(item.data);
+      globalCounter++;
+      curHtml += rowHtml(item.data, globalCounter);
+      used    += P.ROW_H;
     }
   }
 
@@ -637,7 +632,6 @@ function _paginateByDOM(allItems, wrapEl, label, counterStart) {
     pages.push({ html: finalHtml, continuationOf: curContinuation });
   }
 
-  document.body.removeChild(probe);
   return { pages, finalCounter: globalCounter };
 }
 
@@ -690,16 +684,8 @@ function fillSmrPage(company) {
   // Удаляем ранее добавленные дополнительные страницы
   pagesContainer.querySelectorAll('.spp-page--smr-extra').forEach(n => n.remove());
 
-  // ── Пагинация через DOM-измерение ────────────────────────────
-  // Враппер первого листа задаёт рабочую высоту
-  const wrapEl = el('prevSmrTableWrap');
-  if (!wrapEl || !wrapEl.clientHeight) {
-    // DOM ещё не отрисован — откладываем
-    setTimeout(() => fillSmrPage(company), 50);
-    return;
-  }
-
-  const { pages, finalCounter } = _paginateByDOM(allItems, wrapEl, 'Наименование работ', 0);
+  // ── Пагинация по фиксированным высотам ──────────────────────
+  const { pages, finalCounter } = _paginateByHeight(allItems, 'Наименование работ', 0);
 
   // ── Рендерим страницы ────────────────────────────────────────
   let lastInsertedPage = originalPage;
@@ -804,14 +790,8 @@ function fillMatPage(company) {
   const matPage = el('prevMat2')?.closest('.spp-page');
   if (matPage) matPage.querySelectorAll('.kp-subtitle').forEach(n => n.style.display = 'none');
 
-  // ── Пагинация через DOM-измерение ────────────────────────────
-  const wrapEl = el('prevMatTableWrap');
-  if (!wrapEl || !wrapEl.clientHeight) {
-    setTimeout(() => fillMatPage(company), 50);
-    return;
-  }
-
-  const { pages } = _paginateByDOM(allItems, wrapEl, 'Наименование материала', 0);
+  // ── Пагинация по фиксированным высотам ──────────────────────
+  const { pages } = _paginateByHeight(allItems, 'Наименование материала', 0);
 
   // ── Рендерим страницы ────────────────────────────────────────
   let lastInsertedPage = originalPage;
