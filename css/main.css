@@ -703,6 +703,7 @@ html, body {
   overflow: visible;
   margin-bottom: 24px;
   flex-shrink: 0;
+  position: relative;
 }
 .spp-page.spp-hidden { display: none !important; }
 
@@ -722,7 +723,7 @@ html, body {
   box-shadow: 0 4px 24px rgba(0,0,0,.22);
   border-radius: 2px;
   position: relative;
-  overflow: visible;
+  overflow: visible !important;
   color: #1c1c1c;
   /* transform-origin: top left — scale от верхнего левого угла,
      центрирование делает flex-родитель */
