@@ -554,20 +554,42 @@ function _measurePaginationHeights(pageEl) {
     <span style="color:#aaa;font-style:italic">продолжение: Тестовый этап</span>
   </div>`);
 
-  // Рабочая высота страницы — clientHeight враппера контента
-  // Ищем элемент-обёртку с overflow:hidden (он ограничивает видимую область)
+  // Рабочая высота страницы — clientHeight враппера контента МИНУС его padding.
+  // clientHeight включает padding (он внутри border-box), но контент рендерится
+  // в padding-area, поэтому нужно вычесть paddingTop + paddingBottom.
   const wrapEl = pageEl.querySelector('[id*="SmrTableWrap"], [id*="MatTableWrap"], [id*="Content"]');
-  const PAGE_H = wrapEl ? wrapEl.clientHeight : (pageEl.clientHeight - 108); // 108 = 48 top + 60 bottom padding
+  let PAGE_H = 686; // fallback: 794 - 48top - 60bottom
+  if (wrapEl) {
+    const cs = window.getComputedStyle(wrapEl);
+    const padTop    = parseFloat(cs.paddingTop)    || 0;
+    const padBottom = parseFloat(cs.paddingBottom) || 0;
+    PAGE_H = wrapEl.clientHeight - padTop - padBottom;
+  }
+
+  // Измеряем margin-bottom таблицы (класс kp-smr-table задаёт margin-bottom: 14px).
+  // Этот отступ добавляется браузером после </table>, но не учитывается в used
+  // при закрытии таблицы — _closeTable должен его прибавлять.
+  const TABLE_MARGIN_BOTTOM = (() => {
+    const tbl = document.createElement('table');
+    tbl.className = 'kp-smr-table';
+    tbl.style.width = '100%';
+    probe.innerHTML = '';
+    probe.appendChild(tbl);
+    const mb = parseFloat(window.getComputedStyle(tbl).marginBottom) || 0;
+    probe.innerHTML = '';
+    return mb;
+  })();
 
   pageEl.removeChild(probe);
 
   // Защита от нуля при вызове до рендера
   return {
-    PAGE_H:       PAGE_H  || 686,
-    ROW_H:        ROW_H   || 29,
-    THEAD_H:      THEAD_H || 29,
-    STAGE_TITLE_H: STAGE_TITLE_H || 35,
-    CONT_LABEL_H:  CONT_LABEL_H  || 35,
+    PAGE_H:             PAGE_H             || 686,
+    ROW_H:              ROW_H              || 29,
+    THEAD_H:            THEAD_H            || 29,
+    STAGE_TITLE_H:      STAGE_TITLE_H      || 35,
+    CONT_LABEL_H:       CONT_LABEL_H       || 35,
+    TABLE_MARGIN_BOTTOM: TABLE_MARGIN_BOTTOM || 14,
   };
 }
 
@@ -648,11 +670,15 @@ function _paginateByHeight(allItems, label, counterStart, P) {
   }
 
   // Закрыть текущую таблицу (если открыта) без flush — перед вставкой заголовка этапа.
+  // Добавляем TABLE_MARGIN_BOTTOM: браузер применяет margin-bottom таблицы как
+  // отступ между ней и следующим элементом, но offsetHeight его не включает.
+  // Без учёта этого отступа каждый новый этап сдвигается вниз на ~14px
+  // относительно расчётного, и строки вылезают за overflow:hidden.
   function _closeTable() {
     if (openTable) {
       curHtml  += '</tbody></table>';
       openTable  = false;
-      // Закрытие тега высоты не добавляет → used не меняется
+      used      += P.TABLE_MARGIN_BOTTOM;   // учитываем margin-bottom таблицы
     }
   }
 
