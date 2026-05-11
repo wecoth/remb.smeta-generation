@@ -2,17 +2,13 @@
 // Блок: генерация PDF.
 // Собирает HTML страниц КП, извлекает CSS из document.styleSheets,
 // отправляет на внешний webhook и скачивает blob.
+import { appState } from '../state.js';
 
 export async function generatePDF() {
   const street = document.getElementById('hdrStreet')?.value || '';
   const house  = document.getElementById('hdrHouse')?.value  || '';
   const flat   = document.getElementById('hdrFlat')?.value   || '';
   const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
-
-  // ★ Обновляем все страницы КП перед сбором HTML ★
-  if (typeof window._kpPreview?.liveUpdateKP === 'function') {
-    window._kpPreview.liveUpdateKP();
-  }
 
   const pageHtmlArr = [];
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
@@ -25,6 +21,34 @@ export async function generatePDF() {
     clone.style.height = '794px';
     pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   });
+
+  // ★ Обновляем футер-логотипы на ВСЕХ страницах (включая клонированные) ★
+  const logoData = appState?.logoData || window._auth?._currentProfile?.logoBase64 || null;
+  const footerLogoHeight = appState?.footerLogoHeight;
+  const footerLogoPosition = appState?.footerLogoPosition;
+
+  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
+    if (logoData) {
+      img.src = logoData;
+      img.style.display = '';
+      if (footerLogoHeight != null) {
+        img.style.maxHeight = footerLogoHeight + 'px';
+        img.style.maxWidth = 'none';
+      }
+    } else {
+      img.style.display = 'none';
+    }
+  });
+
+  if (footerLogoPosition) {
+    document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
+      if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
+      foot.style.right = footerLogoPosition.right + 'px';
+      foot.style.bottom = footerLogoPosition.bottom + 'px';
+      foot.style.left = 'auto';
+      foot.style.top = 'auto';
+    });
+  }
 
   const pdfHtml = pageHtmlArr.join('\n');
 
@@ -47,7 +71,7 @@ export async function generatePDF() {
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
 
-    /* ⬇ Убираем пунктирную рамку из PDF */
+    /* ⬇ Скрываем пунктирную рамку в PDF */
     .spp-a4::before {
       border: none !important;
       display: none !important;
