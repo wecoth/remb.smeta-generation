@@ -514,51 +514,70 @@ function _smrTableHeader(label) {
 //    помечаем page.continuationOf = stageName (рендерим как «продолжение»).
 function _paginateItems(allItems, firstPageLimit, otherPageLimit) {
   const pages = [];
-  let cur        = { items: [], count: 0, continuationOf: null };
-  let pageLimit  = firstPageLimit;
 
-  // Текущий активный этап (для пометки продолжений)
-  let activeStage = null;
+  let curItems        = [];
+  let curCount        = 0;
+  let curContinuation = null;
+  let pageLimit       = firstPageLimit;
+  let activeStage     = null;
+
+  // Плашка «продолжение» + шапка таблицы занимают место на листе продолжения
+  const CONTINUATION_OVERHEAD = 2;
+
+  function flushPage() {
+    if (curItems.length > 0) {
+      pages.push({ items: curItems, continuationOf: curContinuation });
+    }
+    curItems        = [];
+    curCount        = 0;
+    curContinuation = null;
+    pageLimit       = otherPageLimit;
+  }
 
   for (let i = 0; i < allItems.length; i++) {
-    const item   = allItems[i];
-    const weight = item.type === 'stage' ? STAGE_WEIGHT : 1;
+    const item = allItems[i];
 
     if (item.type === 'stage') {
-      // Смотрим: влезает ли заголовок + хотя бы одна следующая строка?
-      const nextIsRow = allItems[i + 1]?.type === 'row';
-      const needsRoom = STAGE_WEIGHT + (nextIsRow ? 1 : 0);
+      // Нужно место: заголовок этапа + минимум 1 строка после него
+      const nextItem   = allItems[i + 1];
+      const nextWeight = (nextItem && nextItem.type === 'row') ? 1 : 0;
+      const needed     = STAGE_WEIGHT + nextWeight;
 
-      if (cur.count + needsRoom > pageLimit && cur.items.length > 0) {
-        // Не влезает с минимальной строкой — переносим весь этап на следующий лист
-        pages.push(cur);
-        cur = { items: [], count: 0, continuationOf: null };
-        pageLimit = otherPageLimit;
+      if (curCount + needed > pageLimit && curItems.length > 0) {
+        // Этап не влезает с минимальной строкой — переносим на следующий лист
+        // Продолжения нет: этап целиком начнётся на новом листе
+        flushPage();
+        curContinuation = null;
+        curCount        = 0;
       }
+
       activeStage = item.name;
-      cur.items.push(item);
-      cur.count += STAGE_WEIGHT;
+      curItems.push(item);
+      curCount += STAGE_WEIGHT;
 
     } else {
-      // Обычная строка
-      if (cur.count + 1 > pageLimit && cur.items.length > 0) {
-        // Строка не влезает — новый лист
-        pages.push(cur);
-        // Если этап был активен и уже начался на предыдущем листе — пометить продолжение
-        const isContinuation = activeStage &&
-          cur.items.some(it => it.type === 'row'); // хоть одна строка этапа уже была
-        cur = {
-          items: [],
-          count: 0,
-          continuationOf: isContinuation ? activeStage : null,
-        };
-        pageLimit = otherPageLimit;
+      // Обычная строка данных
+      if (curCount + 1 > pageLimit) {
+        // Строка не влезает — сбрасываем страницу
+        // Если на текущей странице уже есть строки этапа — следующая будет продолжением
+        const hadRows = curItems.some(it => it.type === 'row');
+        flushPage();
+        if (activeStage && hadRows) {
+          // Резервируем место под плашку «продолжение» + шапку таблицы
+          curContinuation = activeStage;
+          curCount        = CONTINUATION_OVERHEAD;
+        }
       }
-      cur.items.push(item);
-      cur.count += 1;
+
+      curItems.push(item);
+      curCount += 1;
     }
   }
-  if (cur.items.length) pages.push(cur);
+
+  if (curItems.length > 0) {
+    pages.push({ items: curItems, continuationOf: curContinuation });
+  }
+
   return pages;
 }
 
