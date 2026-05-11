@@ -325,25 +325,15 @@
           <div class="kp-section-title" style="margin-bottom:4px">График платежей</div>
           <div class="kp-subtitle" style="margin-bottom:24px">по платежам</div>
 
-          <!-- Таблица платежей -->
-          <table style="width:100%;border-collapse:collapse" id="prevPayTable2">
-            <thead>
-              <tr style="border-bottom:1px solid #e0e0e0">
-                <th style="padding:7px 0;text-align:left;font-weight:500;color:#888;width:28px" class="kp-table-header">№</th>
-                <th style="padding:7px 8px;text-align:left;font-weight:500;color:#888" class="kp-table-header">Платёж</th>
-                <th style="padding:7px 8px;text-align:right;font-weight:500;color:#888" class="kp-table-header">Стоимость, ₽</th>
-                <th style="padding:7px 8px;text-align:center;font-weight:500;color:#888;width:40px" class="kp-table-header">%</th>
-                <th style="padding:7px 8px;text-align:right;font-weight:500;color:#888" class="kp-table-header">Аванс</th>
-                <th style="padding:7px 8px;text-align:right;font-weight:500;color:#888" class="kp-table-header">С оплатой</th>
-              </tr>
-            </thead>
-            <tbody id="prevPayBody2"></tbody>
-            <tfoot id="prevPayFoot2"></tfoot>
-          </table>
+          <!-- Карточки платежей — заполняются из JS -->
+          <div id="prevPayCards2" style="display:flex;flex-direction:column;gap:0;flex:1;min-height:0;overflow:hidden"></div>
+
+          <!-- Итог -->
+          <div id="prevPayTotal2" style="margin-top:12px"></div>
 
           <!-- Подпись -->
-          <div style="margin-top:auto;padding-top:32px">
-            <div style="height:1px;background:#e8e8e8;margin-bottom:24px"></div>
+          <div style="margin-top:auto;padding-top:28px">
+            <div style="height:1px;background:#e8e8e8;margin-bottom:20px"></div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
               <div>
                 <div class="kp-small-text" style="margin-bottom:6px">Подпись</div>
