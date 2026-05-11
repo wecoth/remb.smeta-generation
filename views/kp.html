@@ -701,7 +701,7 @@
   gap: 5px;
   padding: 4px 14px;
   border-radius: 20px;
-  border: 1px solid #1c1c1c;
+  border: 1px solid #888;
   background: #fff;
   white-space: nowrap;
   box-sizing: border-box;
@@ -828,7 +828,7 @@
   }
 
   function measurePill(item, container) {
-    item.style.cssText = 'position:static;width:auto;white-space:nowrap;visibility:hidden;display:inline-flex;padding:4px 16px;border-radius:20px;border:1px solid #1c1c1c;';
+    item.style.cssText = 'position:static;width:auto;white-space:nowrap;visibility:hidden;display:inline-flex;padding:4px 16px;border-radius:20px;border-width:1px;border-style:solid;';
     container.appendChild(item);
     var w = item.offsetWidth + 2;
     var h = item.offsetHeight || 28;
@@ -1003,6 +1003,8 @@
 
     items.forEach(function(item, i) {
       var pos = positions[i];
+      /* Сохраняем border-color который был задан через inline style (из kp-preview.js) */
+      var savedBorderColor = item.style.borderColor || '';
       item.style.cssText = [
         'position:absolute',
         'left:'   + pos.x + 'px',
@@ -1019,8 +1021,9 @@
         'justify-content:center',
         'padding:4px 16px',
         'background:#fff',
-        'visibility:visible'
-      ].join(';');
+        'visibility:visible',
+        savedBorderColor ? 'border-color:' + savedBorderColor : ''
+      ].filter(Boolean).join(';');
     });
   }
 
