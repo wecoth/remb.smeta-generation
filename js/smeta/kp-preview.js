@@ -521,18 +521,25 @@ const PAGINATION = {
 function _paginateByHeight(allItems, label, counterStart) {
   const P = PAGINATION;
 
-  const pages = [];
+  // used — пикселей занято на ТЕКУЩЕМ листе.
+  // Инвариант: used всегда отражает реально добавленный контент.
+  // Ни одно место не прибавляет высоту дважды.
+  //
+  // Стартовое состояние первого листа: шапка таблицы уже в curHtml → used = THEAD_H.
+  // После flushPage + startNewPage: used выставляется заново внутри startNewPage.
+
+  const pages         = [];
   let curHtml         = '';
   let curContinuation = null;
-  let activeStage     = null;
+  let activeStage     = null;   // имя текущего открытого этапа
+  let pageHasRows     = false;  // были ли строки <tr> на текущем листе
   let globalCounter   = counterStart || 0;
   let openTable       = false;
+  let used            = 0;
 
-  // used — сколько px уже занято на текущем листе
-  // Первый лист: шапка таблицы
-  let used = P.THEAD_H;
+  // ── Вспомогательные генераторы HTML ────────────────────────────
 
-  function rowHtml(r, counter) {
+  function _rowHtml(r, counter) {
     return `<tr>
       <td>${counter}</td>
       <td>${r.name || ''}</td>
@@ -543,86 +550,103 @@ function _paginateByHeight(allItems, label, counterStart) {
     </tr>`;
   }
 
-  function stageHtml(item) {
+  function _stageHtml(item) {
     return `<div class="kp-smr-stage-title">
       <span>${item.name}</span>
       <span style="font-size:11px;color:#888;font-weight:400">Итого по разделу: ${fmtMoney(item.total)}</span>
     </div>`;
   }
 
-  function continuationHtml(name) {
+  function _contHtml(name) {
     return `<div class="kp-smr-stage-title kp-smr-stage-continuation">
       <span style="color:#aaa;font-style:italic">продолжение: ${name}</span>
     </div>`;
   }
 
+  // ── Управление страницами ───────────────────────────────────────
+
   function flushPage() {
-    const finalHtml = curHtml + (openTable ? '</tbody></table>' : '');
-    pages.push({ html: finalHtml, continuationOf: curContinuation });
+    const html = curHtml + (openTable ? '</tbody></table>' : '');
+    pages.push({ html, continuationOf: curContinuation });
     curHtml         = '';
     curContinuation = null;
     openTable       = false;
+    pageHasRows     = false;
+    used            = 0;
   }
 
+  // Начать новый лист. asContinuation=true → плашка «продолжение» + шапка таблицы.
+  // asContinuation=false → только шапка таблицы (новый этап начинается сам через _openStage).
   function startNewPage(asContinuation) {
     if (asContinuation && activeStage) {
       curContinuation = activeStage;
-      curHtml  = continuationHtml(activeStage) + _smrTableHeader(label);
+      curHtml  = _contHtml(activeStage) + _smrTableHeader(label);
       used     = P.CONT_LABEL_H + P.THEAD_H;
     } else {
       curContinuation = null;
       curHtml  = _smrTableHeader(label);
       used     = P.THEAD_H;
     }
-    openTable = true;
+    openTable   = true;
+    pageHasRows = false;
   }
 
-  // Инициализация первого листа
-  curHtml   = _smrTableHeader(label);
-  openTable = true;
+  // Закрыть текущую таблицу (если открыта) без flush — перед вставкой заголовка этапа.
+  function _closeTable() {
+    if (openTable) {
+      curHtml  += '</tbody></table>';
+      openTable  = false;
+      // Закрытие тега высоты не добавляет → used не меняется
+    }
+  }
 
+  // Открыть заголовок этапа + шапку таблицы на ТЕКУЩЕМ листе.
+  function _openStage(item) {
+    _closeTable();
+    curHtml   += _stageHtml(item) + _smrTableHeader(label);
+    openTable  = true;
+    used      += P.STAGE_TITLE_H + P.THEAD_H;
+  }
+
+  // ── Инициализация первого листа ─────────────────────────────────
+  startNewPage(false);
+
+  // ── Главный цикл ────────────────────────────────────────────────
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
 
     if (item.type === 'stage') {
       activeStage = item.name;
 
-      // Закрываем текущую таблицу (если открыта) и считаем высоту атомарного блока:
-      // заголовок этапа + шапка новой таблицы + минимум одна строка
-      const atomicH = (openTable ? 0 : 0)   // закрытие таблицы без высоты
-        + P.STAGE_TITLE_H
-        + P.THEAD_H
-        + P.ROW_H;
+      // Атомарная высота: заголовок + шапка + минимум 1 строка.
+      // Именно столько нужно зарезервировать, чтобы этап не оказался
+      // последним элементом на листе без единой строки.
+      const atomicH = P.STAGE_TITLE_H + P.THEAD_H + P.ROW_H;
 
-      // Нужно ли переносить на новый лист?
-      // Учитываем текущую used (уже включает всё до этого заголовка)
-      const usedAfterClose = used; // закрытие </tbody></table> высоту не добавляет
-      if (usedAfterClose + atomicH > P.PAGE_H && curHtml.replace(_smrTableHeader(label), '').trim() !== '') {
-        // На текущем листе есть контент — сбрасываем
-        if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
+      if (used + atomicH > P.PAGE_H && pageHasRows) {
+        // На листе уже есть строки предыдущего этапа — сбрасываем лист.
+        // Новый лист начнём без continuation (этап начинается заново).
+        _closeTable();
         flushPage();
         startNewPage(false);
       }
 
-      // Добавляем заголовок этапа
-      if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
-      curHtml += stageHtml(item) + _smrTableHeader(label);
-      openTable = true;
-      used += P.STAGE_TITLE_H + P.THEAD_H;
+      // Теперь добавляем заголовок этапа на текущий лист.
+      _openStage(item);
 
     } else {
-      // Обычная строка
+      // Обычная строка данных.
       if (used + P.ROW_H > P.PAGE_H) {
-        // Не влезает — фиксируем есть ли уже строки на листе
-        const hadRows = curHtml.includes('<tr>');
-        if (openTable) { curHtml += '</tbody></table>'; openTable = false; }
+        // Строка не влезает → сбрасываем лист, новый с continuation.
+        _closeTable();
         flushPage();
-        startNewPage(hadRows); // continuation только если этап уже начался и есть строки
+        startNewPage(true);   // всегда continuation: этап уже открыт
       }
 
       globalCounter++;
-      curHtml += rowHtml(item.data, globalCounter);
-      used    += P.ROW_H;
+      curHtml    += _rowHtml(item.data, globalCounter);
+      used       += P.ROW_H;
+      pageHasRows = true;
     }
   }
 
