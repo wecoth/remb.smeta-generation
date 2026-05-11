@@ -1407,6 +1407,14 @@ function applyFooterLogoSize(company) {
   });
 }
 
+function updateFooterLogoSize() {
+  const h = appState.footerLogoHeight;
+  document.querySelectorAll('[id$="FtLogoImg2"]').forEach(img => {
+    img.style.maxHeight = (h != null) ? h + 'px' : '';
+    img.style.maxWidth  = 'none';
+  });
+}
+
 function applyFooterLogoPosition() {
   const pos = appState.footerLogoPosition;
   if (!pos) return;
@@ -1503,11 +1511,10 @@ function initFooterLogoResize(company) {
       document.body.style.userSelect = 'none';
 
       function onMove(ev) {
-        const newH = Math.max(10, startHeight + ev.clientY - startY);
-        // Обновляем все футеры через общее состояние
-        appState.footerLogoHeight = newH;
-        applyFooterLogoSize(company);
-      }
+  const newH = Math.max(10, startHeight + ev.clientY - startY);
+  appState.footerLogoHeight = newH;
+  updateFooterLogoSize();          // ← только размер, без перезагрузки картинки
+}
 
       function onUp() {
         document.body.style.cursor     = '';
