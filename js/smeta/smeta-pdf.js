@@ -51,6 +51,7 @@ export async function generatePDF() {
     clone.style.transform = 'none';
     clone.style.width  = '1123px';
     clone.style.height = '794px';
+    clone.style.overflow = 'visible';   // разрешаем футеру выходить за поля
     pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   });
 
@@ -71,7 +72,7 @@ export async function generatePDF() {
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
     .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: hidden; position: relative; }
     .pdf-a4-page:last-child { page-break-after: auto; }
-    .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); }
+    .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); overflow: visible !important; }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
 
