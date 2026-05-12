@@ -57,10 +57,20 @@ export async function generatePDF() {
 
   const pdfHtml = pageHtmlArr.join('\n');
 
-  const sheetCss = Array.from(document.styleSheets).map(s => {
-    try { return Array.from(s.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; }
-  }).join('\n');
-
+  const sheetCss = Array.from(document.styleSheets)
+  .flatMap(s => {
+    try { return Array.from(s.cssRules); } catch { return []; }
+  })
+  .filter(rule => {
+    if (rule.type === CSSRule.MEDIA_RULE) return false;
+    if (rule.type === CSSRule.KEYFRAMES_RULE) return false;
+    const text = rule.cssText || '';
+    if (/\.(global-topbar|sidebar|smeta-shell|planner|app-views|statusbar|zoom-controls|modal|work-row|work-header|totals|room-field|tool-grid|expl-scroll)/.test(text)) return false;
+    return true;
+  })
+  .map(r => r.cssText)
+  .join('\n');
+  
   const pdfCss = `
     @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
     @font-face {
