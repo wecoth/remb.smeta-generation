@@ -266,6 +266,9 @@ window._auth = {
     const scale = Math.min(1, maxW / imgElement.naturalWidth);
     canvas.width = imgElement.naturalWidth * scale;
     canvas.height = imgElement.naturalHeight * scale;
+    // Синхронизируем CSS размеры с атрибутами canvas для корректного кадрирования
+    canvas.style.width = canvas.width + 'px';
+    canvas.style.height = canvas.height + 'px';
     ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
 
     this._cropState.img = imgElement;
@@ -341,8 +344,20 @@ window._auth = {
   }
 };
 
-// Привязываем кнопки кадрирования после загрузки DOM
+// Привязка кнопок и открытие диалога выбора файла
 document.addEventListener('DOMContentLoaded', () => {
+  // 1. Клик по зоне логотипа → открыть окно выбора файла
+  const logoZone = document.getElementById('profileLogoZone');
+  const logoInput = document.getElementById('profileLogoInput');
+  if (logoZone && logoInput) {
+    logoZone.addEventListener('click', (e) => {
+      // Игнорируем клики по canvas или кнопкам кадрирования
+      if (e.target.id === 'logoCropCanvas' || e.target.closest('#cropControls')) return;
+      logoInput.click();
+    });
+  }
+
+  // 2. Кнопки кадрирования
   const confirmBtn = document.getElementById('cropConfirmBtn');
   const cancelBtn = document.getElementById('cropCancelBtn');
   if (confirmBtn) confirmBtn.addEventListener('click', () => window._auth.confirmCrop());
