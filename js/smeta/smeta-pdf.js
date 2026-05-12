@@ -1,6 +1,6 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Генерация PDF без transform:scale. Страница фиксирована 1123×794 px.
-// Всё, что не влезает в эти размеры, обрезается самим Chromium.
+// Футер вырезается из .spp-a4 и помещается в .pdf-a4-page,
+// что гарантирует его обрезку по границам PDF-листа.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
@@ -14,13 +14,13 @@ export async function generatePDF() {
   const footerLogoHeight = appState?.footerLogoHeight;
   const footerLogoPosition = appState?.footerLogoPosition;
 
-  // 1. Контейнеры футера — показываем/скрываем
+  // 1. Контейнеры футера
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
     if (foot.id === 'prevCovFoot2') return;
     foot.style.display = logoData ? '' : 'none';
   });
 
-  // 2. Логотип — src и размер
+  // 2. Логотип и размер
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
     if (logoData) {
       img.src = logoData;
@@ -45,20 +45,55 @@ export async function generatePDF() {
     });
   }
 
-  // ★ Клонируем страницы ПОСЛЕ обновления ★
+  // ★ Клонируем страницы ★
   const pageHtmlArr = [];
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
+  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach((page) => {
     const clone = page.cloneNode(true);
+
+    // Убираем UI редактора
     clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
-    clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
+    clone.querySelectorAll('.be-block').forEach(el => {
+      el.classList.remove('be-selected', 'be-editing');
+    });
     clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
 
-    // АБСОЛЮТНО НИКАКОГО МАСШТАБИРОВАНИЯ
+    // Без масштабирования, фиксированные размеры
     clone.style.transform = 'none';
     clone.style.width  = '1123px';
     clone.style.height = '794px';
 
-    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
+    // ‼️ ИЗВЛЕКАЕМ ФУТЕР из клона, чтобы вставить его в pdf-a4-page отдельно
+    const footClone = clone.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
+    let footHtml = '';
+    if (footClone) {
+      // Фиксируем его абсолютную позицию относительно родительской страницы в процентах
+      const originalFoot = page.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
+      if (originalFoot) {
+        const footRect = originalFoot.getBoundingClientRect();
+        const pageRect = page.getBoundingClientRect();
+
+        // Позиция в процентах от верхнего левого угла .spp-a4
+        const leftPct   = ((footRect.left - pageRect.left) / pageRect.width  * 100).toFixed(3);
+        const topPct    = ((footRect.top  - pageRect.top)  / pageRect.height * 100).toFixed(3);
+        const widthPct  = (footRect.width  / pageRect.width  * 100).toFixed(3);
+        const heightPct = (footRect.height / pageRect.height * 100).toFixed(3);
+
+        // Создаём новый футер с корректным позиционированием внутри pdf-a4-page
+        footClone.style.position = 'absolute';
+        footClone.style.left   = leftPct + '%';
+        footClone.style.top    = topPct + '%';
+        footClone.style.width  = widthPct + '%';
+        footClone.style.height = heightPct + '%';
+        footClone.style.right  = 'auto';
+        footClone.style.bottom = 'auto';
+        footClone.style.margin = '0';
+        footClone.style.transform = 'none';
+      }
+      footHtml = footClone.outerHTML;
+      footClone.remove(); // убираем из основного клона, чтобы не дублировался
+    }
+
+    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}${footHtml}</div>`);
   });
 
   const pdfHtml = pageHtmlArr.join('\n');
@@ -77,18 +112,15 @@ export async function generatePDF() {
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
 
-    /* Страница PDF: фиксированный размер 1123x794px,
-       браузер сам отмасштабирует под 297x210mm */
     .pdf-a4-page {
       width: 1123px;
       height: 794px;
       page-break-after: always;
-      overflow: hidden;        /* ← обрезаем всё, что выходит за границы */
+      overflow: hidden;            /* ← обрезает всё, включая вынесенный футер */
       position: relative;
     }
     .pdf-a4-page:last-child { page-break-after: auto; }
 
-    /* Лист внутри — без scale, точные размеры */
     .spp-a4 {
       width: 1123px !important;
       height: 794px !important;
@@ -100,7 +132,6 @@ export async function generatePDF() {
     .spp-a4::before,
     .spp-a4::after { display: none !important; }
 
-    /* Дополнительные разблокировки */
     #prevSmrTableWrap, #prevMatTableWrap { overflow: visible !important; }
     .spp-a4 > div[style*="padding:90px"] { overflow: visible !important; max-height: none !important; height: auto !important; }
 
