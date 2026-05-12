@@ -743,6 +743,11 @@ html, body {
   border-radius: 2px;
 }
 
+/* Футер-логотип всегда поверх белой маски страницы */
+.spp-a4 [id$="Foot2"] {
+  z-index: 1;
+}
+
 /* Cover page — children are position:absolute */
 .spp-a4.cover-pg { display: block; }
 
