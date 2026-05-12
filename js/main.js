@@ -78,6 +78,8 @@ function switchTab(tab) {
 // ── DOM-ready init ────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+   // Очищаем старый кэш планировщика, чтобы не восстанавливался
+  localStorage.removeItem('remb_project_v1');
   // Tab buttons
   document.getElementById('tabPlanner')?.addEventListener('click', () => switchTab('planner'));
   document.getElementById('tabSmeta')?.addEventListener('click',   () => switchTab('smeta'));
