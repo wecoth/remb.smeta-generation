@@ -1,6 +1,5 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Обрезаем выходящий за границы логотип через canvas,
-// чтобы избежать бага полного исчезновения при генерации PDF.
+// Обрезаем логотип под A4 через canvas, корректно дожидаемся всех страниц.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
@@ -9,11 +8,11 @@ export async function generatePDF() {
   const flat   = document.getElementById('hdrFlat')?.value   || '';
   const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
 
-  // ── Подготовка живых футеров (src, размер, позиция, видимость) ──
   const logoData = appState?.logoData || window._auth?._currentProfile?.logoBase64 || null;
   const footerLogoHeight = appState?.footerLogoHeight;
   const footerLogoPosition = appState?.footerLogoPosition;
 
+  // ── Подготовка живых футеров (как и раньше) ──
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
     if (foot.id === 'prevCovFoot2') return;
     foot.style.display = logoData ? '' : 'none';
@@ -40,12 +39,13 @@ export async function generatePDF() {
     });
   }
 
-  // ── Клонирование с обрезкой логотипа под A4 ────────────────────
-  const pageHtmlArr = [];
   const A4_WIDTH = 1123;
   const A4_HEIGHT = 794;
+  const pageElements = document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4');
+  const pageHtmlArr = [];
 
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(async (page) => {
+  // ── Обрабатываем страницы последовательно, чтобы дождаться обрезки логотипа ──
+  for (const page of pageElements) {
     const clone = page.cloneNode(true);
     clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
     clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
@@ -54,73 +54,62 @@ export async function generatePDF() {
     clone.style.width  = A4_WIDTH + 'px';
     clone.style.height = A4_HEIGHT + 'px';
 
-    // ── Обработка футера ──
+    // ── Обрезка логотипа ──
     const foot2 = clone.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
     if (foot2 && logoData) {
       const footImg = foot2.querySelector('img');
       if (footImg) {
         const liveFoot = page.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
         if (liveFoot) {
-          const liveRect = liveFoot.getBoundingClientRect();   // на живой странице
+          const liveRect = liveFoot.getBoundingClientRect();
           const pageRect = page.getBoundingClientRect();
 
-          // Пересчитываем координаты относительно .spp-a4 (который сейчас 1123x794)
           const relX = liveRect.left - pageRect.left;
           const relY = liveRect.top - pageRect.top;
           let footW = liveRect.width;
           let footH = liveRect.height;
-          let footLeft = relX;
-          let footTop = relY;
 
-          // Проверяем выход за границы 1123x794
-          if (
-            footLeft + footW <= 0 || footLeft >= A4_WIDTH ||
-            footTop + footH <= 0 || footTop >= A4_HEIGHT
-          ) {
-            // Логотип полностью за пределами → удаляем
+          if (relX + footW <= 0 || relX >= A4_WIDTH ||
+              relY + footH <= 0 || relY >= A4_HEIGHT) {
+            // Полностью за пределами
             foot2.remove();
           } else {
-            // Есть пересечение, нужно обрезать изображение
-            const img = new Image();
-            img.src = logoData;
-            await new Promise(resolve => { img.onload = resolve; });
-
-            const canvas = document.createElement('canvas');
-            canvas.width = A4_WIDTH;
-            canvas.height = A4_HEIGHT;
-            const ctx = canvas.getContext('2d');
-
-            // Определяем видимую область логотипа
-            const visibleLeft = Math.max(0, footLeft);
-            const visibleTop = Math.max(0, footTop);
-            const visibleRight = Math.min(A4_WIDTH, footLeft + footW);
-            const visibleBottom = Math.min(A4_HEIGHT, footTop + footH);
+            const visibleLeft = Math.max(0, relX);
+            const visibleTop = Math.max(0, relY);
+            const visibleRight = Math.min(A4_WIDTH, relX + footW);
+            const visibleBottom = Math.min(A4_HEIGHT, relY + footH);
             const visibleW = visibleRight - visibleLeft;
             const visibleH = visibleBottom - visibleTop;
 
             if (visibleW > 0 && visibleH > 0) {
-              // Рисуем оригинальное изображение на canvas с нужным смещением,
-              // чтобы вырезать только видимый прямоугольник
+              // Загружаем изображение и обрезаем
+              const img = new Image();
+              img.src = logoData;
+              await new Promise(resolve => { img.onload = resolve; });
+
+              const canvas = document.createElement('canvas');
+              canvas.width = A4_WIDTH;
+              canvas.height = A4_HEIGHT;
+              const ctx = canvas.getContext('2d');
+
               ctx.drawImage(
                 img,
-                visibleLeft - footLeft,          // sX
-                visibleTop - footTop,            // sY
-                visibleW,                        // sW
-                visibleH,                        // sH
-                visibleLeft,                     // dx
-                visibleTop,                      // dy
-                visibleW,                        // dW
-                visibleH                         // dH
+                visibleLeft - relX,   // sx
+                visibleTop - relY,    // sy
+                visibleW,             // sWidth
+                visibleH,             // sHeight
+                visibleLeft,          // dx
+                visibleTop,           // dy
+                visibleW,             // dWidth
+                visibleH              // dHeight
               );
 
-              const croppedDataUrl = canvas.toDataURL('image/png');
-              footImg.src = croppedDataUrl;
+              footImg.src = canvas.toDataURL('image/png');
               footImg.style.maxHeight = 'none';
               footImg.style.maxWidth = 'none';
             }
 
-            // Заменяем абсолютное позиционирование на фиксированные координаты,
-            // чтобы футер точно лежал внутри A4 без отрицательных отступов
+            // Фиксируем футер в видимых координатах
             foot2.style.position = 'absolute';
             foot2.style.right = 'auto';
             foot2.style.bottom = 'auto';
@@ -133,17 +122,12 @@ export async function generatePDF() {
           }
         }
       } else {
-        // Нет изображения в футере – просто удаляем,
-        // либо оставляем пустой контейнер
         foot2.remove();
       }
     }
 
     pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
-  });
-
-  // Из-за асинхронной загрузки изображений дожидаемся всех промисов
-  await Promise.all(pageHtmlArr);
+  }
 
   const pdfHtml = pageHtmlArr.join('\n');
 
