@@ -36,3 +36,13 @@ export const {
 // Свернуть/развернуть все разделы — реэкспорт напрямую из таблиц
 export { toggleCollapseAllSmr } from './smeta/smeta-tables-smr.js';
 export { toggleCollapseAllMat } from './smeta/smeta-tables-mat.js';
+
+// Свернуть/развернуть все разделы — реэкспорт напрямую из таблиц
+export { toggleCollapseAllSmr } from './smeta/smeta-tables-smr.js';
+export { toggleCollapseAllMat } from './smeta/smeta-tables-mat.js';
+
+// ↓↓↓ ДОБАВЬ ЭТИ ЧЕТЫРЕ СТРОКИ ↓↓↓
+export { renderSmrTable } from './smeta/smeta-tables-smr.js';
+export { renderMatTable } from './smeta/smeta-tables-mat.js';
+export { renderGantt, syncSectionsToGantt, recalcAllStageDaysAuto } from './smeta/smeta-gantt.js';
+export { renderPayments } from './smeta/smeta-payments.js';
