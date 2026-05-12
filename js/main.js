@@ -10,6 +10,9 @@ import {
   handleMat, initMatManual, addMatRow, clearMat,
   generatePDF, importRoomsFromPlanner, captureCanvas,
   collectSmrRows, collectMatRows, getSmrTotal, getMatTotal,
+  renderSmrTable, renderMatTable,          // ← добавили
+  renderGantt, syncSectionsToGantt, recalcAllStageDaysAuto, // ← добавили
+  renderPayments, updateTotals             // ← добавили
 } from './smeta.js';
 import { autosaveToLocalStorage, loadFromLocalStorage, downloadProject, uploadProject } from './storage.js';
 import { clearHistory } from './commands/CommandHistory.js';
@@ -138,6 +141,28 @@ document.addEventListener('DOMContentLoaded', () => {
   updateExpl(document.getElementById('explBody'), document.getElementById('roomCount'));
   clearHistory();
   forceRedraw();
+          // ── Обновление сметы и КП после загрузки ──
+    renderSmrTable();
+    renderMatTable();
+    syncSectionsToGantt();
+    recalcAllStageDaysAuto();
+    renderGantt();
+    renderPayments();
+    updateTotals();
+
+    // Обновление предпросмотра КП
+    if (window._kpPreview && window._kpPreview.liveUpdateKP) {
+      window._kpPreview.liveUpdateKP();
+    }
+
+    // Синхронизация размеров логотипов с localStorage
+    const sizes = {
+      coverLogoWidth:   appState.coverLogoWidth,
+      coverLogoHeight:  appState.coverLogoHeight,
+      footerLogoHeight: appState.footerLogoHeight,
+      footerLogoPosition: appState.footerLogoPosition
+    };
+    localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
     });
   });
 
