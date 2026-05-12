@@ -285,6 +285,8 @@ window._auth = {
       coverLogoWidth:   (window.appState && window.appState.coverLogoWidth   != null) ? window.appState.coverLogoWidth   : null,
       coverLogoHeight:  (window.appState && window.appState.coverLogoHeight  != null) ? window.appState.coverLogoHeight  : null,
       footerLogoHeight: (window.appState && window.appState.footerLogoHeight != null) ? window.appState.footerLogoHeight : null,
+      footerLogoPosition: (window.appState && window.appState.footerLogoPosition)
+  ? { ...window.appState.footerLogoPosition } : null,
     };
     try {
       const res  = await fetch(N8N_BASE + '/profile/save', {
@@ -342,6 +344,10 @@ window._auth = {
       if (profile.footerLogoHeight != null) window.appState.footerLogoHeight = profile.footerLogoHeight;
     }
 
+if (profile.footerLogoPosition) {
+  window.appState.footerLogoPosition = profile.footerLogoPosition;
+}
+     
     const sizes = {
       coverLogoWidth:   profile.coverLogoWidth   ?? null,
       coverLogoHeight:  profile.coverLogoHeight  ?? null,
