@@ -189,14 +189,17 @@ window._auth = {
       });
       const data = await res.json();
       if (data.success) {
-        this.applyProfile(data.profile);
-        if (!data.profile?.coverLogoWidth && window.appState) {
-          const cached = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
-          if (cached.coverLogoWidth   != null) window.appState.coverLogoWidth   = cached.coverLogoWidth;
-          if (cached.coverLogoHeight  != null) window.appState.coverLogoHeight  = cached.coverLogoHeight;
-          if (cached.footerLogoHeight != null) window.appState.footerLogoHeight = cached.footerLogoHeight;
-        }
-        this.showApp();
+    this.applyProfile(data.profile);
+    // Всегда восстанавливаем размеры логотипов из localStorage, если они не пришли с сервера
+    const cached = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
+    if (window.appState) {
+        if (cached.coverLogoWidth   != null) window.appState.coverLogoWidth   = cached.coverLogoWidth;
+        if (cached.coverLogoHeight  != null) window.appState.coverLogoHeight  = cached.coverLogoHeight;
+        if (cached.footerLogoHeight != null) window.appState.footerLogoHeight = cached.footerLogoHeight;
+        if (cached.footerLogoPosition != null) window.appState.footerLogoPosition = cached.footerLogoPosition;
+    }
+    this.showApp();
+}
       } else {
         localStorage.removeItem('remb_token');
         localStorage.removeItem('remb_userId');
@@ -350,12 +353,12 @@ if (profile.footerLogoPosition) {
 }
      
     const sizes = {
-      coverLogoWidth:   profile.coverLogoWidth   ?? null,
-      coverLogoHeight:  profile.coverLogoHeight  ?? null,
-      footerLogoHeight: profile.footerLogoHeight ?? null,
-      footerLogoPosition: profile.footerLogoPosition ?? null, // ← добавить
-    };
-    localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
+  coverLogoWidth:   profile.coverLogoWidth   ?? null,
+  coverLogoHeight:  profile.coverLogoHeight  ?? null,
+  footerLogoHeight: profile.footerLogoHeight ?? null,
+  footerLogoPosition: profile.footerLogoPosition ?? null,   // <-- добавить
+};
+localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
   },
 
   logout() {
