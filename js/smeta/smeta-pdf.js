@@ -70,7 +70,7 @@ export async function generatePDF() {
     @page { size: 297mm 210mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: hidden; position: relative; }
+    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: visible; position: relative; }
     .pdf-a4-page:last-child { page-break-after: auto; }
     .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); overflow: visible !important; }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
