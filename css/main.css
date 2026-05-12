@@ -731,23 +731,6 @@ html, body {
   box-sizing: border-box;
 }
 
-/* White clip mask — обрезает содержимое страницы но не футер.
-   Футер (position:absolute bottom/right) рендерится поверх маски. */
-.spp-a4::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background: #fff;
-  border-radius: 2px;
-}
-
-/* Футер-логотип всегда поверх белой маски страницы */
-.spp-a4 [id$="Foot2"] {
-  z-index: 1;
-}
-
 /* Cover page — children are position:absolute */
 .spp-a4.cover-pg { display: block; }
 
