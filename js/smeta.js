@@ -37,11 +37,7 @@ export const {
 export { toggleCollapseAllSmr } from './smeta/smeta-tables-smr.js';
 export { toggleCollapseAllMat } from './smeta/smeta-tables-mat.js';
 
-// Свернуть/развернуть все разделы — реэкспорт напрямую из таблиц
-export { toggleCollapseAllSmr } from './smeta/smeta-tables-smr.js';
-export { toggleCollapseAllMat } from './smeta/smeta-tables-mat.js';
-
-// ↓↓↓ ДОБАВЬ ЭТИ ЧЕТЫРЕ СТРОКИ ↓↓↓
+// Дополнительные экспорты для обновления интерфейса после загрузки проекта
 export { renderSmrTable } from './smeta/smeta-tables-smr.js';
 export { renderMatTable } from './smeta/smeta-tables-mat.js';
 export { renderGantt, syncSectionsToGantt, recalcAllStageDaysAuto } from './smeta/smeta-gantt.js';
