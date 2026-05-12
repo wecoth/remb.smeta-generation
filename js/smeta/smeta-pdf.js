@@ -1,5 +1,7 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Обрезаем логотип под A4 через canvas, корректно дожидаемся всех страниц.
+// Блок: генерация PDF.
+// Собирает HTML страниц КП, извлекает CSS из document.styleSheets,
+// отправляет на внешний webhook и скачивает blob.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
@@ -8,125 +10,44 @@ export async function generatePDF() {
   const flat   = document.getElementById('hdrFlat')?.value   || '';
   const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
 
+  const pageHtmlArr = [];
+  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
+    const clone = page.cloneNode(true);
+    clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
+    clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
+    clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
+    clone.style.transform = 'none';
+    clone.style.width  = '1123px';
+    clone.style.height = '794px';
+    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
+  });
+
+  // ★ Обновляем футер-логотипы на ВСЕХ страницах (включая клонированные) ★
   const logoData = appState?.logoData || window._auth?._currentProfile?.logoBase64 || null;
   const footerLogoHeight = appState?.footerLogoHeight;
   const footerLogoPosition = appState?.footerLogoPosition;
 
-  // ── Подготовка живых футеров (как и раньше) ──
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
-    if (foot.id === 'prevCovFoot2') return;
-    foot.style.display = logoData ? '' : 'none';
-  });
-
-  if (logoData) {
-    document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
+  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
+    if (logoData) {
       img.src = logoData;
       img.style.display = '';
       if (footerLogoHeight != null) {
         img.style.maxHeight = footerLogoHeight + 'px';
         img.style.maxWidth = 'none';
       }
-    });
-  }
+    } else {
+      img.style.display = 'none';
+    }
+  });
 
   if (footerLogoPosition) {
     document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
-      if (foot.id === 'prevCovFoot2') return;
+      if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
       foot.style.right = footerLogoPosition.right + 'px';
       foot.style.bottom = footerLogoPosition.bottom + 'px';
       foot.style.left = 'auto';
       foot.style.top = 'auto';
     });
-  }
-
-  const A4_WIDTH = 1123;
-  const A4_HEIGHT = 794;
-  const pageElements = document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4');
-  const pageHtmlArr = [];
-
-  // ── Обрабатываем страницы последовательно, чтобы дождаться обрезки логотипа ──
-  for (const page of pageElements) {
-    const clone = page.cloneNode(true);
-    clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
-    clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
-    clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
-    clone.style.transform = 'none';
-    clone.style.width  = A4_WIDTH + 'px';
-    clone.style.height = A4_HEIGHT + 'px';
-
-    // ── Обрезка логотипа ──
-    const foot2 = clone.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
-    if (foot2 && logoData) {
-      const footImg = foot2.querySelector('img');
-      if (footImg) {
-        const liveFoot = page.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
-        if (liveFoot) {
-          const liveRect = liveFoot.getBoundingClientRect();
-          const pageRect = page.getBoundingClientRect();
-
-          const relX = liveRect.left - pageRect.left;
-          const relY = liveRect.top - pageRect.top;
-          let footW = liveRect.width;
-          let footH = liveRect.height;
-
-          if (relX + footW <= 0 || relX >= A4_WIDTH ||
-              relY + footH <= 0 || relY >= A4_HEIGHT) {
-            // Полностью за пределами
-            foot2.remove();
-          } else {
-            const visibleLeft = Math.max(0, relX);
-            const visibleTop = Math.max(0, relY);
-            const visibleRight = Math.min(A4_WIDTH, relX + footW);
-            const visibleBottom = Math.min(A4_HEIGHT, relY + footH);
-            const visibleW = visibleRight - visibleLeft;
-            const visibleH = visibleBottom - visibleTop;
-
-            if (visibleW > 0 && visibleH > 0) {
-              // Загружаем изображение и обрезаем
-              const img = new Image();
-              img.src = logoData;
-              await new Promise(resolve => { img.onload = resolve; });
-
-              const canvas = document.createElement('canvas');
-              canvas.width = A4_WIDTH;
-              canvas.height = A4_HEIGHT;
-              const ctx = canvas.getContext('2d');
-
-              ctx.drawImage(
-                img,
-                visibleLeft - relX,   // sx
-                visibleTop - relY,    // sy
-                visibleW,             // sWidth
-                visibleH,             // sHeight
-                visibleLeft,          // dx
-                visibleTop,           // dy
-                visibleW,             // dWidth
-                visibleH              // dHeight
-              );
-
-              footImg.src = canvas.toDataURL('image/png');
-              footImg.style.maxHeight = 'none';
-              footImg.style.maxWidth = 'none';
-            }
-
-            // Фиксируем футер в видимых координатах
-            foot2.style.position = 'absolute';
-            foot2.style.right = 'auto';
-            foot2.style.bottom = 'auto';
-            foot2.style.left = visibleLeft + 'px';
-            foot2.style.top = visibleTop + 'px';
-            foot2.style.width = visibleW + 'px';
-            foot2.style.height = visibleH + 'px';
-            foot2.style.margin = '0';
-            foot2.style.transform = 'none';
-          }
-        }
-      } else {
-        foot2.remove();
-      }
-    }
-
-    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   }
 
   const pdfHtml = pageHtmlArr.join('\n');
@@ -144,27 +65,19 @@ export async function generatePDF() {
     @page { size: 297mm 210mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-    .pdf-a4-page {
-      width: ${A4_WIDTH}px;
-      height: ${A4_HEIGHT}px;
-      page-break-after: always;
-      overflow: hidden;
-      position: relative;
-    }
+    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: visible; position: relative; }
     .pdf-a4-page:last-child { page-break-after: auto; }
-    .spp-a4 {
-      width: ${A4_WIDTH}px !important;
-      height: ${A4_HEIGHT}px !important;
-      transform: none !important;
-      overflow: visible !important;
-    }
+    .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
-    .spp-a4::before, .spp-a4::after { display: none !important; }
-    #prevSmrTableWrap, #prevMatTableWrap { overflow: visible !important; }
-    .spp-a4 > div[style*="padding:90px"] { overflow: visible !important; max-height: none !important; height: auto !important; }
-    ${sheetCss}
-  `;
+
+    /* ⬇ Скрываем пунктирную рамку в PDF */
+    .spp-a4::before {
+      border: none !important;
+      display: none !important;
+    }
+
+    ${sheetCss}`;
 
   const btns = document.querySelectorAll('.btn-generate');
   btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
