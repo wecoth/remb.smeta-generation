@@ -225,6 +225,26 @@
   </div>
 </div>
 
+        <!-- Модальное окно кадрирования логотипа -->
+<div id="cropModal" style="display:none">
+  <div class="crop-modal-overlay" onclick="window._auth.closeCropModal(event)">
+    <div class="crop-modal-card" onclick="event.stopPropagation()">
+      <div class="crop-modal-header">
+        <div class="crop-modal-title">Выделите область логотипа</div>
+        <button class="crop-modal-close" onclick="window._auth.closeCropModal()">✕</button>
+      </div>
+      <div class="crop-modal-body">
+        <canvas id="cropBigCanvas"></canvas>
+        <div class="crop-hint">Зажмите левую кнопку мыши и выделите прямоугольник</div>
+      </div>
+      <div class="crop-modal-footer">
+        <button class="crop-btn-cancel" onclick="window._auth.closeCropModal()">Отмена</button>
+        <button class="crop-btn-confirm" onclick="window._auth.applyCrop()">Обрезать</button>
+      </div>
+    </div>
+  </div>
+</div>
+
         <div class="profile-field">
           <label>Название компании</label>
           <input type="text" id="profileCompanyName" placeholder="СтройКомфорт">
@@ -260,6 +280,73 @@
 </div>
 
 <style>
+
+  /* ── CROP MODAL ─────────────────────────────── */
+.crop-modal-overlay {
+  position:fixed;inset:0;z-index:10000;
+  background:rgba(15,20,40,0.6);
+  backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+}
+.crop-modal-card {
+  background:#fff;border-radius:20px;
+  width:700px;max-width:95vw;
+  max-height:90vh;display:flex;flex-direction:column;
+  box-shadow:0 24px 64px rgba(0,0,0,0.18);
+  overflow:hidden;
+}
+.crop-modal-header {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 24px 12px;
+  border-bottom:1px solid #f0f0f0;
+}
+.crop-modal-title {
+  font:600 16px/1 Onest,Inter,sans-serif;color:#1a1a2e;
+}
+.crop-modal-close {
+  border:none;background:none;font-size:20px;
+  color:#aaa;cursor:pointer;padding:4px 8px;
+  border-radius:6px;
+}
+.crop-modal-close:hover { background:#f4f5f7;color:#555; }
+.crop-modal-body {
+  padding:16px 24px;
+  display:flex;flex-direction:column;align-items:center;
+  gap:10px;
+}
+#cropBigCanvas {
+  max-width:100%;
+  max-height:65vh;
+  border:1.5px dashed #d0d5e0;
+  border-radius:12px;
+  background:#fafafa;
+  cursor:crosshair;
+  display:block;
+}
+.crop-hint {
+  font:400 12px/1 Onest,Inter,sans-serif;
+  color:#999;text-align:center;
+}
+.crop-modal-footer {
+  padding:12px 24px 16px;
+  display:flex;gap:10px;
+  justify-content:flex-end;
+  border-top:1px solid #f0f0f0;
+}
+.crop-btn-cancel {
+  padding:8px 18px;border-radius:8px;
+  background:#fff;border:1.5px solid #e0e0e0;
+  font:500 13px/1 Onest,Inter,sans-serif;
+  color:#666;cursor:pointer;
+}
+.crop-btn-cancel:hover { background:#f5f5f5; }
+.crop-btn-confirm {
+  padding:8px 18px;border-radius:8px;
+  background:#4a6fe3;color:#fff;
+  font:600 13px/1 Onest,Inter,sans-serif;
+  border:none;cursor:pointer;
+}
+.crop-btn-confirm:hover { background:#3a5fd3; }
 /* ── AUTH ─────────────────────────────── */
 .auth-overlay {
   position:fixed;inset:0;z-index:9999;
@@ -409,6 +496,8 @@
 </script>
 
 <script type="module">
+
+  
 // ── MINI-ROUTER ────────────────────────────────────────────────────
 // Загружает HTML вкладки в #viewContainer и инициализирует её логику
 
