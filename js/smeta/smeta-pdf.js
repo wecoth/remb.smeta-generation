@@ -1,14 +1,42 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Блок: генерация PDF.
-// Собирает HTML страниц КП, извлекает CSS из document.styleSheets,
-// отправляет на внешний webhook и скачивает blob.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
-    // Актуализируем все листы КП, чтобы футер‑логотип был на каждом динамическом листе
+  // 1. Принудительно обновляем все страницы КП (включая динамические листы)
   if (typeof window._kpPreview?.liveUpdateKP === 'function') {
     window._kpPreview.liveUpdateKP();
   }
+
+  // 2. Явно проставляем логотип и позицию футера во ВСЕХ страницах,
+  //    чтобы даже на клонированных ранее листах точно было актуальное изображение
+  const logoData = appState?.logoData || window._auth?._currentProfile?.logoBase64 || null;
+  const footerLogoHeight  = appState?.footerLogoHeight;
+  const footerLogoPosition = appState?.footerLogoPosition;
+
+  document.querySelectorAll('.spp-page:not(.spp-hidden) [id$="FtLogoImg2"]').forEach(img => {
+    if (logoData) {
+      img.src = logoData;
+      img.style.display = '';
+      if (footerLogoHeight != null) {
+        img.style.maxHeight = footerLogoHeight + 'px';
+        img.style.maxWidth  = 'none';
+      }
+    } else {
+      img.style.display = 'none';
+    }
+  });
+
+  if (footerLogoPosition) {
+    document.querySelectorAll('.spp-page:not(.spp-hidden) [id$="Foot2"]').forEach(foot => {
+      if (foot.id === 'prevCovFoot2') return;   // обложку не трогаем
+      foot.style.right = footerLogoPosition.right + 'px';
+      foot.style.bottom = footerLogoPosition.bottom + 'px';
+      foot.style.left   = 'auto';
+      foot.style.top    = 'auto';
+    });
+  }
+
+  // 3. Собираем данные из DOM
   const street = document.getElementById('hdrStreet')?.value || '';
   const house  = document.getElementById('hdrHouse')?.value  || '';
   const flat   = document.getElementById('hdrFlat')?.value   || '';
@@ -47,7 +75,6 @@ export async function generatePDF() {
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
 
-    /* ⬇ Скрываем пунктирную рамку в PDF */
     .spp-a4::before {
       border: none !important;
       display: none !important;
