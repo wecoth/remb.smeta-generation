@@ -6,6 +6,15 @@ const N8N_BASE = 'https://assistcloudai.xyz/webhook';
 
 window._auth = {
 
+   // Состояние ручного кадрирования логотипа
+let _cropState = {
+  img: null,
+  startX: 0, startY: 0,
+  rect: null,
+  dragging: false,
+  canvas: null,
+};
+
   async checkAuth() {
     const token = localStorage.getItem('remb_token');
     if (!token) { this.showAuthScreen(); return; }
@@ -102,18 +111,18 @@ window._auth = {
   },
 
   handleProfileLogo(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const b64 = e.target.result;
-      document.getElementById('profileLogoPreview').src           = b64;
-      document.getElementById('profileLogoPreview').style.display = 'block';
-      document.getElementById('profileLogoPlaceholder').style.display = 'none';
-      this._pendingLogoBase64 = b64;
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      initCrop(img);
     };
-    reader.readAsDataURL(file);
-  },
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+},
 
   async saveProfile() {
     const token = localStorage.getItem('remb_token');
@@ -241,4 +250,112 @@ window._auth = {
     document.getElementById('authBtnLoader').style.display = on ? 'inline' : 'none';
     document.getElementById('authSubmitBtn').disabled      = on;
   }
+
+// ─── Функции ручного кадрирования логотипа ─────────────────────
+
+function resetCropUI() {
+  const prev = document.getElementById('profileLogoPreview');
+  const ph = document.getElementById('profileLogoPlaceholder');
+  const canvas = document.getElementById('logoCropCanvas');
+  const controls = document.getElementById('cropControls');
+  if (prev) prev.style.display = 'none';
+  if (ph) ph.style.display = 'block';
+  if (canvas) { canvas.style.display = 'none'; canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height); }
+  if (controls) controls.style.display = 'none';
+}
+
+function initCrop(imgElement) {
+  const canvas = document.getElementById('logoCropCanvas');
+  const controls = document.getElementById('cropControls');
+  if (!canvas) return;
+  
+  const ctx = canvas.getContext('2d');
+  const maxW = 400; // максимальная ширина превью
+  const scale = Math.min(1, maxW / imgElement.naturalWidth);
+  canvas.width = imgElement.naturalWidth * scale;
+  canvas.height = imgElement.naturalHeight * scale;
+  ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
+
+  _cropState.img = imgElement;
+  _cropState.rect = null;
+  _cropState.canvas = canvas;
+  canvas.style.display = 'block';
+  controls.style.display = 'flex';
+  document.getElementById('profileLogoPreview').style.display = 'none';
+  document.getElementById('profileLogoPlaceholder').style.display = 'none';
+
+  // обработчики мыши
+  canvas.onmousedown = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    _cropState.startX = e.clientX - rect.left;
+    _cropState.startY = e.clientY - rect.top;
+    _cropState.dragging = true;
+    _cropState.rect = null;
+  };
+  canvas.onmousemove = (e) => {
+    if (!_cropState.dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.min(_cropState.startX, e.clientX - rect.left);
+    const y = Math.min(_cropState.startY, e.clientY - rect.top);
+    const w = Math.abs(e.clientX - rect.left - _cropState.startX);
+    const h = Math.abs(e.clientY - rect.top - _cropState.startY);
+    _cropState.rect = { x, y, w, h };
+    drawCropRect();
+  };
+  canvas.onmouseup = () => {
+    _cropState.dragging = false;
+  };
+}
+
+function drawCropRect() {
+  const { canvas, rect, img } = _cropState;
+  if (!canvas || !img) return;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  if (rect && rect.w > 5 && rect.h > 5) {
+    ctx.strokeStyle = '#4a6fe3';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.setLineDash([]);
+  }
+}
+
+function confirmCrop() {
+  const { canvas, rect, img } = _cropState;
+  if (!rect || rect.w < 5 || rect.h < 5) return;
+  
+  const scaleX = img.naturalWidth / canvas.width;
+  const scaleY = img.naturalHeight / canvas.height;
+  const sx = rect.x * scaleX;
+  const sy = rect.y * scaleY;
+  const sw = rect.w * scaleX;
+  const sh = rect.h * scaleY;
+
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = sw;
+  outCanvas.height = sh;
+  const outCtx = outCanvas.getContext('2d');
+  outCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  
+  const trimmed = outCanvas.toDataURL('image/png');
+  window._auth._pendingLogoBase64 = trimmed;
+  
+  // Показываем результат
+  const preview = document.getElementById('profileLogoPreview');
+  preview.src = trimmed;
+  preview.style.display = 'block';
+  canvas.style.display = 'none';
+  document.getElementById('cropControls').style.display = 'none';
+  document.getElementById('profileLogoPlaceholder').style.display = 'none';
+}
+
+// Привязываем кнопки после загрузки DOM
+document.addEventListener('DOMContentLoaded', () => {
+  const confirmBtn = document.getElementById('cropConfirmBtn');
+  const cancelBtn = document.getElementById('cropCancelBtn');
+  if (confirmBtn) confirmBtn.addEventListener('click', confirmCrop);
+  if (cancelBtn) cancelBtn.addEventListener('click', resetCropUI);
+});
+
 };
