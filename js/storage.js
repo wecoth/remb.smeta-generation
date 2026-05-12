@@ -49,6 +49,24 @@ export function saveProject() {
     inpWindowHeight: appState.inpWindowHeight ?? 1500,
     inpDoorWidth: appState.inpDoorWidth ?? 900,
     inpDoorHeight: appState.inpDoorHeight ?? 2100,
+    defaultAdvancePct: appState.defaultAdvancePct ?? 50,
+    smrCollapsed: Array.from(appState.smrCollapsed || []),
+    matCollapsed: Array.from(appState.matCollapsed || []),
+    kpGreeting:      appState.kpGreeting      || '',
+    kpIntro1:        appState.kpIntro1        || '',
+    kpIntro2:        appState.kpIntro2        || '',
+    excludeItems:    appState.excludeItems    || null,
+    coverLogoWidth:      appState.coverLogoWidth      ?? null,
+    coverLogoHeight:     appState.coverLogoHeight     ?? null,
+    footerLogoHeight:    appState.footerLogoHeight    ?? null,
+    footerLogoPosition:  appState.footerLogoPosition  ?? null,
+    totalDaysOverride:   appState.totalDaysOverride   ?? null,
+    workDays:            { ...appState.workDays          || {} },
+    workStart:           { ...appState.workStart         || {} },
+    workMovedManually:   { ...appState.workMovedManually  || {} },
+    workParallel:        { ...appState.workParallel      || {} },
+    worksRealEnd:        appState.worksRealEnd           ?? 0,
+    savedAt: Date.now(),
     savedAt: Date.now(),
   };
   return JSON.stringify(data);
@@ -103,6 +121,24 @@ export function loadProject(jsonStr) {
   appState.inpWindowHeight = data.inpWindowHeight ?? 1500;
   appState.inpDoorWidth = data.inpDoorWidth ?? 900;
   appState.inpDoorHeight = data.inpDoorHeight ?? 2100;
+  
+  if (data.defaultAdvancePct != null) appState.defaultAdvancePct = data.defaultAdvancePct;
+  appState.smrCollapsed = new Set(data.smrCollapsed || []);
+  appState.matCollapsed = new Set(data.matCollapsed || []);
+  appState.kpGreeting      = data.kpGreeting      || '';
+  appState.kpIntro1        = data.kpIntro1        || '';
+  appState.kpIntro2        = data.kpIntro2        || '';
+  appState.excludeItems    = data.excludeItems    || null;
+  appState.coverLogoWidth      = data.coverLogoWidth      ?? null;
+  appState.coverLogoHeight     = data.coverLogoHeight     ?? null;
+  appState.footerLogoHeight    = data.footerLogoHeight    ?? null;
+  appState.footerLogoPosition  = data.footerLogoPosition  ?? null;
+  appState.totalDaysOverride   = data.totalDaysOverride   ?? null;
+  appState.workDays            = data.workDays            || {};
+  appState.workStart           = data.workStart           || {};
+  appState.workMovedManually   = data.workMovedManually   || {};
+  appState.workParallel        = data.workParallel        || {};
+  appState.worksRealEnd        = data.worksRealEnd        ?? 0;
 }
 
 export function autosaveToLocalStorage() {
