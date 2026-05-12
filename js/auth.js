@@ -179,6 +179,7 @@ window._auth = {
   // ... (оставьте их без изменений, как в предыдущей версии)
   async checkAuth() {
     const token = localStorage.getItem('remb_token');
+     if (cached.footerLogoPosition != null) window.appState.footerLogoPosition = cached.footerLogoPosition;
     if (!token) { this.showAuthScreen(); return; }
     try {
       const res = await fetch(N8N_BASE + '/auth/verify', {
@@ -352,6 +353,7 @@ if (profile.footerLogoPosition) {
       coverLogoWidth:   profile.coverLogoWidth   ?? null,
       coverLogoHeight:  profile.coverLogoHeight  ?? null,
       footerLogoHeight: profile.footerLogoHeight ?? null,
+      footerLogoPosition: profile.footerLogoPosition ?? null, // ← добавить
     };
     localStorage.setItem('remb_logo_sizes', JSON.stringify(sizes));
   },
