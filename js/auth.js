@@ -8,13 +8,175 @@ window._auth = {
 
   // Состояние ручного кадрирования логотипа
   _cropState: {
-    img: null,
+    originalImg: null,    // исходная картинка (Image)
     startX: 0, startY: 0,
-    rect: null,
+    rect: null,           // { x, y, w, h } в координатах canvas
     dragging: false,
-    canvas: null,
+    canvas: null,         // ссылка на #cropBigCanvas
   },
 
+  // Показываем модальное окно после выбора файла
+  async handleProfileLogo(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Читаем файл в DataURL
+    const dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
+
+    // Загружаем изображение
+    const img = new Image();
+    img.onload = () => this.openCropModal(img);
+    img.src = dataUrl;
+  },
+
+  // Открыть модалку с большим холстом
+  openCropModal(img) {
+    const modal = document.getElementById('cropModal');
+    const canvas = document.getElementById('cropBigCanvas');
+    if (!modal || !canvas) return;
+
+    // Определяем максимальные размеры холста (чтобы влезало в окно)
+    const maxWidth = 650;  // чуть меньше ширины карточки
+    const maxHeight = 450;
+    let width = img.naturalWidth;
+    let height = img.naturalHeight;
+
+    // Масштабируем, если больше максимума
+    const scale = Math.min(1, maxWidth / width, maxHeight / height);
+    width = Math.floor(width * scale);
+    height = Math.floor(height * scale);
+
+    // Настраиваем canvas
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    // Сохраняем состояние
+    this._cropState.originalImg = img;
+    this._cropState.canvas = canvas;
+    this._cropState.rect = null;
+    this._cropState.dragging = false;
+
+    // Показываем модальное окно
+    modal.style.display = 'block';
+
+    // Обработчики мыши
+    canvas.onmousedown = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      this._cropState.startX = e.clientX - rect.left;
+      this._cropState.startY = e.clientY - rect.top;
+      this._cropState.dragging = true;
+      this._cropState.rect = null;
+    };
+
+    canvas.onmousemove = (e) => {
+      if (!this._cropState.dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const x1 = this._cropState.startX;
+      const y1 = this._cropState.startY;
+      const x2 = e.clientX - rect.left;
+      const y2 = e.clientY - rect.top;
+
+      const x = Math.min(x1, x2);
+      const y = Math.min(y1, y2);
+      const w = Math.abs(x2 - x1);
+      const h = Math.abs(y2 - y1);
+
+      // Не даём выделению выйти за границы
+      this._cropState.rect = {
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        w: Math.min(w, canvas.width - x),
+        h: Math.min(h, canvas.height - y),
+      };
+
+      this.redrawCropCanvas();
+    };
+
+    canvas.onmouseup = () => {
+      this._cropState.dragging = false;
+    };
+  },
+
+  // Перерисовка холста с прямоугольником выделения
+  redrawCropCanvas() {
+    const { canvas, originalImg, rect } = this._cropState;
+    if (!canvas || !originalImg) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
+
+    if (rect && rect.w > 3 && rect.h > 3) {
+      ctx.strokeStyle = '#4a6fe3';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.setLineDash([]);
+    }
+  },
+
+  // Применить кадрирование
+  applyCrop() {
+    const { canvas, originalImg, rect } = this._cropState;
+    if (!canvas || !originalImg || !rect || rect.w < 5 || rect.h < 5) {
+      alert('Пожалуйста, выделите область (потяните мышью)');
+      return;
+    }
+
+    // Пересчитываем координаты в исходное изображение
+    const scaleX = originalImg.naturalWidth / canvas.width;
+    const scaleY = originalImg.naturalHeight / canvas.height;
+    const sx = rect.x * scaleX;
+    const sy = rect.y * scaleY;
+    const sw = rect.w * scaleX;
+    const sh = rect.h * scaleY;
+
+    // Создаём обрезанный холст
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = sw;
+    outCanvas.height = sh;
+    const outCtx = outCanvas.getContext('2d');
+    outCtx.drawImage(originalImg, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    // Получаем DataURL обрезанного логотипа
+    this._pendingLogoBase64 = outCanvas.toDataURL('image/png');
+
+    // Показываем превью в маленькой зоне профиля
+    const preview = document.getElementById('profileLogoPreview');
+    const placeholder = document.getElementById('profileLogoPlaceholder');
+    if (preview) {
+      preview.src = this._pendingLogoBase64;
+      preview.style.display = 'block';
+    }
+    if (placeholder) placeholder.style.display = 'none';
+
+    // Закрываем модальное окно
+    this.closeCropModal();
+  },
+
+  // Закрыть модальное окно (если клик по оверлею — тоже закрываем)
+  closeCropModal(e) {
+    if (e && e.target !== document.querySelector('.crop-modal-overlay')) return;
+    const modal = document.getElementById('cropModal');
+    if (modal) modal.style.display = 'none';
+    // Очищаем canvas для экономии памяти
+    const canvas = document.getElementById('cropBigCanvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  },
+
+  // ─── остальные методы auth (checkAuth, submit, openProfile, saveProfile и т.д.) ───
+  // ... (оставьте их без изменений, как в предыдущей версии)
   async checkAuth() {
     const token = localStorage.getItem('remb_token');
     if (!token) { this.showAuthScreen(); return; }
@@ -107,20 +269,6 @@ window._auth = {
   closeProfile(e) {
     if (e && e.target !== document.querySelector('.profile-overlay')) return;
     document.getElementById('profileScreen').style.display = 'none';
-  },
-
-  handleProfileLogo(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        this.initCrop(img);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
   },
 
   async saveProfile() {
@@ -241,125 +389,17 @@ window._auth = {
     document.getElementById('authBtnText').style.display   = on ? 'none'   : 'inline';
     document.getElementById('authBtnLoader').style.display = on ? 'inline' : 'none';
     document.getElementById('authSubmitBtn').disabled      = on;
-  },
-
-  // ─── Функции ручного кадрирования логотипа ─────────────────────
-
-  resetCropUI() {
-    const prev = document.getElementById('profileLogoPreview');
-    const ph = document.getElementById('profileLogoPlaceholder');
-    const canvas = document.getElementById('logoCropCanvas');
-    const controls = document.getElementById('cropControls');
-    if (prev) prev.style.display = 'none';
-    if (ph) ph.style.display = 'block';
-    if (canvas) { canvas.style.display = 'none'; canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height); }
-    if (controls) controls.style.display = 'none';
-  },
-
-  initCrop(imgElement) {
-    const canvas = document.getElementById('logoCropCanvas');
-    const controls = document.getElementById('cropControls');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    const maxW = 400;
-    const scale = Math.min(1, maxW / imgElement.naturalWidth);
-    canvas.width = imgElement.naturalWidth * scale;
-    canvas.height = imgElement.naturalHeight * scale;
-    // Синхронизируем CSS размеры с атрибутами canvas для корректного кадрирования
-    canvas.style.width = canvas.width + 'px';
-    canvas.style.height = canvas.height + 'px';
-    ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
-
-    this._cropState.img = imgElement;
-    this._cropState.rect = null;
-    this._cropState.canvas = canvas;
-    canvas.style.display = 'block';
-    controls.style.display = 'flex';
-    document.getElementById('profileLogoPreview').style.display = 'none';
-    document.getElementById('profileLogoPlaceholder').style.display = 'none';
-
-    canvas.onmousedown = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      this._cropState.startX = e.clientX - rect.left;
-      this._cropState.startY = e.clientY - rect.top;
-      this._cropState.dragging = true;
-      this._cropState.rect = null;
-    };
-    canvas.onmousemove = (e) => {
-      if (!this._cropState.dragging) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = Math.min(this._cropState.startX, e.clientX - rect.left);
-      const y = Math.min(this._cropState.startY, e.clientY - rect.top);
-      const w = Math.abs(e.clientX - rect.left - this._cropState.startX);
-      const h = Math.abs(e.clientY - rect.top - this._cropState.startY);
-      this._cropState.rect = { x, y, w, h };
-      this.drawCropRect();
-    };
-    canvas.onmouseup = () => {
-      this._cropState.dragging = false;
-    };
-  },
-
-  drawCropRect() {
-    const { canvas, rect, img } = this._cropState;
-    if (!canvas || !img) return;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    if (rect && rect.w > 5 && rect.h > 5) {
-      ctx.strokeStyle = '#4a6fe3';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 3]);
-      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.setLineDash([]);
-    }
-  },
-
-  confirmCrop() {
-    const { canvas, rect, img } = this._cropState;
-    if (!rect || rect.w < 5 || rect.h < 5) return;
-    
-    const scaleX = img.naturalWidth / canvas.width;
-    const scaleY = img.naturalHeight / canvas.height;
-    const sx = rect.x * scaleX;
-    const sy = rect.y * scaleY;
-    const sw = rect.w * scaleX;
-    const sh = rect.h * scaleY;
-
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = sw;
-    outCanvas.height = sh;
-    const outCtx = outCanvas.getContext('2d');
-    outCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-    
-    const trimmed = outCanvas.toDataURL('image/png');
-    this._pendingLogoBase64 = trimmed;
-    
-    const preview = document.getElementById('profileLogoPreview');
-    preview.src = trimmed;
-    preview.style.display = 'block';
-    canvas.style.display = 'none';
-    document.getElementById('cropControls').style.display = 'none';
-    document.getElementById('profileLogoPlaceholder').style.display = 'none';
   }
 };
 
-// Привязка кнопок и открытие диалога выбора файла
+// Вешаем клик по зоне логотипа для открытия выбора файла
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Клик по зоне логотипа → открыть окно выбора файла
   const logoZone = document.getElementById('profileLogoZone');
   const logoInput = document.getElementById('profileLogoInput');
   if (logoZone && logoInput) {
     logoZone.addEventListener('click', (e) => {
-      // Игнорируем клики по canvas или кнопкам кадрирования
-      if (e.target.id === 'logoCropCanvas' || e.target.closest('#cropControls')) return;
+      // Если клик не по canvas (внутри зоны его быть не должно)
       logoInput.click();
     });
   }
-
-  // 2. Кнопки кадрирования
-  const confirmBtn = document.getElementById('cropConfirmBtn');
-  const cancelBtn = document.getElementById('cropCancelBtn');
-  if (confirmBtn) confirmBtn.addEventListener('click', () => window._auth.confirmCrop());
-  if (cancelBtn) cancelBtn.addEventListener('click', () => window._auth.resetCropUI());
 });
