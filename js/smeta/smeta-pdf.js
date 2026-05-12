@@ -1,5 +1,7 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Генерация PDF: страница без transform, в нативных пикселях.
+// Блок: генерация PDF.
+// Собирает HTML страниц КП, извлекает CSS из document.styleSheets,
+// отправляет на внешний webhook и скачивает blob.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
@@ -8,11 +10,18 @@ export async function generatePDF() {
   const flat   = document.getElementById('hdrFlat')?.value   || '';
   const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
 
-  // Обновляем футер-логотипы на ВСЕХ страницах (включая клонированные)
+  // ★ Обновляем футер-логотипы на живых страницах ДО клонирования ★
   const logoData = appState?.logoData || window._auth?._currentProfile?.logoBase64 || null;
   const footerLogoHeight = appState?.footerLogoHeight;
-  const footerLogoPosition = appState?.footerLogoPosition || { right: 50, bottom: 15 };
+  const footerLogoPosition = appState?.footerLogoPosition;
 
+  // 1. Показываем/скрываем контейнеры футера (могут быть display:none)
+  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
+    if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
+    foot.style.display = logoData ? '' : 'none';
+  });
+
+  // 2. Обновляем src и размер логотипа
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
     if (logoData) {
       img.src = logoData;
@@ -26,44 +35,36 @@ export async function generatePDF() {
     }
   });
 
-  // Применяем позицию футера (drag & drop)
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
-    if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
-    foot.style.right = footerLogoPosition.right + 'px';
-    foot.style.bottom = footerLogoPosition.bottom + 'px';
-    foot.style.left = 'auto';
-    foot.style.top = 'auto';
-    foot.style.display = ''; // на всякий случай показываем
-  });
+  // 3. Применяем позицию футера
+  if (footerLogoPosition) {
+    document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
+      if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
+      foot.style.right = footerLogoPosition.right + 'px';
+      foot.style.bottom = footerLogoPosition.bottom + 'px';
+      foot.style.left = 'auto';
+      foot.style.top = 'auto';
+    });
+  }
 
-  // Собираем HTML страниц
+  // ★ Клонируем страницы ПОСЛЕ обновления футеров ★
   const pageHtmlArr = [];
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
     const clone = page.cloneNode(true);
-
-    // Убираем UI редактора
     clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
-    clone.querySelectorAll('.be-block').forEach(el => {
-      el.classList.remove('be-selected', 'be-editing');
-    });
+    clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
     clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
-
-    // Убираем transform: scale, оставляем нативные размеры
     clone.style.transform = 'none';
     clone.style.width  = '1123px';
     clone.style.height = '794px';
-
     pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   });
 
   const pdfHtml = pageHtmlArr.join('\n');
 
-  // Собираем CSS из всех таблиц стилей
   const sheetCss = Array.from(document.styleSheets).map(s => {
     try { return Array.from(s.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; }
   }).join('\n');
 
-  // Итоговый CSS для PDF
   const pdfCss = `
     @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
     @font-face {
@@ -73,30 +74,26 @@ export async function generatePDF() {
     @page { size: 297mm 210mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-
-    /* Страница PDF – нативные пиксели, Puppeteer отмасштабирует под A4 */
-    .pdf-a4-page {
-      width: 1123px;
-      height: 794px;
-      page-break-after: always;
-      overflow: hidden;      /* теперь футер внутри, обрезка безопасна */
-      position: relative;
-    }
+    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: visible; position: relative; }
     .pdf-a4-page:last-child { page-break-after: auto; }
-
-    /* spp-a4 внутри PDF-страницы без каких-либо трансформаций */
-    .spp-a4 {
-      width: 1123px !important;
-      height: 794px !important;
-      transform: none !important;
-      overflow: visible !important;
-    }
+    .spp-a4 { width: 1123px; height: 794px; overflow: visible !important; transform-origin: top left; transform: scale(0.2646); }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
-    .spp-a4::before { border: none !important; display: none !important; }
 
-    ${sheetCss}
-  `;
+    /* ⬇ Скрываем пунктирную рамку и белую маску в PDF */
+    .spp-a4::before {
+      border: none !important;
+      display: none !important;
+    }
+    .spp-a4::after { display: none !important; }
+
+    /* ⬇ Таблицы не обрезают футер */
+    #prevSmrTableWrap, #prevMatTableWrap { overflow: visible !important; }
+
+    /* ⬇ Clip по padding:90px отключаем — в PDF он ни к чему */
+    .spp-a4 > div[style*="padding:90px"] { overflow: visible !important; max-height: none !important; height: auto !important; }
+
+    ${sheetCss}`;
 
   const btns = document.querySelectorAll('.btn-generate');
   btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
