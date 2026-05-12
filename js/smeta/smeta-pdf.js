@@ -57,20 +57,10 @@ export async function generatePDF() {
 
   const pdfHtml = pageHtmlArr.join('\n');
 
-  const sheetCss = Array.from(document.styleSheets)
-  .flatMap(s => {
-    try { return Array.from(s.cssRules); } catch { return []; }
-  })
-  .filter(rule => {
-    if (rule.type === CSSRule.MEDIA_RULE) return false;
-    if (rule.type === CSSRule.KEYFRAMES_RULE) return false;
-    const text = rule.cssText || '';
-    if (/\.(global-topbar|sidebar|smeta-shell|planner|app-views|statusbar|zoom-controls|modal|work-row|work-header|totals|room-field|tool-grid|expl-scroll)/.test(text)) return false;
-    return true;
-  })
-  .map(r => r.cssText)
-  .join('\n');
-  
+  const sheetCss = Array.from(document.styleSheets).map(s => {
+    try { return Array.from(s.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; }
+  }).join('\n');
+
   const pdfCss = `
     @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
     @font-face {
@@ -80,7 +70,7 @@ export async function generatePDF() {
     @page { size: 297mm 210mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: visible; position: relative; }
+    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: hidden; position: relative; }
     .pdf-a4-page:last-child { page-break-after: auto; }
     .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); overflow: visible !important; }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
