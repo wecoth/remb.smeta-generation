@@ -1,6 +1,6 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Футер вырезается из .spp-a4 и помещается в .pdf-a4-page,
-// что гарантирует его обрезку по границам PDF-листа.
+// Обрезаем выходящий за границы логотип через canvas,
+// чтобы избежать бага полного исчезновения при генерации PDF.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
@@ -9,32 +9,27 @@ export async function generatePDF() {
   const flat   = document.getElementById('hdrFlat')?.value   || '';
   const on = [street, house, flat ? 'кв. ' + flat : ''].filter(Boolean).join(', ') || '—';
 
-  // ★ Обновляем футер-логотипы на живых страницах ДО клонирования ★
+  // ── Подготовка живых футеров (src, размер, позиция, видимость) ──
   const logoData = appState?.logoData || window._auth?._currentProfile?.logoBase64 || null;
   const footerLogoHeight = appState?.footerLogoHeight;
   const footerLogoPosition = appState?.footerLogoPosition;
 
-  // 1. Контейнеры футера
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
     if (foot.id === 'prevCovFoot2') return;
     foot.style.display = logoData ? '' : 'none';
   });
 
-  // 2. Логотип и размер
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
-    if (logoData) {
+  if (logoData) {
+    document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
       img.src = logoData;
       img.style.display = '';
       if (footerLogoHeight != null) {
         img.style.maxHeight = footerLogoHeight + 'px';
         img.style.maxWidth = 'none';
       }
-    } else {
-      img.style.display = 'none';
-    }
-  });
+    });
+  }
 
-  // 3. Позиция футера
   if (footerLogoPosition) {
     document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
       if (foot.id === 'prevCovFoot2') return;
@@ -45,56 +40,110 @@ export async function generatePDF() {
     });
   }
 
-  // ★ Клонируем страницы ★
+  // ── Клонирование с обрезкой логотипа под A4 ────────────────────
   const pageHtmlArr = [];
-  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach((page) => {
+  const A4_WIDTH = 1123;
+  const A4_HEIGHT = 794;
+
+  document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(async (page) => {
     const clone = page.cloneNode(true);
-
-    // Убираем UI редактора
     clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
-    clone.querySelectorAll('.be-block').forEach(el => {
-      el.classList.remove('be-selected', 'be-editing');
-    });
+    clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
     clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
-
-    // Без масштабирования, фиксированные размеры
     clone.style.transform = 'none';
-    clone.style.width  = '1123px';
-    clone.style.height = '794px';
+    clone.style.width  = A4_WIDTH + 'px';
+    clone.style.height = A4_HEIGHT + 'px';
 
-    // ‼️ ИЗВЛЕКАЕМ ФУТЕР из клона, чтобы вставить его в pdf-a4-page отдельно
-    const footClone = clone.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
-    let footHtml = '';
-    if (footClone) {
-      // Фиксируем его абсолютную позицию относительно родительской страницы в процентах
-      const originalFoot = page.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
-      if (originalFoot) {
-        const footRect = originalFoot.getBoundingClientRect();
-        const pageRect = page.getBoundingClientRect();
+    // ── Обработка футера ──
+    const foot2 = clone.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
+    if (foot2 && logoData) {
+      const footImg = foot2.querySelector('img');
+      if (footImg) {
+        const liveFoot = page.querySelector('[id$="Foot2"]:not(#prevCovFoot2)');
+        if (liveFoot) {
+          const liveRect = liveFoot.getBoundingClientRect();   // на живой странице
+          const pageRect = page.getBoundingClientRect();
 
-        // Позиция в процентах от верхнего левого угла .spp-a4
-        const leftPct   = ((footRect.left - pageRect.left) / pageRect.width  * 100).toFixed(3);
-        const topPct    = ((footRect.top  - pageRect.top)  / pageRect.height * 100).toFixed(3);
-        const widthPct  = (footRect.width  / pageRect.width  * 100).toFixed(3);
-        const heightPct = (footRect.height / pageRect.height * 100).toFixed(3);
+          // Пересчитываем координаты относительно .spp-a4 (который сейчас 1123x794)
+          const relX = liveRect.left - pageRect.left;
+          const relY = liveRect.top - pageRect.top;
+          let footW = liveRect.width;
+          let footH = liveRect.height;
+          let footLeft = relX;
+          let footTop = relY;
 
-        // Создаём новый футер с корректным позиционированием внутри pdf-a4-page
-        footClone.style.position = 'absolute';
-        footClone.style.left   = leftPct + '%';
-        footClone.style.top    = topPct + '%';
-        footClone.style.width  = widthPct + '%';
-        footClone.style.height = heightPct + '%';
-        footClone.style.right  = 'auto';
-        footClone.style.bottom = 'auto';
-        footClone.style.margin = '0';
-        footClone.style.transform = 'none';
+          // Проверяем выход за границы 1123x794
+          if (
+            footLeft + footW <= 0 || footLeft >= A4_WIDTH ||
+            footTop + footH <= 0 || footTop >= A4_HEIGHT
+          ) {
+            // Логотип полностью за пределами → удаляем
+            foot2.remove();
+          } else {
+            // Есть пересечение, нужно обрезать изображение
+            const img = new Image();
+            img.src = logoData;
+            await new Promise(resolve => { img.onload = resolve; });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = A4_WIDTH;
+            canvas.height = A4_HEIGHT;
+            const ctx = canvas.getContext('2d');
+
+            // Определяем видимую область логотипа
+            const visibleLeft = Math.max(0, footLeft);
+            const visibleTop = Math.max(0, footTop);
+            const visibleRight = Math.min(A4_WIDTH, footLeft + footW);
+            const visibleBottom = Math.min(A4_HEIGHT, footTop + footH);
+            const visibleW = visibleRight - visibleLeft;
+            const visibleH = visibleBottom - visibleTop;
+
+            if (visibleW > 0 && visibleH > 0) {
+              // Рисуем оригинальное изображение на canvas с нужным смещением,
+              // чтобы вырезать только видимый прямоугольник
+              ctx.drawImage(
+                img,
+                visibleLeft - footLeft,          // sX
+                visibleTop - footTop,            // sY
+                visibleW,                        // sW
+                visibleH,                        // sH
+                visibleLeft,                     // dx
+                visibleTop,                      // dy
+                visibleW,                        // dW
+                visibleH                         // dH
+              );
+
+              const croppedDataUrl = canvas.toDataURL('image/png');
+              footImg.src = croppedDataUrl;
+              footImg.style.maxHeight = 'none';
+              footImg.style.maxWidth = 'none';
+            }
+
+            // Заменяем абсолютное позиционирование на фиксированные координаты,
+            // чтобы футер точно лежал внутри A4 без отрицательных отступов
+            foot2.style.position = 'absolute';
+            foot2.style.right = 'auto';
+            foot2.style.bottom = 'auto';
+            foot2.style.left = visibleLeft + 'px';
+            foot2.style.top = visibleTop + 'px';
+            foot2.style.width = visibleW + 'px';
+            foot2.style.height = visibleH + 'px';
+            foot2.style.margin = '0';
+            foot2.style.transform = 'none';
+          }
+        }
+      } else {
+        // Нет изображения в футере – просто удаляем,
+        // либо оставляем пустой контейнер
+        foot2.remove();
       }
-      footHtml = footClone.outerHTML;
-      footClone.remove(); // убираем из основного клона, чтобы не дублировался
     }
 
-    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}${footHtml}</div>`);
+    pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   });
+
+  // Из-за асинхронной загрузки изображений дожидаемся всех промисов
+  await Promise.all(pageHtmlArr);
 
   const pdfHtml = pageHtmlArr.join('\n');
 
@@ -111,30 +160,25 @@ export async function generatePDF() {
     @page { size: 297mm 210mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-
     .pdf-a4-page {
-      width: 1123px;
-      height: 794px;
+      width: ${A4_WIDTH}px;
+      height: ${A4_HEIGHT}px;
       page-break-after: always;
-      overflow: hidden;            /* ← обрезает всё, включая вынесенный футер */
+      overflow: hidden;
       position: relative;
     }
     .pdf-a4-page:last-child { page-break-after: auto; }
-
     .spp-a4 {
-      width: 1123px !important;
-      height: 794px !important;
+      width: ${A4_WIDTH}px !important;
+      height: ${A4_HEIGHT}px !important;
       transform: none !important;
       overflow: visible !important;
     }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
-    .spp-a4::before,
-    .spp-a4::after { display: none !important; }
-
+    .spp-a4::before, .spp-a4::after { display: none !important; }
     #prevSmrTableWrap, #prevMatTableWrap { overflow: visible !important; }
     .spp-a4 > div[style*="padding:90px"] { overflow: visible !important; max-height: none !important; height: auto !important; }
-
     ${sheetCss}
   `;
 
