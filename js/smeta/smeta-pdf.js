@@ -1,7 +1,6 @@
 // ─── smeta-pdf.js ──────────────────────────────────────────────────
-// Блок: генерация PDF.
-// Собирает HTML страниц КП, извлекает CSS из document.styleSheets,
-// отправляет на внешний webhook и скачивает blob.
+// Генерация PDF без transform:scale. Страница фиксирована 1123×794 px.
+// Всё, что не влезает в эти размеры, обрезается самим Chromium.
 import { appState } from '../state.js';
 
 export async function generatePDF() {
@@ -15,13 +14,13 @@ export async function generatePDF() {
   const footerLogoHeight = appState?.footerLogoHeight;
   const footerLogoPosition = appState?.footerLogoPosition;
 
-  // 1. Показываем/скрываем контейнеры футера (могут быть display:none)
+  // 1. Контейнеры футера — показываем/скрываем
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
-    if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
+    if (foot.id === 'prevCovFoot2') return;
     foot.style.display = logoData ? '' : 'none';
   });
 
-  // 2. Обновляем src и размер логотипа
+  // 2. Логотип — src и размер
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="FtLogoImg2"]').forEach(img => {
     if (logoData) {
       img.src = logoData;
@@ -35,10 +34,10 @@ export async function generatePDF() {
     }
   });
 
-  // 3. Применяем позицию футера
+  // 3. Позиция футера
   if (footerLogoPosition) {
     document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4 [id$="Foot2"]').forEach(foot => {
-      if (foot.id === 'prevCovFoot2') return; // обложку не трогаем
+      if (foot.id === 'prevCovFoot2') return;
       foot.style.right = footerLogoPosition.right + 'px';
       foot.style.bottom = footerLogoPosition.bottom + 'px';
       foot.style.left = 'auto';
@@ -46,16 +45,19 @@ export async function generatePDF() {
     });
   }
 
-  // ★ Клонируем страницы ПОСЛЕ обновления футеров ★
+  // ★ Клонируем страницы ПОСЛЕ обновления ★
   const pageHtmlArr = [];
   document.querySelectorAll('.spp-page:not(.spp-hidden) .spp-a4').forEach(page => {
     const clone = page.cloneNode(true);
     clone.querySelectorAll('.be-toolbar, .be-h-corner, .be-margin-guide').forEach(el => el.remove());
     clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
     clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
+
+    // АБСОЛЮТНО НИКАКОГО МАСШТАБИРОВАНИЯ
     clone.style.transform = 'none';
     clone.style.width  = '1123px';
     clone.style.height = '794px';
+
     pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   });
 
@@ -74,26 +76,36 @@ export async function generatePDF() {
     @page { size: 297mm 210mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: visible; position: relative; }
+
+    /* Страница PDF: фиксированный размер 1123x794px,
+       браузер сам отмасштабирует под 297x210mm */
+    .pdf-a4-page {
+      width: 1123px;
+      height: 794px;
+      page-break-after: always;
+      overflow: hidden;        /* ← обрезаем всё, что выходит за границы */
+      position: relative;
+    }
     .pdf-a4-page:last-child { page-break-after: auto; }
-    .spp-a4 { width: 1123px; height: 794px; overflow: visible !important; transform-origin: top left; transform: scale(0.2646); }
+
+    /* Лист внутри — без scale, точные размеры */
+    .spp-a4 {
+      width: 1123px !important;
+      height: 794px !important;
+      transform: none !important;
+      overflow: visible !important;
+    }
     .spp-a4 * { font-family: 'Merriweather', serif !important; }
     .be-margin-guide { display: none !important; }
-
-    /* ⬇ Скрываем пунктирную рамку и белую маску в PDF */
-    .spp-a4::before {
-      border: none !important;
-      display: none !important;
-    }
+    .spp-a4::before,
     .spp-a4::after { display: none !important; }
 
-    /* ⬇ Таблицы не обрезают футер */
+    /* Дополнительные разблокировки */
     #prevSmrTableWrap, #prevMatTableWrap { overflow: visible !important; }
-
-    /* ⬇ Clip по padding:90px отключаем — в PDF он ни к чему */
     .spp-a4 > div[style*="padding:90px"] { overflow: visible !important; max-height: none !important; height: auto !important; }
 
-    ${sheetCss}`;
+    ${sheetCss}
+  `;
 
   const btns = document.querySelectorAll('.btn-generate');
   btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
