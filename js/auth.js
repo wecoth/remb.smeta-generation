@@ -179,7 +179,6 @@ window._auth = {
   // ... (оставьте их без изменений, как в предыдущей версии)
   async checkAuth() {
     const token = localStorage.getItem('remb_token');
-     if (cached.footerLogoPosition != null) window.appState.footerLogoPosition = cached.footerLogoPosition;
     if (!token) { this.showAuthScreen(); return; }
     try {
       const res = await fetch(N8N_BASE + '/auth/verify', {
@@ -188,9 +187,8 @@ window._auth = {
         body: JSON.stringify({ token })
       });
       const data = await res.json();
-      if (data.success) {
+            if (data.success) {
     this.applyProfile(data.profile);
-    // Всегда восстанавливаем размеры логотипов из localStorage, если они не пришли с сервера
     const cached = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
     if (window.appState) {
         if (cached.coverLogoWidth   != null) window.appState.coverLogoWidth   = cached.coverLogoWidth;
@@ -199,8 +197,7 @@ window._auth = {
         if (cached.footerLogoPosition != null) window.appState.footerLogoPosition = cached.footerLogoPosition;
     }
     this.showApp();
-}
-      } else {
+} else {
         localStorage.removeItem('remb_token');
         localStorage.removeItem('remb_userId');
         this.showAuthScreen();
