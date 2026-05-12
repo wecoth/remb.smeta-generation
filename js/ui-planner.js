@@ -37,6 +37,18 @@ export function initPlanner(domRefs) {
   canvas = domRefs.canvas;
   canvasWrap = domRefs.canvasWrap;
 
+    // ── Принудительная очистка при каждом старте ──────────────
+  // Гарантирует пустой чертёж, даже если старая версия скрипта в кеше
+  // попыталась загрузить проект.
+  const emptyArrays = ['walls','openings','dividers','measures','rooms','smrRows','smrRowsMasters','matRows','stages','payments'];
+  emptyArrays.forEach(key => { if (Array.isArray(appState[key])) appState[key] = []; });
+  const emptyObjects = ['roomNameOverrides','dimensionOffsets'];
+  emptyObjects.forEach(key => { if (typeof appState[key] === 'object') appState[key] = {}; });
+  appState.idWall = 1;
+  appState.idOpen = 1;
+  appState.idDivider = 1;
+  appState.idMeasure = 1
+
   setWallHeight(parseFloat(dom.inpWallHeight?.value) || 2700);
   EventBus.on('rooms:computed', () => {
   updateExpl(dom.explBody, dom.roomCount);
