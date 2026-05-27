@@ -21,17 +21,17 @@ import { renderPayments } from './smeta-payments.js';
 import { generatePDF } from './smeta-pdf.js';
 
 // ── Plan capture ──────────────────────────────────────────────────
-function captureCanvas() {
+async function captureCanvas() {
   const walls = window._appState?.walls ?? appState?.walls ?? [];
   if (!walls.length) { alert('Нарисуйте план перед захватом'); return; }
-  const cleanImg = renderToImage(800, 600, false);
+  const cleanImg = await renderToImage(800, 600, false);
   const bbox = getWallsBboxWorld();
   const drawingW = bbox ? (bbox.maxX - bbox.minX) : 1;
   const drawingH = bbox ? (bbox.maxY - bbox.minY) : 1;
   const isPortrait = drawingH > drawingW;
   appState.bpPortrait = isPortrait;
   if (window._appState) window._appState.bpPortrait = isPortrait;
-  const fullImg = isPortrait ? renderToImage(1754, 2480, true) : renderToImage(2480, 1754, true);
+  const fullImg = isPortrait ? await renderToImage(1754, 2480, true) : await renderToImage(2480, 1754, true);
   if (!cleanImg) { alert('Не удалось захватить чертёж'); return; }
   appState.planData = cleanImg;
   appState.planDataFull = fullImg;
