@@ -1946,21 +1946,9 @@ export function renderToImage(outW, outH, withDimensions = false) {
       const cropped = document.createElement('canvas');
       cropped.width = cropW; cropped.height = cropH;
       cropped.getContext('2d').drawImage(oc, sx1, sy1, cropW, cropH, 0, 0, cropW, cropH);
-      return new Promise(resolve => {
-  cropped.toBlob(blob => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.readAsDataURL(blob);
-  }, 'image/png');
-});
+      return cropped.toDataURL('image/png');
     }
   }
 
-  return new Promise(resolve => {
-  oc.toBlob(blob => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.readAsDataURL(blob);
-  }, 'image/jpeg', 0.95);   // ← JPEG, качество 95%
-});
+  return oc.toDataURL('image/png');
 }
