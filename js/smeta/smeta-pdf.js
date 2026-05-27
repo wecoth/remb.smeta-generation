@@ -17,8 +17,8 @@ export async function generatePDF() {
     clone.querySelectorAll('.be-block').forEach(el => { el.classList.remove('be-selected', 'be-editing'); });
     clone.querySelectorAll('.be-hidden').forEach(el => { el.style.display = 'none'; });
     clone.style.transform = 'none';
-    clone.style.width  = '1123px';
-    clone.style.height = '794px';
+    clone.style.width  = '297mm';
+    clone.style.height = '210mm';
     pageHtmlArr.push(`<div class="pdf-a4-page">${clone.outerHTML}</div>`);
   });
 
@@ -57,27 +57,37 @@ export async function generatePDF() {
   }).join('\n');
 
   const pdfCss = `
-    @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
-    @font-face {
-      font-family: 'Merriweather';
-      src: url('https://raw.githubusercontent.com/MishkinIN/Font_GOST_2.304/master/gost_2.304.ttf') format('truetype');
-    }
-    @page { size: 297mm 210mm; margin: 0; }
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
-    .pdf-a4-page { width: 297mm; height: 210mm; page-break-after: always; overflow: visible; position: relative; }
-    .pdf-a4-page:last-child { page-break-after: auto; }
-    .spp-a4 { width: 1123px; height: 794px; transform-origin: top left; transform: scale(0.2646); }
-    .spp-a4 * { font-family: 'Merriweather', serif !important; }
-    .be-margin-guide { display: none !important; }
-
-    /* ⬇ Скрываем пунктирную рамку в PDF */
-    .spp-a4::before {
-      border: none !important;
-      display: none !important;
-    }
-
-    ${sheetCss}`;
+  @import url('https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600&display=swap');
+  @font-face {
+    font-family: 'Merriweather';
+    src: url('https://raw.githubusercontent.com/MishkinIN/Font_GOST_2.304/master/gost_2.304.ttf') format('truetype');
+  }
+  @page { size: 297mm 210mm; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { margin: 0; padding: 0; background: #fff; font-family: 'Merriweather', serif; }
+  .pdf-a4-page {
+    width: 297mm;
+    height: 210mm;
+    overflow: hidden;          /* ← было visible, меняем на hidden */
+    position: relative;
+    page-break-after: always;
+  }
+  .pdf-a4-page:last-child { page-break-after: auto; }
+  .spp-a4 {
+    width: 297mm;              /* ← было 1123px */
+    height: 210mm;             /* ← было 794px */
+    overflow: hidden;
+    position: relative;
+    /* убираем transform: scale(...) */
+  }
+  .spp-a4 * {
+    font-family: 'Merriweather', serif !important;
+    box-sizing: border-box;
+  }
+  .be-margin-guide { display: none !important; }
+  .spp-a4::before { border: none !important; display: none !important; }
+  ${sheetCss}
+`;
 
   const btns = document.querySelectorAll('.btn-generate');
   btns.forEach(b => { b.textContent = 'Генерация...'; b.disabled = true; });
