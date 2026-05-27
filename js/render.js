@@ -1961,6 +1961,6 @@ export function renderToImage(outW, outH, withDimensions = false) {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result);
     reader.readAsDataURL(blob);
-  }, 'image/png');
+  }, 'image/jpeg', 0.95);   // ← JPEG, качество 95%
 });
 }
