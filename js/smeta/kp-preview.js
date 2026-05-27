@@ -72,7 +72,7 @@ async function generateImages() {
   }
   try {
     const clean    = await renderToImage(1600, 1200, false);
-    const measured = await renderToImage(2000, 1414, true);   // ← размер уменьшен
+    const measured = await renderToImage(1400, 990, true);
     // Сохраняем в appState на случай использования в других местах
     appState.planData     = clean;
     appState.planDataFull = measured;
