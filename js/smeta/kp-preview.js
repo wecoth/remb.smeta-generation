@@ -66,13 +66,13 @@ function getAddress() {
 // Автоматически рендерит чертёж из текущего состояния стен.
 // Если стен нет — возвращает null (показывается плейсхолдер).
 
-async function generateImages() {
+function generateImages() {
   if (!appState.walls || appState.walls.length === 0) {
     return { clean: null, measured: null };
   }
   try {
-    const clean    = await renderToImage(1600, 1200, false);
-    const measured = await renderToImage(1400, 990, true);
+    const clean    = renderToImage(1600, 1200, false);   // чистый план
+    const measured = renderToImage(2480, 1754, true);    // обмерный план A4 landscape
     // Сохраняем в appState на случай использования в других местах
     appState.planData     = clean;
     appState.planDataFull = measured;
@@ -1555,12 +1555,12 @@ function saveLogoSizesToProfile() {
 // ГЛАВНАЯ ФУНКЦИЯ
 // ─────────────────────────────────────────────────────────────────
 
-export async function liveUpdateKP() {
+export function liveUpdateKP() {
   if (!el('prevCover2') && !el('prevObject2')) return;
 
   const company = getCompany();
   const address = getAddress();
-  const images  = await generateImages();
+  const images  = generateImages();
 
   // Восстанавливаем размеры логотипов из localStorage, если в appState они ещё не заданы
   const cachedSizes = JSON.parse(localStorage.getItem('remb_logo_sizes') || '{}');
