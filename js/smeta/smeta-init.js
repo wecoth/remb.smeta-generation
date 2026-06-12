@@ -57,57 +57,184 @@ function _buildEstimateFileName() {
   return `Смета_${address}_${stamp}.xlsx`;
 }
 
+// Сумма работ по разделу (section) с именем stageName
+function _stageSmrTotal(stageName) {
+  let total = 0, inside = false;
+  for (const r of appState.smrRows) {
+    if (r.isSection) {
+      inside = (r.name?.trim() === stageName);
+      continue;
+    }
+    if (inside) total += _toNum(r.total) || (_toNum(r.qty) * _toNum(r.price));
+  }
+  return total;
+}
+
+// Эффективный процент аванса для платежа (локальный или глобальный)
+function _effectiveAdvancePct(payment) {
+  const local = payment.advancePct;
+  if (local != null && local >= 0 && local <= 100) return local;
+  return appState.defaultAdvancePct ?? 50;
+}
+
+// Порядковый номер платежа (1-based) по его id
+function _paymentIndex(paymentId) {
+  const idx = (appState.payments || []).findIndex(p => p.id === paymentId);
+  return idx >= 0 ? idx + 1 : '';
+}
+
 function exportToExcel() {
   if (typeof XLSX === 'undefined') {
     alert('Библиотека Excel не загружена (XLSX)');
     return;
   }
 
-  const rowsSmr = Array.isArray(appState.smrRows) ? appState.smrRows : [];
-  const rowsMat = Array.isArray(appState.matRows) ? appState.matRows : [];
+  const rowsSmr  = Array.isArray(appState.smrRows)   ? appState.smrRows   : [];
+  const rowsMat  = Array.isArray(appState.matRows)    ? appState.matRows   : [];
+  const stages   = Array.isArray(appState.stages)     ? appState.stages    : [];
+  const payments = Array.isArray(appState.payments)   ? appState.payments  : [];
+  const rooms    = Array.isArray(appState.rooms)      ? appState.rooms     : [];
 
+  // ── Вкладка 1: СМР ───────────────────────────────────────────────
   const smrData = [['№', 'Наименование работ', 'Ед. изм.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'Примечание']];
-  let smrCounter = 0;
-  let totalSmr = 0;
-
+  let smrCounter = 0, totalSmr = 0;
   for (const row of rowsSmr) {
     if (row?.isSection) {
       smrData.push([null, row?.name || '', null, null, null, null, null]);
       continue;
     }
     smrCounter++;
-    const qty = _toNum(row?.qty);
+    const qty   = _toNum(row?.qty);
     const price = _toNum(row?.price);
     const total = _toNum(row?.total) || (qty * price);
     totalSmr += total;
     smrData.push([smrCounter, row?.name || '', row?.unit || '', qty, price, total, row?.note || '']);
   }
-  smrData.push([null, 'ИТОГО по СМР', null, null, null, fmtInt(totalSmr), null]);
+  smrData.push([null, 'ИТОГО по СМР', null, null, null, totalSmr, null]);
 
+  // ── Вкладка 2: Материалы ─────────────────────────────────────────
   const matData = [['№', 'Наименование материалов', 'Ед. изм.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽', 'Примечание']];
-  let matCounter = 0;
-  let totalMat = 0;
+  let matCounter = 0, totalMat = 0;
   for (const row of rowsMat) {
     if (row?.isSection) {
       matData.push([null, row?.name || '', null, null, null, null, null]);
       continue;
     }
     matCounter++;
-    const qty = _toNum(row?.qty);
+    const qty   = _toNum(row?.qty);
     const price = _toNum(row?.price);
     const total = _toNum(row?.total) || (qty * price);
     totalMat += total;
     matData.push([matCounter, row?.name || '', row?.unit || '', qty, price, total, row?.note || '']);
   }
-  matData.push([null, 'ИТОГО по материалам', null, null, null, fmtInt(totalMat), null]);
+  matData.push([null, 'ИТОГО по материалам', null, null, null, totalMat, null]);
 
-  const wb = XLSX.utils.book_new();
-  const wsSmr = XLSX.utils.aoa_to_sheet(smrData);
-  const wsMat = XLSX.utils.aoa_to_sheet(matData);
-  wsSmr['!cols'] = [{ wch: 5 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 20 }];
-  wsMat['!cols'] = [{ wch: 5 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 20 }];
-  XLSX.utils.book_append_sheet(wb, wsSmr, 'СМР');
-  XLSX.utils.book_append_sheet(wb, wsMat, 'Материалы');
+  // ── Вкладка 3: Экспликация ────────────────────────────────────────
+  const explData = [['№', 'Помещение', 'Площадь пола, м²', 'Периметр, м', 'Площадь стен, м²']];
+  let totalFloor = 0, totalPerim = 0, totalWalls = 0;
+  rooms.forEach((room, idx) => {
+    const floor = _toNum(room.area ?? room.floorArea ?? room.metrics?.floorAreaM2 ?? 0);
+    const perim = _toNum(room.perimeter ?? room.metrics?.perimeterFloorM ?? 0);
+    const walls = _toNum(room.wallArea  ?? room.metrics?.wallAreaCleanM2 ?? 0);
+    totalFloor += floor;
+    totalPerim += perim;
+    totalWalls += walls;
+    explData.push([idx + 1, room.name || `Помещение ${idx + 1}`, +floor.toFixed(2), +perim.toFixed(2), +walls.toFixed(2)]);
+  });
+  if (rooms.length) {
+    explData.push(['', 'ИТОГО', +totalFloor.toFixed(2), +totalPerim.toFixed(2), +totalWalls.toFixed(2)]);
+  }
+
+  // ── Вкладка 4: Этапы работ ────────────────────────────────────────
+  const stageData = [['Название этапа', 'Длительность (дни)', 'Номер платежа', 'Сумма этапа, ₽']];
+  const totalDays = appState.totalDaysOverride || appState.totalDays || 0;
+
+  // map stageId → payment
+  const stageIdToPayment = {};
+  payments.forEach(p => {
+    (p.stageIds || []).forEach(sid => { stageIdToPayment[sid] = p; });
+  });
+
+  stages.forEach(stage => {
+    let days = 0;
+    if (stage.daysOverride != null && stage.daysOverride > 0) {
+      days = stage.daysOverride;
+    } else if (stage.daysAuto != null && stage.daysAuto > 0) {
+      days = stage.daysAuto;
+    } else if (totalDays > 0 && stage.w > 0) {
+      days = Math.max(1, Math.round(totalDays * stage.w / 100));
+    }
+    const amount  = _stageSmrTotal(stage.name);
+    const payment = stageIdToPayment[stage.id];
+    const payNum  = payment ? _paymentIndex(payment.id) : '';
+    stageData.push([stage.name, days, payNum, amount]);
+  });
+
+  // ── Вкладка 5: Платежи ────────────────────────────────────────────
+  const payData = [['№ платежа', 'Название платежа', 'Этап работ', 'Сумма этапа, ₽', 'Аванс %', 'Аванс, ₽', 'Остаток, ₽']];
+  payments.forEach(p => {
+    const pNum    = _paymentIndex(p.id);
+    const pName   = p.name || `Платёж ${pNum}`;
+    const advPct  = _effectiveAdvancePct(p);
+    let payTotal  = 0;
+    (p.stageIds || []).forEach(sid => {
+      const stage = stages.find(s => s.id === sid);
+      if (!stage) return;
+      const amount = _stageSmrTotal(stage.name);
+      const adv    = Math.round(amount * advPct / 100);
+      payTotal += amount;
+      payData.push([pNum, pName, stage.name, amount, advPct, adv, amount - adv]);
+    });
+    const advTotal = Math.round(payTotal * advPct / 100);
+    payData.push(['', `Итого по "${pName}"`, '', payTotal, advPct, advTotal, payTotal - advTotal]);
+    payData.push([]); // разделитель
+  });
+
+  // ── Вкладка 6: Мета ──────────────────────────────────────────────
+  const street  = document.getElementById('hdrStreet')?.value?.trim() || '';
+  const house   = document.getElementById('hdrHouse')?.value?.trim()  || '';
+  const flat    = document.getElementById('hdrFlat')?.value?.trim()   || '';
+  const address = [street, house, flat ? `кв.${flat}` : ''].filter(Boolean).join(', ') || '—';
+  const date    = document.getElementById('smetaDate')?.value || new Date().toLocaleDateString('ru-RU');
+  const duration = appState.totalDaysOverride || appState.totalDays || 0;
+  const metaData = [
+    ['Параметр', 'Значение'],
+    ['Адрес объекта',                 address],
+    ['Дата составления',              date],
+    ['Срок выполнения, рабочих дней', duration],
+    ['Стоимость работ, ₽',            totalSmr],
+    ['Стоимость материалов, ₽',       totalMat],
+    ['Итого, ₽',                      totalSmr + totalMat],
+    ['Кол-во помещений',              rooms.length],
+    ['Общая площадь пола, м²',        +totalFloor.toFixed(2)],
+    ['Общая площадь стен, м²',        +totalWalls.toFixed(2)],
+    ['Кол-во этапов работ',           stages.length],
+    ['Кол-во платежей',               payments.length],
+  ];
+
+  // ── Сборка книги ─────────────────────────────────────────────────
+  const wb      = XLSX.utils.book_new();
+  const wsSmr   = XLSX.utils.aoa_to_sheet(smrData);
+  const wsMat   = XLSX.utils.aoa_to_sheet(matData);
+  const wsExpl  = XLSX.utils.aoa_to_sheet(explData);
+  const wsStage = XLSX.utils.aoa_to_sheet(stageData);
+  const wsPay   = XLSX.utils.aoa_to_sheet(payData);
+  const wsMeta  = XLSX.utils.aoa_to_sheet(metaData);
+
+  wsSmr['!cols']   = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
+  wsMat['!cols']   = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
+  wsExpl['!cols']  = [{ wch: 5 }, { wch: 25 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
+  wsStage['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 16 }];
+  wsPay['!cols']   = [{ wch: 12 }, { wch: 22 }, { wch: 32 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 14 }];
+  wsMeta['!cols']  = [{ wch: 35 }, { wch: 25 }];
+
+  XLSX.utils.book_append_sheet(wb, wsSmr,   'СМР');
+  XLSX.utils.book_append_sheet(wb, wsMat,   'Материалы');
+  XLSX.utils.book_append_sheet(wb, wsExpl,  'Экспликация');
+  XLSX.utils.book_append_sheet(wb, wsStage, 'Этапы работ');
+  XLSX.utils.book_append_sheet(wb, wsPay,   'Платежи');
+  XLSX.utils.book_append_sheet(wb, wsMeta,  'Мета');
+
   XLSX.writeFile(wb, _buildEstimateFileName());
 }
 
