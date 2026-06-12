@@ -129,20 +129,53 @@ function exportToExcel() {
   }
   matData.push([null, 'ИТОГО по материалам', null, null, null, totalMat, null]);
 
-  // ── Вкладка 3: Экспликация ────────────────────────────────────────
-  const explData = [['№', 'Помещение', 'Площадь пола, м²', 'Периметр, м', 'Площадь стен, м²']];
+  // ── Вкладка 3: Экспликация (все поля из smeta-rooms.js) ──────────
+  const explData = [[
+    'No', 'Pomeshchenie',
+    'Pol m2', 'Perimetr m',
+    'Steny nomin m2', 'Steny chistye m2',
+    'Okna m2', 'Otkosy mp', 'Ugly mp', 'Prostenki mp'
+  ]];
+  explData[0] = [
+    '№', 'Помещение',
+    'Пол, м²', 'Периметр, м',
+    'Стены номин., м²', 'Стены чист., м²',
+    'Окна, м²', 'Откосы, м.п.', 'Углы, м.п.', 'Простенки, м.п.'
+  ];
   let totalFloor = 0, totalPerim = 0, totalWalls = 0;
+  let totWallsN = 0, totWin = 0, totRev = 0, totAng = 0, totNarrow = 0;
+
   rooms.forEach((room, idx) => {
-    const floor = _toNum(room.area ?? room.floorArea ?? room.metrics?.floorAreaM2 ?? 0);
-    const perim = _toNum(room.perimeter ?? room.metrics?.perimeterFloorM ?? 0);
-    const walls = _toNum(room.wallArea  ?? room.metrics?.wallAreaCleanM2 ?? 0);
-    totalFloor += floor;
-    totalPerim += perim;
-    totalWalls += walls;
-    explData.push([idx + 1, room.name || `Помещение ${idx + 1}`, +floor.toFixed(2), +perim.toFixed(2), +walls.toFixed(2)]);
+    const floor       = _toNum(room.area ?? 0);
+    const perim       = _toNum(room.metrics?.perimeterFloorM ?? room.perimeter ?? 0);
+    const wallsNom    = _toNum(room.metrics?.wallAreaNominalM2 ?? room.metrics?.wallAreaNetM2 ?? room.wallArea ?? 0);
+    const wallsClean  = _toNum(room.metrics?.wallAreaNetM2 ?? room.wallArea ?? 0) + _toNum(room.metrics?.narrowWallsLm ?? 0);
+    const windows     = _toNum(room.metrics?.windowAreaM2 ?? 0);
+    const reveals     = _toNum(room.metrics?.windowRevealsLm ?? 0);
+    const outerAngles = _toNum(room.metrics?.outerAnglesLm ?? 0);
+    const narrowWalls = _toNum(room.metrics?.narrowWallsLm ?? 0);
+
+    totalFloor += floor; totalPerim += perim;
+    totWallsN  += wallsNom; totalWalls += wallsClean;
+    totWin     += windows;  totRev     += reveals;
+    totAng     += outerAngles; totNarrow += narrowWalls;
+
+    explData.push([
+      idx + 1, room.name || `Помещение ${idx + 1}`,
+      +floor.toFixed(2), +perim.toFixed(2),
+      +wallsNom.toFixed(2), +wallsClean.toFixed(2),
+      +windows.toFixed(2), +reveals.toFixed(2),
+      +outerAngles.toFixed(2), +narrowWalls.toFixed(2),
+    ]);
   });
   if (rooms.length) {
-    explData.push(['', 'ИТОГО', +totalFloor.toFixed(2), +totalPerim.toFixed(2), +totalWalls.toFixed(2)]);
+    explData.push([
+      '', 'ИТОГО',
+      +totalFloor.toFixed(2), +totalPerim.toFixed(2),
+      +totWallsN.toFixed(2),  +totalWalls.toFixed(2),
+      +totWin.toFixed(2),     +totRev.toFixed(2),
+      +totAng.toFixed(2),     +totNarrow.toFixed(2),
+    ]);
   }
 
   // ── Вкладка 4: Этапы работ ────────────────────────────────────────
@@ -223,7 +256,7 @@ function exportToExcel() {
 
   wsSmr['!cols']   = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
   wsMat['!cols']   = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
-  wsExpl['!cols']  = [{ wch: 5 }, { wch: 25 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
+  wsExpl['!cols']  = [{ wch: 5 }, { wch: 22 }, { wch: 10 }, { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 13 }, { wch: 12 }, { wch: 15 }];
   wsStage['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 16 }];
   wsPay['!cols']   = [{ wch: 12 }, { wch: 22 }, { wch: 32 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 14 }];
   wsMeta['!cols']  = [{ wch: 35 }, { wch: 25 }];
