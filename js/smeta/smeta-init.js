@@ -245,6 +245,24 @@ function exportToExcel() {
     ['Кол-во платежей',               payments.length],
   ];
 
+  // ── Вкладка 7: СМР мастерам ─────────────────────────────────────
+  const rowsMasters = Array.isArray(appState.smrRowsMasters) ? appState.smrRowsMasters : [];
+  const smrMasterData = [['\u2116', '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435 \u0440\u0430\u0431\u043e\u0442', '\u0415\u0434. \u0438\u0437\u043c.', '\u041a\u043e\u043b-\u0432\u043e', '\u0426\u0435\u043d\u0430, \u20bd', '\u0421\u0443\u043c\u043c\u0430, \u20bd', '\u041f\u0440\u0438\u043c\u0435\u0447\u0430\u043d\u0438\u0435']];
+  let masterCounter = 0, totalMaster = 0;
+  for (const row of rowsMasters) {
+    if (row?.isSection) {
+      smrMasterData.push([null, row?.name || '', null, null, null, null, null]);
+      continue;
+    }
+    masterCounter++;
+    const qty   = _toNum(row?.qty);
+    const price = _toNum(row?.price);
+    const total = _toNum(row?.total) || (qty * price);
+    totalMaster += total;
+    smrMasterData.push([masterCounter, row?.name || '', row?.unit || '', qty, price, total, row?.note || '']);
+  }
+  smrMasterData.push([null, '\u0418\u0422\u041e\u0413\u041e \u043c\u0430\u0441\u0442\u0435\u0440\u0430\u043c', null, null, null, totalMaster, null]);
+
   // ── Сборка книги ─────────────────────────────────────────────────
   const wb      = XLSX.utils.book_new();
   const wsSmr   = XLSX.utils.aoa_to_sheet(smrData);
@@ -253,6 +271,7 @@ function exportToExcel() {
   const wsStage = XLSX.utils.aoa_to_sheet(stageData);
   const wsPay   = XLSX.utils.aoa_to_sheet(payData);
   const wsMeta  = XLSX.utils.aoa_to_sheet(metaData);
+  const wsMaster = XLSX.utils.aoa_to_sheet(smrMasterData);
 
   wsSmr['!cols']   = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
   wsMat['!cols']   = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
@@ -260,6 +279,7 @@ function exportToExcel() {
   wsStage['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 16 }];
   wsPay['!cols']   = [{ wch: 12 }, { wch: 22 }, { wch: 32 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 14 }];
   wsMeta['!cols']  = [{ wch: 35 }, { wch: 25 }];
+  wsMaster['!cols'] = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 20 }];
 
   XLSX.utils.book_append_sheet(wb, wsSmr,   'СМР');
   XLSX.utils.book_append_sheet(wb, wsMat,   'Материалы');
@@ -267,6 +287,7 @@ function exportToExcel() {
   XLSX.utils.book_append_sheet(wb, wsStage, 'Этапы работ');
   XLSX.utils.book_append_sheet(wb, wsPay,   'Платежи');
   XLSX.utils.book_append_sheet(wb, wsMeta,  'Мета');
+  XLSX.utils.book_append_sheet(wb, wsMaster, 'СМР мастерам');
 
   XLSX.writeFile(wb, _buildEstimateFileName());
 }
