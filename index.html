@@ -746,7 +746,7 @@ async function mountView(viewName) {
       const { appState } = await import('./js/state.js');
       window._appState = appState;
 
-      const sm = await import('./js/smeta.js?v=2');
+      const sm = await import('./js/smeta.js');
       const { initSmeta,
         handleSmr, initSmrManual, addSmrRow, clearSmr,
         handleMat, initMatManual, addMatRow, clearMat,
@@ -903,7 +903,7 @@ async function wireStorageButtons() {
       import('./js/ui-planner.js').then(({ forceRedraw }) => forceRedraw()).catch(() => {});
       import('./js/eventBus.js').then(({ EventBus }) => EventBus.emit('walls:changed')).catch(() => {});
       // Если смета открыта — перерисовываем её с загруженными данными
-      import('./js/smeta.js?v=2').then(({ initSmeta }) => {
+      import('./js/smeta.js').then(({ initSmeta }) => {
         if (window._smetaModule) initSmeta();
       }).catch(() => {});
     });
