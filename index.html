@@ -106,6 +106,10 @@
       Загрузить
       <input type="file" id="btnLoadProject" accept=".json" style="display:none">
     </label>
+    <button class="tb-action-btn" id="btnSaveToSystem" title="Сохранить в цифровой кабинет" style="background:#4f6ef7;color:#fff">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 15M12 15L7 10M12 15L17 10"/><path d="M3 18v2a1 1 0 001 1h16a1 1 0 001-1v-2"/></svg>
+      Сохранить в систему
+    </button>
     <button class="tb-action-btn" id="btnSaveProject" title="Сохранить проект">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Сохранить
@@ -528,7 +532,7 @@ function hideAllViews() {
 async function mountView(viewName) {
   if (mountedViews[viewName]) return; // уже смонтирована
 
-  const res  = await fetch('/views/' + viewName + '.html');
+  const res  = await fetch('/remb/views/' + viewName + '.html');
   const html = await res.text();
 
   // Создаём обёртку и вставляем HTML
@@ -565,7 +569,7 @@ async function mountView(viewName) {
 ]);
       
       window._appState = appState;
-      const { initPlanner, forceRedraw, getViewport } = up;
+      const { initPlanner, forceRedraw, getViewport, fitToWalls } = up;
 
       if (getViewport) {
         Object.defineProperty(window, '_plannerViewport', { get: () => getViewport(), configurable: true });
@@ -605,12 +609,124 @@ async function mountView(viewName) {
         });
       }
 
-      if (loadFromLocalStorage()) {
-        clearHistory();
-        forceRedraw();
-        // Пересчитываем комнаты после восстановления стен из localStorage
-        const { EventBus } = await import('./js/eventBus.js');
-        EventBus.emit('walls:changed');
+      const _p = new URLSearchParams(location.search);
+      const _oid = _p.get('object_id');
+      const _prev = _p.get('preview') === '1';
+
+      if (_oid) {
+        // Загружаем план из API cabinet
+        try {
+          const _r = await fetch('/api/objects/' + _oid + '/plan');
+          if (_r.ok) {
+            const { loadProject } = await import('./js/storage.js');
+            const _data = await _r.json();
+            loadProject(JSON.stringify(_data));
+            clearHistory();
+            forceRedraw();
+            const { EventBus } = await import('./js/eventBus.js');
+            EventBus.emit('walls:changed');
+          } else {
+            console.warn('plan not found for object_id=' + _oid);
+          }
+        } catch(_e) {
+          console.error('API plan load error:', _e);
+        }
+
+        if (_prev) {
+          // Preview mode: скрываем все панели управления
+          const _hide = el => { if (el) el.style.setProperty('display','none','important'); };
+          _hide(document.querySelector('.global-topbar'));
+          _hide(wrapper.querySelector('.planner-topbar'));
+          _hide(wrapper.querySelector('.right-panel'));
+          _hide(wrapper.querySelector('.statusbar'));
+          // app-shell занимает высоту iframe, а не 100vh
+          const _shell = document.querySelector('.app-shell');
+          if (_shell) _shell.style.cssText += ';height:100%!important;min-height:unset!important';
+          document.documentElement.style.height = '100%';
+          document.body.style.height = '100%';
+          // canvasWrap и plannerView — на 100% контейнера
+          const _cw = wrapper.querySelector('#canvasWrap');
+          if (_cw) {
+            _cw.style.cssText += ';width:100%!important;height:100%!important;border-radius:0!important';
+          }
+          const _pv = wrapper.querySelector('#plannerView');
+          if (_pv) _pv.style.cssText += ';height:100%!important;flex:1 1 auto!important';
+          // Autofit: два RAF — сначала браузер скрывает панели, потом пересчитывает размеры
+          function _doAutofit() {
+            const _cv = wrapper.querySelector('#planCanvas');
+            const _cw2 = wrapper.querySelector('#canvasWrap');
+            if (!_cv || !_cw2) return;
+            const _w = _cw2.offsetWidth  || window.innerWidth;
+            const _h = _cw2.offsetHeight || window.innerHeight;
+            if (_w < 10 || _h < 10) return;
+            _cv.width  = _w;
+            _cv.height = _h;
+            if (typeof fitToWalls === 'function') fitToWalls(600);
+            else forceRedraw();
+          }
+          // Два RAF гарантируют что display:none уже применён и layout пересчитан
+          requestAnimationFrame(() => requestAnimationFrame(_doAutofit));
+          setTimeout(_doAutofit, 400);
+          setTimeout(_doAutofit, 1000);
+        } else {
+          // Edit mode: Ctrl+S и кнопка сохраняют в API
+          const _doSave = async () => {
+            const { saveProject } = await import('./js/storage.js');
+            const _json = saveProject();
+            try {
+              const _sr = await fetch('/api/objects/' + _oid + '/plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: _json
+              });
+              const _msg = document.createElement('div');
+              _msg.textContent = _sr.ok ? 'Plan saved' : 'Save error ' + _sr.status;
+              Object.assign(_msg.style, {
+                position:'fixed',bottom:'16px',right:'16px',
+                background: _sr.ok ? '#22c55e' : '#ef4444',
+                color:'#fff',padding:'8px 16px',borderRadius:'6px',
+                fontSize:'13px',zIndex:'9999',
+                boxShadow:'0 2px 8px rgba(0,0,0,.2)'
+              });
+              document.body.appendChild(_msg);
+              setTimeout(() => _msg.remove(), 2000);
+            } catch(_e) { alert('Save error: ' + _e.message); }
+          };
+
+          document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); _doSave(); }
+          });
+
+          // Перехватываем кнопку сохранения проекта если есть
+          const _btnSave = wrapper.querySelector('#btnSaveProject');
+          if (_btnSave) {
+            _btnSave.removeEventListener('click', window._downloadProject);
+            _btnSave.addEventListener('click', _doSave);
+            _btnSave.textContent = 'Сохранить в объект';
+          }
+
+          // Автосохранение каждые 10 сек (тихое, без UI)
+          setInterval(async () => {
+            const { saveProject } = await import('./js/storage.js');
+            const _json = saveProject();
+            try {
+              await fetch('/api/objects/' + _oid + '/plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: _json
+              });
+            } catch(_e) { /* тихо игнорируем */ }
+          }, 10000);
+        }
+      } else {
+        // Стандартный режим — localStorage (только если нет object_id в URL)
+        const _noOid = !new URLSearchParams(location.search).get('object_id');
+        if (_noOid && loadFromLocalStorage()) {
+          clearHistory();
+          forceRedraw();
+          const { EventBus } = await import('./js/eventBus.js');
+          EventBus.emit('walls:changed');
+        }
       }
 
       // Привязываем syncCtxPanel к toolGrid этой вьюшки
@@ -630,7 +746,7 @@ async function mountView(viewName) {
       const { appState } = await import('./js/state.js');
       window._appState = appState;
 
-      const sm = await import('./js/smeta.js');
+      const sm = await import('./js/smeta.js?v=2');
       const { initSmeta,
         handleSmr, initSmrManual, addSmrRow, clearSmr,
         handleMat, initMatManual, addMatRow, clearMat,
@@ -773,10 +889,11 @@ requestAnimationFrame(() => {
 
 // ── Save/load project buttons (wired to storage module) ──────────
 async function wireStorageButtons() {
-  const { autosaveToLocalStorage, downloadProject, uploadProject } = await import('./js/storage.js');
+  const { autosaveToLocalStorage, downloadProject, uploadProject, saveToSystem } = await import('./js/storage.js');
   const { clearHistory } = await import('./js/commands/CommandHistory.js');
 
   document.getElementById('btnSaveProject')?.addEventListener('click', downloadProject);
+  document.getElementById('btnSaveToSystem')?.addEventListener('click', saveToSystem);
   document.getElementById('btnLoadProject')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
     uploadProject(f, err => {
@@ -786,7 +903,7 @@ async function wireStorageButtons() {
       import('./js/ui-planner.js').then(({ forceRedraw }) => forceRedraw()).catch(() => {});
       import('./js/eventBus.js').then(({ EventBus }) => EventBus.emit('walls:changed')).catch(() => {});
       // Если смета открыта — перерисовываем её с загруженными данными
-      import('./js/smeta.js').then(({ initSmeta }) => {
+      import('./js/smeta.js?v=2').then(({ initSmeta }) => {
         if (window._smetaModule) initSmeta();
       }).catch(() => {});
     });
@@ -799,8 +916,18 @@ wireStorageButtons();
 try { await document.fonts.load('16px Merriweather'); } catch(e) {}
 
 // ── Initial load: active tab ──────────────────────────────────────
-const activeBtn = document.querySelector('.pill-btn.active');
-if (activeBtn) await loadView(activeBtn.dataset.view);
+// При object_id — сразу открываем планировщик
+const _initParams = new URLSearchParams(location.search);
+const _initOid = _initParams.get('object_id');
+if (_initOid) {
+  // Убираем active с текущей кнопки, ставим на planner
+  document.querySelector('.pill-btn.active')?.classList.remove('active');
+  document.getElementById('tabPlanner')?.classList.add('active');
+  await loadView('planner');
+} else {
+  const activeBtn = document.querySelector('.pill-btn.active');
+  if (activeBtn) await loadView(activeBtn.dataset.view);
+}
 
 // ── Фоновый preload модулей планировщика ──────────────────────────
 // Запускаем сразу после первой вьюшки — браузер закачает и закэширует
@@ -812,7 +939,7 @@ setTimeout(() => {
   import('./js/room.js').catch(() => {});
   import('./js/storage.js').catch(() => {});
   import('./js/commands/CommandHistory.js').catch(() => {});
-  fetch('/views/planner.html').catch(() => {});
+  fetch('/remb/views/planner.html').catch(() => {});
 }, 800); // небольшая задержка чтобы не конкурировать с текущей вьюшкой
 
 // ── KP scroll reset (smeta.js calls liveUpdate which populates KP) ─
